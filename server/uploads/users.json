@@ -1,0 +1,37 @@
+[
+  {
+    "email": "admin@hico.vn",
+    "role": "Admin",
+    "status": "Online",
+    "lastLogin": "15/05/2024 09:44",
+    "avatar": "/images/avatar_admin.png"
+  },
+  {
+    "email": "cskh@hico.vn",
+    "role": "CSKH",
+    "status": "Online",
+    "lastLogin": "15/05/2024 09:22",
+    "avatar": "/images/avatar_thu_huong.png"
+  },
+  {
+    "email": "sales@hico.vn",
+    "role": "Sales",
+    "status": "Online",
+    "lastLogin": "15/05/2024 08:57",
+    "avatar": "/images/avatar_quoc_bao.png"
+  },
+  {
+    "email": "content@hico.vn",
+    "role": "Content",
+    "status": "Offline",
+    "lastLogin": "14/05/2024 17:33",
+    "avatar": "/images/avatar_minh_anh.png"
+  },
+  {
+    "email": "kho@hico.vn",
+    "role": "Warehouse",
+    "status": "Online",
+    "lastLogin": "15/05/2024 08:31",
+    "avatar": "/images/avatar_admin.png"
+  }
+]

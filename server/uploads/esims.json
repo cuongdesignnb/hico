@@ -1,0 +1,18 @@
+[
+  {
+    "iccid": "898520400001234567",
+    "rcode": "RC_JAPAN_MOCK",
+    "status": "Đang hoạt động",
+    "productName": "Japan eSIM 10GB - 15 Day",
+    "network": "NTT Docomo",
+    "usedData": 3.58,
+    "totalData": 10,
+    "expiry": "24/05/2024",
+    "device": "iPhone 14 Pro",
+    "qrcode": "https://tfmshippingsys.fastmove.com.tw/tApi/images/redeem_sample.jpg",
+    "qrcodeContent": "LPA:1$rsp.worldmove.com$RC_JAPAN_MOCK8985204000",
+    "pin1": "1111",
+    "puk1": "33334444",
+    "apnExplain": "Carrier NTT Docomo APN: spmode.ne.jp"
+  }
+]

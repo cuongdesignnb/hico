@@ -1,0 +1,185 @@
+.hico-app-block {
+  width: 100%;
+}
+
+.app-block-subtitle {
+  font-size: 13px;
+  color: var(--text-medium);
+  margin-top: 4px;
+  margin-bottom: 16px;
+}
+
+.app-split-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.app-left-content {
+  flex: 1.1;
+  min-width: 0;
+}
+
+.app-right-content {
+  flex: 0.9;
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.app-block-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.app-block-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-dark);
+  font-weight: 500;
+}
+
+/* Red Checkmark */
+.app-check-icon {
+  color: var(--primary);
+  font-weight: 800;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* Store Badge Buttons */
+.app-stores-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.store-badge-btn {
+  background-color: #111827;
+  color: white;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  transition: var(--transition-fast);
+  border: 1px solid #1f2937;
+}
+
+.store-badge-btn:hover {
+  background-color: #030712;
+  transform: translateY(-2px);
+}
+
+.st-sub {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Phone Mockup at bottom of block */
+.app-phone-mockup {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.mini-phone-bezel {
+  width: 130px;
+  height: 230px;
+  background-color: #1f2937;
+  border-radius: 20px;
+  padding: 4px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid #374151;
+}
+
+.mini-phone-screen {
+  width: 100%;
+  height: 100%;
+  background-color: #f3f4f6;
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.mini-dynamic-island {
+  width: 36px;
+  height: 8px;
+  background-color: black;
+  border-radius: 4px;
+  margin: 0 auto 6px;
+}
+
+.mini-phone-header {
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--text-dark);
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.mini-dashboard-card {
+  background-color: white;
+  border-radius: 6px;
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+}
+
+.mini-card-head {
+  font-size: 6px;
+  font-weight: 700;
+  color: var(--text-light);
+  letter-spacing: 0.05em;
+}
+
+.mini-data-val {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-dark);
+  line-height: 1;
+}
+
+.mini-data-progress-bar {
+  width: 100%;
+  height: 4px;
+  background-color: var(--border-color);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.mini-progress-fill {
+  height: 100%;
+  background-color: var(--primary);
+  border-radius: var(--radius-full);
+}
+
+.mini-card-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 6px;
+  font-weight: 600;
+  color: var(--text-medium);
+}
+
+@media (max-width: 600px) {
+  .app-split-container {
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+  }
+}

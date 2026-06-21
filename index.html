@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- PWA Primary Meta Tags -->
+    <title>HICO eSIM - Kết nối toàn cầu không giới hạn</title>
+    <meta name="description" content="Nhanh chóng, dễ dàng và tin cậy tại 200+ quốc gia. Không cần SIM vật lý. Không roaming. Chỉ cần quét và kết nối." />
+    <meta name="theme-color" content="#FF4F00" />
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Apple Mobile Web App Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="HICO eSIM" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    
+    <!-- Google Fonts: Inter, Outfit & Be Vietnam Pro -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@500;700;800;900&display=swap" rel="stylesheet">
+    
+    <style>
+      /* Temporary placeholder styles before icons are generated */
+      #pwa-install-banner {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(255, 79, 0, 0.95);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(255, 79, 0, 0.3);
+        z-index: 9999;
+        display: none !important;
+        align-items: center;
+        gap: 15px;
+        font-family: 'Inter', sans-serif;
+        font-size: 14px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        backdrop-filter: blur(10px);
+        width: 90%;
+        max-width: 480px;
+        opacity: 0;
+        visibility: hidden;
+      }
+      #pwa-install-banner.show {
+        opacity: 1;
+        visibility: visible;
+      }
+      #pwa-install-banner button {
+        background: white;
+        color: #FF4F00;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: 'Inter', sans-serif;
+        transition: background 0.2s;
+      }
+      #pwa-install-banner button:hover {
+        background: #f3f4f6;
+      }
+      #pwa-install-banner .close-btn {
+        background: transparent;
+        color: white;
+        padding: 0;
+        cursor: pointer;
+        font-size: 18px;
+        margin-left: auto;
+      }
+      #pwa-install-banner .close-btn:hover {
+        background: transparent;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- PWA Installation Banner -->
+    <div id="pwa-install-banner">
+      <span>📲 Cài đặt HICO eSIM để trải nghiệm nhanh hơn và dùng ngoại tuyến!</span>
+      <button id="pwa-install-btn">Cài đặt</button>
+      <button class="close-btn" id="pwa-close-btn">&times;</button>
+    </div>
+
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Service Worker & PWA Install Prompter Registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => {
+              console.log('Service Worker registered successfully:', reg.scope);
+              reg.update(); // Force check for service worker updates
+            })
+            .catch(err => console.log('Service Worker registration failed:', err));
+        });
+
+        // Reload page automatically when the new service worker takes control
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!refreshing) {
+            refreshing = true;
+            window.location.reload();
+          }
+        });
+      }
+
+      // Handle PWA installation
+      let deferredPrompt;
+      const installBanner = document.getElementById('pwa-install-banner');
+      const installBtn = document.getElementById('pwa-install-btn');
+      const closeBtn = document.getElementById('pwa-close-btn');
+
+      window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent default browser banner
+        e.preventDefault();
+        // Save event for triggering later
+        deferredPrompt = e;
+        // Check if user dismissed it in this session
+        if (!sessionStorage.getItem('pwa-banner-dismissed')) {
+          installBanner.classList.add('show');
+        }
+      });
+
+      installBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+          deferredPrompt.prompt();
+          const { outcome } = await deferredPrompt.userChoice;
+          console.log(`User response to install prompt: ${outcome}`);
+          deferredPrompt = null;
+          installBanner.classList.remove('show');
+        }
+      });
+
+      closeBtn.addEventListener('click', () => {
+        installBanner.classList.remove('show');
+        sessionStorage.setItem('pwa-banner-dismissed', 'true');
+      });
+    </script>
+  </body>
+</html>
+

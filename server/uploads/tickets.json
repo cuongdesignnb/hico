@@ -1,0 +1,16 @@
+[
+  {
+    "ticketCode": "#TK-240512-0456",
+    "title": "Không quét được mã QR",
+    "customer": "son.nguyen@gmail.com",
+    "status": "Đang xử lý",
+    "updateTime": "12/05/2024 14:30",
+    "messages": [
+      {
+        "sender": "customer",
+        "text": "Tôi quét mã QR trên iPhone 14 Pro nhưng máy báo lỗi không thể kích hoạt di động.",
+        "time": "12/05/2024 14:20"
+      }
+    ]
+  }
+]

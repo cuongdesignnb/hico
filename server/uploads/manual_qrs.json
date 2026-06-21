@@ -1,0 +1,16 @@
+[
+  {
+    "id": "qr-mock-1",
+    "variantId": "var-jp-15d-15gb",
+    "qrcode": "https://tfmshippingsys.fastmove.com.tw/tApi/images/redeem_sample.jpg",
+    "assignedOrderId": null,
+    "createdAt": "01/06/2026 12:00"
+  },
+  {
+    "id": "qr-mock-2",
+    "variantId": "var-jp-15d-15gb",
+    "qrcode": "https://tfmshippingsys.fastmove.com.tw/tApi/images/redeem_sample.jpg",
+    "assignedOrderId": null,
+    "createdAt": "01/06/2026 12:01"
+  }
+]

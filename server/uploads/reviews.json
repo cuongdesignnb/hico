@@ -1,0 +1,82 @@
+[
+  {
+    "id": "rev-1",
+    "productId": "jp-esim",
+    "productName": "Nhật Bản",
+    "rating": 5,
+    "userName": "Quốc Anh",
+    "userPhone": "0987654321",
+    "userEmail": "quocanh@gmail.com",
+    "content": "Sóng rất khỏe ở Tokyo và Kyoto, kết nối mượt mà. Kích hoạt QR code nhanh chóng trước khi bay.",
+    "images": [
+      "/images/japan_fuji.png"
+    ],
+    "status": "approved",
+    "createdAt": "28/05/2026"
+  },
+  {
+    "id": "rev-2",
+    "productId": "jp-esim",
+    "productName": "Nhật Bản",
+    "rating": 4,
+    "userName": "Thu Trang",
+    "userPhone": "0912345678",
+    "userEmail": "thutrang@gmail.com",
+    "content": "Dùng tốt, kích hoạt nhanh. Khi lên vùng núi cao gần Phú Sĩ đôi lúc hơi chập chờn nhưng ở phố rất ổn định.",
+    "images": [],
+    "status": "approved",
+    "createdAt": "25/05/2026"
+  },
+  {
+    "id": "rev-3",
+    "productId": "th-esim",
+    "productName": "Thái Lan",
+    "rating": 5,
+    "userName": "Hương Giang",
+    "userPhone": "0966778899",
+    "userEmail": "giang.huong@gmail.com",
+    "content": "eSIM Thái Lan dùng cực ổn định ở Bangkok. Rẻ hơn và tiện hơn nhiều so với xếp hàng mua sim vật lý ở sân bay.",
+    "images": [],
+    "status": "approved",
+    "createdAt": "20/05/2026"
+  },
+  {
+    "id": "rev-4",
+    "productId": "us-esim",
+    "productName": "Hoa Kỳ",
+    "rating": 5,
+    "userName": "Minh Tuấn",
+    "userPhone": "0905556677",
+    "userEmail": "tuanminh@gmail.com",
+    "content": "Mạng T-Mobile chạy vù vù ở New York và San Francisco. Cực kỳ hài lòng.",
+    "images": [],
+    "status": "approved",
+    "createdAt": "18/05/2026"
+  },
+  {
+    "id": "rev-5",
+    "productId": "jp-esim",
+    "productName": "Nhật Bản",
+    "rating": 5,
+    "userName": "Sơn Nguyễn",
+    "userPhone": "0912345678",
+    "userEmail": "son.nguyen@gmail.com",
+    "content": "Rất tiện lợi, quét mã là dùng ngay. Đã test ở Osaka sóng căng đét.",
+    "images": [],
+    "status": "approved",
+    "createdAt": "29/05/2026"
+  },
+  {
+    "id": "rev-6",
+    "productId": "jp-esim",
+    "productName": "Nhật Bản",
+    "rating": 5,
+    "userName": "Khánh Vy",
+    "userPhone": "0977889900",
+    "userEmail": "khanhvy@gmail.com",
+    "content": "Đánh giá thử nghiệm chờ duyệt: eSIM dùng cực kỳ tốt, hỗ trợ kỹ thuật nhanh!",
+    "images": [],
+    "status": "pending",
+    "createdAt": "01/06/2026"
+  }
+]

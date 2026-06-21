@@ -1,0 +1,71 @@
+[
+  {
+    "orderId": "#HICO-240512-0123",
+    "email": "son.nguyen@gmail.com",
+    "wmproductId": "WM-e-JP-10GB",
+    "qty": 1,
+    "status": "PROVISIONED",
+    "createdAt": "12/05/2024 10:15",
+    "items": [
+      {
+        "iccid": "898520400001234567",
+        "productName": "Japan eSIM 10GB - 15 Day",
+        "redemptionCode": "RC_JAPAN_MOCK"
+      }
+    ]
+  },
+  {
+    "orderId": "#HICO-240428-0098",
+    "email": "son.nguyen@gmail.com",
+    "wmproductId": "WM-e-KR-10GB",
+    "qty": 1,
+    "status": "PROVISIONED",
+    "createdAt": "28/04/2024 16:40",
+    "items": [
+      {
+        "iccid": "898520400001234777",
+        "productName": "eSIM Hàn Quốc 5GB - 10 Ngày",
+        "redemptionCode": "RC_KOREA_MOCK"
+      }
+    ]
+  },
+  {
+    "orderId": "#HICO-240415-0076",
+    "email": "son.nguyen@gmail.com",
+    "wmproductId": "WM-e-TH-10GB",
+    "qty": 1,
+    "status": "PROVISIONED",
+    "createdAt": "15/04/2024 09:20",
+    "items": [
+      {
+        "iccid": "898520400001234888",
+        "productName": "eSIM Thái Lan 10GB - 15 Ngày",
+        "redemptionCode": "RC_THAI_MOCK"
+      }
+    ]
+  },
+  {
+    "orderId": "#HICO-240331-0055",
+    "email": "son.nguyen@gmail.com",
+    "wmproductId": "WM-e-VN-3GB",
+    "qty": 1,
+    "status": "CANCELLED",
+    "createdAt": "31/03/2024 14:10",
+    "items": []
+  },
+  {
+    "orderId": "#ESM-2024-0515-1268",
+    "email": "minhanh@gmail.com",
+    "wmproductId": "WM-e-EU-10GB",
+    "qty": 1,
+    "status": "PROVISIONED",
+    "createdAt": "15/05/2024 09:44",
+    "items": [
+      {
+        "iccid": "898520400001234999",
+        "productName": "eSIM Châu Âu 10GB - 15 Ngày",
+        "redemptionCode": "RC_EU_MOCK"
+      }
+    ]
+  }
+]

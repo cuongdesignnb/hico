@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Nguyễn Sơn",
+    "phone": "+84 912 345 678",
+    "email": "son.nguyen@gmail.com",
+    "status": "Hoạt động",
+    "createdAt": "10/05/2026"
+  },
+  {
+    "name": "Nguyễn Minh Anh",
+    "phone": "+84 987 654 321",
+    "email": "minhanh@gmail.com",
+    "status": "Hoạt động",
+    "createdAt": "11/05/2026"
+  }
+]

@@ -1,0 +1,60 @@
+.why-hico-block {
+  width: 100%;
+}
+
+.why-hico-block .no-margin-bottom {
+  margin-bottom: 24px !important;
+}
+
+.benefits-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.benefit-mini-card {
+  display: flex;
+  gap: 12px;
+  align-items: start;
+  transition: var(--transition-fast);
+}
+
+.benefit-mini-icon-box {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background-color: var(--primary-light);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 79, 0, 0.1);
+}
+
+.benefit-mini-info h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 2px;
+}
+
+.benefit-mini-info p {
+  font-size: 11px;
+  color: var(--text-medium);
+  line-height: 1.4;
+}
+
+@media (max-width: 768px) {
+  .benefits-mini-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .benefits-mini-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}

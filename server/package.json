@@ -1,0 +1,23 @@
+{
+  "name": "hico-esim-backend-simulation",
+  "version": "1.0.0",
+  "description": "HICO Backend & Worldmove API Simulator for local testing",
+  "type": "module",
+  "main": "hicoBackend.js",
+  "scripts": {
+    "start:wm": "node mockWorldmove.js",
+    "start:hico": "node hicoBackend.js",
+    "dev:wm": "nodemon mockWorldmove.js",
+    "dev:hico": "nodemon hicoBackend.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "cors": "^2.8.5",
+    "crypto-js": "^4.2.0",
+    "express": "^4.19.2",
+    "nodemailer": "^8.0.10"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

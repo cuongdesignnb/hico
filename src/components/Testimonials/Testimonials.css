@@ -1,0 +1,114 @@
+.testimonials-block {
+  width: 100%;
+}
+
+.testimonials-block-subtitle {
+  font-size: 13px;
+  color: var(--text-medium);
+  margin-top: 4px;
+  margin-bottom: 20px;
+}
+
+.testimonials-horizontal-list {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.mini-testimonial-card {
+  background-color: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  transition: var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.mini-testimonial-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.mini-t-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.mini-t-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  border: 1px solid var(--primary);
+}
+
+.mini-t-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.mini-t-meta h3 {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-t-meta span {
+  font-size: 9px;
+  color: var(--text-medium);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-t-stars {
+  display: flex;
+  gap: 1px;
+}
+
+.mini-t-text {
+  font-size: 10.5px;
+  line-height: 1.4;
+  font-style: italic;
+  color: var(--text-dark);
+}
+
+.testimonials-dots-row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.testimonials-dots-row .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background-color: #E5E7EB;
+  transition: var(--transition-fast);
+}
+
+.testimonials-dots-row .dot.active {
+  background-color: var(--primary);
+  width: 14px;
+}
+
+@media (max-width: 768px) {
+  .testimonials-horizontal-list {
+    flex-direction: column;
+    gap: 12px;
+  }
+}

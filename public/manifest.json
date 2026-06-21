@@ -1,0 +1,18 @@
+{
+  "short_name": "HICO eSIM",
+  "name": "HICO eSIM - Kết nối toàn cầu không giới hạn",
+  "description": "Nhanh chóng, dễ dàng và tin cậy tại 200+ quốc gia. Không cần SIM vật lý. Không roaming. Chỉ cần quét và kết nối.",
+  "icons": [
+    {
+      "src": "logo.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#FF4F00",
+  "display": "standalone",
+  "orientation": "portrait"
+}

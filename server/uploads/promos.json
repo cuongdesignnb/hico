@@ -1,0 +1,37 @@
+[
+  {
+    "code": "SHC50",
+    "discount": 25,
+    "description": "Giảm 50k đơn từ 500k",
+    "expiry": "31/12/2030",
+    "status": "Hoạt động"
+  },
+  {
+    "code": "SHC40",
+    "discount": 20,
+    "description": "Giảm 40k đơn từ 400k",
+    "expiry": "31/12/2030",
+    "status": "Hoạt động"
+  },
+  {
+    "code": "SHC30",
+    "discount": 15,
+    "description": "Giảm 30k đơn từ 300k",
+    "expiry": "31/12/2030",
+    "status": "Hoạt động"
+  },
+  {
+    "code": "SHC20",
+    "discount": 10,
+    "description": "Giảm 20k đơn từ 200k",
+    "expiry": "31/12/2030",
+    "status": "Hoạt động"
+  },
+  {
+    "code": "SHC10",
+    "discount": 5,
+    "description": "giảm 10k đơn từ 100k",
+    "expiry": "31/12/2025",
+    "status": "Hoạt động"
+  }
+]
