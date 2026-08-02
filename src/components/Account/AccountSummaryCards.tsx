@@ -1,4 +1,4 @@
-import { ClipboardList, Clock3, CircleCheck, WalletCards } from 'lucide-react';
+import { Award, ClipboardList, Clock3, CircleCheck, WalletCards } from 'lucide-react';
 import type { CustomerDashboardSummary } from '../../types/customerDashboard';
 import { CustomerAssetSummaryCards } from './Assets/CustomerAssetSummaryCards';
 
@@ -7,4 +7,4 @@ export const AccountSummaryCards = ({ summary }: { summary: CustomerDashboardSum
   <article className="account-summary-card"><Clock3 size={20} /><span>Dang xu ly</span><strong>{summary.orders.pending}</strong></article>
   <article className="account-summary-card"><CircleCheck size={20} /><span>Da hoan tat</span><strong>{summary.orders.completed}</strong></article>
   <article className="account-summary-card"><WalletCards size={20} /><span>Gia tri don hang</span><strong>{Object.entries(summary.orders.totalsByCurrency).map(([currency, amount]) => `${amount.toLocaleString('vi-VN')} ${currency}`).join(' / ') || '0 VND'}</strong></article>
-</section>{summary.assetSummary && <CustomerAssetSummaryCards summary={summary.assetSummary} />}</>;
+</section>{summary.capabilities.loyalty && summary.loyaltySummary.available && <section className="account-summary-grid account-loyalty-summary-grid"><article className="account-summary-card"><Award size={20} /><span>Diem thuong</span><strong>{summary.loyaltySummary.balance?.toLocaleString('vi-VN') ?? 0}</strong></article></section>}{summary.assetSummary && <CustomerAssetSummaryCards summary={summary.assetSummary} />}</>;

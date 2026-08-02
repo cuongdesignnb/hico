@@ -66,7 +66,7 @@ export const projectCustomerOrder = (order) => {
   };
 };
 
-export const projectCustomerDashboardSummary = ({ customer, orders, totalItems, aggregate, capabilities = {}, assetSummary } = {}) => {
+export const projectCustomerDashboardSummary = ({ customer, orders, totalItems, aggregate, capabilities = {}, assetSummary, loyaltySummary } = {}) => {
   const projected = (orders ?? []).map(projectCustomerOrder);
   const counts = projected.reduce((result, order) => {
     result.total += 1;
@@ -84,6 +84,7 @@ export const projectCustomerDashboardSummary = ({ customer, orders, totalItems, 
     recentOrders: projected.slice(0, 5),
     capabilities: { assets: false, loyalty: false, notifications: false, support: false, ...capabilities },
     assetSummary: assetSummary ?? { available: false },
+    loyaltySummary: loyaltySummary ?? { available: false },
     generatedAt: new Date().toISOString(),
   };
 };

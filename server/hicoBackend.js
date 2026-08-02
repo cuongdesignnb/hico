@@ -77,6 +77,13 @@ import { createCustomerAssetRevealService } from './customer/customerAssetReveal
 import { createCustomerAssetAuditRepository } from './customer/customerAssetAuditRepository.js';
 import { createCustomerAssetRouter } from './customer/customerAssetRouter.js';
 import { createCustomerTokenDelivery } from './customer/customerTokenDelivery.js';
+import { createCustomerLoyaltyRouter } from './loyalty/loyaltyRouter.js';
+import { createLoyaltyAdminRouter } from './loyalty/loyaltyAdminRouter.js';
+import { createLoyaltyHealthRouter } from './loyalty/loyaltyHealthRouter.js';
+import { createLoyaltyLedgerRepository } from './loyalty/loyaltyLedgerRepository.js';
+import { createLoyaltyRuleService } from './loyalty/loyaltyRuleService.js';
+import { createLoyaltyService } from './loyalty/loyaltyService.js';
+import { createLoyaltyEventProcessor } from './loyalty/loyaltyEventProcessor.js';
 import { createRequestId } from './security/requestId.js';
 import { createAdminRequestAudit, createSecurityAudit } from './security/securityAudit.js';
 import { createCorsPolicy } from './security/corsPolicy.js';
@@ -206,6 +213,9 @@ const customerDashboardService = customerDashboardRepository && customerAuthServ
   repository: customerDashboardRepository,
   env: process.env,
 }) : null;
+const loyaltyRuleService = createLoyaltyRuleService({ pool: authPool, env: process.env });
+const loyaltyLedgerRepository = authPool ? createLoyaltyLedgerRepository({ pool: authPool }) : null;
+let loyaltyService = null;
 let productionReadinessService;
 const readinessDelegate = {
   evaluate: (...args) => productionReadinessService?.evaluate(...args) ?? Promise.resolve({ status: 'not_ready', adminWritesAllowed: false, writesEnabled: false, criticalChecksPassed: 0, criticalChecksTotal: 0, failedChecks: ['READINESS_INITIALIZING'], checkedAt: new Date().toISOString() }),
@@ -328,6 +338,7 @@ app.get('/api/health/customer-assets', async (_req, res) => {
     mockAssetsExposed: false,
   });
 });
+app.get('/api/health/loyalty', createLoyaltyHealthRouter({ loyaltyService: { health: () => loyaltyService?.health?.() ?? Promise.resolve({ status: 'disabled', enabled: false }) } }));
 app.get('/api/health/metrics', (_req, res) => res.json({ status: 'healthy', counters: metrics.snapshot() }));
 app.get('/api/health/security', async (_req, res) => {
   const readiness = await readinessDelegate.evaluate();
@@ -553,6 +564,15 @@ const customerAssetRevealService = customerAssetRepository ? createCustomerAsset
   env: process.env,
 }) : null;
 if (customerDashboardService && customerAssetRepository) customerDashboardService.setAssetSummaryService(customerAssetRepository);
+loyaltyService = loyaltyLedgerRepository && customerOrderRepository ? createLoyaltyService({
+  repository: loyaltyLedgerRepository,
+  ruleService: loyaltyRuleService,
+  orderRepository: customerOrderRepository,
+  env: process.env,
+  audit: securityAudit,
+}) : null;
+if (customerDashboardService && loyaltyService) customerDashboardService.setLoyaltyService(loyaltyService);
+const loyaltyEventProcessor = loyaltyService ? createLoyaltyEventProcessor({ loyaltyService, logger }) : null;
 const canonicalCatalogReader = createCanonicalCatalogReader({ env: process.env });
 const canonicalFulfillmentService = createFulfillmentService({
   repository: canonicalFulfillmentRepository,
@@ -568,6 +588,7 @@ const canonicalFulfillmentService = createFulfillmentService({
     apiUrl: process.env.WORLDMOVE_API_URL || apiConfig.apiUrl,
     timeoutMs: Number(process.env.PROVIDER_REQUEST_TIMEOUT_MS ?? 15000),
   }),
+  loyaltyEventProcessor,
 });
 const canonicalOrderService = createOrderService({
   repository: canonicalOrderRepository,
@@ -606,6 +627,7 @@ productionReadinessService = createProductionReadinessService({
     catalogHealthService,
     checkoutHealthService: canonicalCheckoutHealthService,
     customerAuthReadiness,
+    loyaltyHealthService: loyaltyService,
     pool: authPool,
   }),
 });
@@ -636,6 +658,12 @@ if (customerAssetRepository && customerAssetRevealService && customerAuthService
   env: process.env,
   securityAudit,
 }));
+if (loyaltyService && customerAuthService) app.use('/api/customer', createCustomerLoyaltyRouter({
+  customerAuthService,
+  readiness: customerAuthReadiness,
+  loyaltyService,
+}));
+if (loyaltyService) app.use('/api/admin', createLoyaltyAdminRouter({ loyaltyService }));
 app.use('/api', createFulfillmentRouter({ orderRepository: canonicalOrderRepository }));
 app.use('/api/user', (_req, res) => {
   res.set('Deprecation', 'true');

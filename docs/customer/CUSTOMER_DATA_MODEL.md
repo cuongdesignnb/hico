@@ -18,6 +18,8 @@ erDiagram
   CUSTOMERS ||--o{ CUSTOMER_PASSWORD_RESETS : resets
   CUSTOMERS ||--o{ CUSTOMER_SECURITY_EVENTS : audits
   CUSTOMERS ||--o{ ORDERS : owns
+  CUSTOMERS ||--|| LOYALTY_ACCOUNTS : has
+  LOYALTY_ACCOUNTS ||--o{ LOYALTY_LEDGER : records
   ORDERS ||--o{ ORDER_ITEMS : contains
   ORDERS ||--o{ GUEST_ORDER_CLAIMS : may_have
   ORDERS ||--o{ ORDER_OWNERSHIP_EVENTS : records
@@ -73,14 +75,14 @@ reveal after owner, CSRF, and recent re-auth checks.
 
 | Table | Purpose | Constraints and indexes |
 | --- | --- | --- |
-| `loyalty_accounts` | One account per customer, optional derived balance cache | Unique `customer_id` |
-| `loyalty_ledger_entries` | Append-only `EARN`, `REVERSE`, and future event records | Unique idempotency key; index `(customer_id, occurred_at DESC)` |
+| `loyalty_accounts` | One account per customer; no mutable balance source of truth | Primary key and customer FK |
+| `loyalty_ledger` | Append-only `EARN`, `REVERSE`, `ADJUST_ADMIN`, and future event records | Non-zero points/sign constraints; unique business event and idempotency keys; index `(customer_id, effective_at DESC)` |
 | `referral_codes` | Customer-owned referral code | Unique normalized code and customer mapping |
 | `referral_events` | Idempotent reward qualification/reversal | Unique qualifying order/event relationship; FK references |
 
-The ledger is authoritative and the balance is derived, never edited in place.
-PR15.4 introduces earn/reverse only; redemption and membership tiers are out of
-scope.
+The ledger is authoritative and the balance is `SUM(points)`, never edited in
+place. PR15.5 adds earn/reverse and admin adjustment foundations; redemption,
+referral and membership tiers remain disabled or out of scope.
 
 ## Retention and deletion boundary
 

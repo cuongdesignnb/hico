@@ -3,10 +3,12 @@ import { projectCustomerDashboardSummary, projectCustomerOrder } from './custome
 
 const notFound = () => Object.assign(new Error('Order not found.'), { code: 'ORDER_NOT_FOUND' });
 
-export const createCustomerDashboardService = ({ repository, env = process.env, assetSummaryService = null } = {}) => {
+export const createCustomerDashboardService = ({ repository, env = process.env, assetSummaryService = null, loyaltyService = null } = {}) => {
   let assets = assetSummaryService;
+  let loyalty = loyaltyService;
   return {
   setAssetSummaryService(service) { assets = service; },
+  setLoyaltyService(service) { loyalty = service; },
   async summary(customer) {
     const query = { page: 1, pageSize: 5, sort: 'newest' };
     const [orders, aggregate] = await Promise.all([
@@ -14,17 +16,19 @@ export const createCustomerDashboardService = ({ repository, env = process.env, 
       repository.summarizeOwnedOrders(customer.id),
     ]);
     const assetSummary = assets ? await assets.summary(customer.id) : { esims: { total: 0, active: 0, pending: 0 }, physicalSims: { total: 0, pendingShip: 0, shipped: 0 }, devices: { total: 0 }, topups: { total: 0, pending: 0, completed: 0 }, available: { esims: false, physicalSims: false, devices: false, topups: false } };
+    const loyaltySummary = loyalty ? await loyalty.dashboardSummary(customer.id) : { available: false };
     return projectCustomerDashboardSummary({
       customer,
       orders,
       aggregate,
       capabilities: {
         assets: Object.values(assetSummary.available).some(Boolean),
-        loyalty: env.CUSTOMER_LOYALTY_AVAILABLE === 'true',
+        loyalty: loyaltySummary.available,
         notifications: env.CUSTOMER_NOTIFICATIONS_AVAILABLE === 'true',
         support: env.CUSTOMER_SUPPORT_AVAILABLE === 'true',
       },
       assetSummary,
+      loyaltySummary,
     });
   },
   async list(customerId, rawQuery) {

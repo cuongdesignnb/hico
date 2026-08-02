@@ -31,6 +31,7 @@ const sourceFiles = [
   'src/services/customerDashboardApi.ts',
   'src/services/customerOrdersApi.ts',
   'src/services/customerAssetsApi.ts',
+  'src/services/customerLoyaltyApi.ts',
   'src/hooks/customer/useCustomerAssetQuery.ts',
   'src/hooks/customer/useCustomerAssetSummary.ts',
   'src/pages/account/AccountEsimsPage.tsx',
@@ -43,6 +44,9 @@ const sourceFiles = [
   'src/components/Account/Assets/EsimRevealDialog.tsx',
   'server/customer/customerAssetProjection.js',
   'server/customer/customerAssetRevealService.js',
+  'server/loyalty/loyaltyService.js',
+  'server/loyalty/loyaltyRouter.js',
+  'server/loyalty/loyaltyLedgerRepository.js',
 ];
 
 const accountProductionFiles = sourceFiles.filter((relativePath) => relativePath.startsWith('src/pages/account/') || relativePath.startsWith('src/services/customer'));
@@ -225,6 +229,7 @@ export const inventoryCustomerPlatform = async ({
   ));
   const accountSource = accountProductionFiles.map((relativePath) => sources[relativePath] ?? '').join('\n');
   const assetSource = sourceFiles.filter((relativePath) => relativePath.includes('customerAsset') || relativePath.includes('CustomerAsset') || relativePath.includes('EsimReveal')).map((relativePath) => sources[relativePath] ?? '').join('\n');
+  const loyaltySource = sourceFiles.filter((relativePath) => relativePath.includes('Loyalty') || relativePath.includes('loyalty')).map((relativePath) => sources[relativePath] ?? '').join('\n');
   const appRouterSource = sources['src/routing/AppRouter.tsx'] ?? '';
 
   return {
@@ -247,6 +252,13 @@ export const inventoryCustomerPlatform = async ({
       legacyMockFiles: sources['src/components/UserDashboard/UserDashboard.tsx'] ? 1 : 0,
       assetApiUserReferenceCount: (assetSource.match(/\/api\/user/g) ?? []).length,
       hardCodedAssetValueCount: (assetSource.match(/(?:LPA:|RC_[A-Z0-9_]+|\b\d{16,22}\b)/g) ?? []).length,
+      productionLoyaltySourceCount: sourceFiles.filter((relativePath) => relativePath.includes('Loyalty') || relativePath.includes('loyalty')).filter((relativePath) => sources[relativePath]).length,
+      hardCodedPointsCount: (accountSource.match(/\b(?:points?|diem)\s*[:=]\s*\d+/gi) ?? []).length,
+      fakeCashEquivalentCount: (accountSource.match(/(?:points?|diem).{0,30}(?:VND|cash|money|amount)/gi) ?? []).length,
+      walletWordingCount: (accountSource.match(/wallet|vi dien tu|vi tien/gi) ?? []).length,
+      localPointsBalanceCount: (accountSource.match(/localStorage[^\n]*(?:points?|diem|balance)/gi) ?? []).length,
+      legacyPointsApiReferenceCount: (accountSource.match(/\/api\/(?:user|wallet|points)(?:\/|['"`])/gi) ?? []).length,
+      directBalanceMutationCount: (accountSource.match(/\bbalance\s*[+\-*/]?=/gi) ?? []).length,
     },
     browserStorage: {
       keys: sources['src/context/AppContext.tsx']?.includes('hico_cart') ? ['hico_cart'] : [],

@@ -33,6 +33,7 @@ import { AccountPhysicalSimDetailPage } from '../pages/account/AccountPhysicalSi
 import { AccountDeviceDetailPage } from '../pages/account/AccountDeviceDetailPage';
 import { AccountTopupsPage } from '../pages/account/AccountTopupsPage';
 import { AccountTopupDetailPage } from '../pages/account/AccountTopupDetailPage';
+import { AccountLoyaltyPage } from '../pages/account/AccountLoyaltyPage';
 import '../App.css';
 
 const PublicLayout = () => {
@@ -80,7 +81,7 @@ export const AppRouter: React.FC = () => <RouteErrorBoundary><ScrollRestoration 
     <Route path="sim-thiet-bi/thiet-bi/:assetId" element={<AccountDeviceDetailPage />} />
     <Route path="nap-them" element={<AccountTopupsPage />} />
     <Route path="nap-them/:topupId" element={<AccountTopupDetailPage />} />
-    <Route path="diem-thuong" element={<AccountComingSoonPage />} />
+    <Route path="diem-thuong" element={<AccountLoyaltyPage />} />
     <Route path="ho-tro" element={<AccountComingSoonPage />} />
   </Route>
   <Route path="quan-tri" element={<ProtectedRoute><PrivateAdmin /></ProtectedRoute>} />

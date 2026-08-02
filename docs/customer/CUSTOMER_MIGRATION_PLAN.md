@@ -18,9 +18,9 @@ counts and hashes, never raw customer or fulfillment secrets.
 | PR15.1 | Customer identity, verified email auth, separate sessions/CSRF | Prove identity-domain separation. |
 | PR15.2 | PostgreSQL canonical orders, items, claims, ownership events | Preserve public IDs and six statuses; import/reconcile proof. |
 | PR15.3 | Owner-scoped dashboard and secure `/api/user/*` compatibility adapter | IDOR suite and no-mock dashboard proof. |
-| PR15.4 | Loyalty ledger and referral qualification | Idempotency and reversal tests. |
-| PR15.5 | Customer assets/reveal, export and privacy flows | Reveal audit, no-store, re-auth tests. |
-| PR15.6 | Admin/support ownership and claim exception tooling | Permission and append-only audit tests. |
+| PR15.4 | Customer assets/reveal and fulfillment asset projection | Reveal audit, no-store, re-auth tests. |
+| PR15.5 | Loyalty ledger, earn/reverse, rules and admin adjustment foundation | Migration 009, idempotency, ownership and reconciliation tests. |
+| PR15.6 | Referral rewards, loyalty notifications and anti-abuse | Reward idempotency/reversal and unread notification tests. |
 | PR15.7 | Retention/anonymization launch policy | Legal retention decision recorded and verified. |
 | PR15.8 | Production readiness and controlled rollout | Staging, security, observability, rollback, approval evidence. |
 

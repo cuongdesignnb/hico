@@ -10,7 +10,7 @@ const safeReport = async (filePath) => {
   try { return JSON.parse(await fs.readFile(filePath, 'utf8')); } catch { return null; }
 };
 
-export const createProductionReadinessChecks = ({ env = process.env, sessionHealthService, userRepository, catalogHealthService, checkoutHealthService, customerAuthReadiness, pool, now = () => new Date() } = {}) => async () => {
+export const createProductionReadinessChecks = ({ env = process.env, sessionHealthService, userRepository, catalogHealthService, checkoutHealthService, customerAuthReadiness, loyaltyHealthService, pool, now = () => new Date() } = {}) => async () => {
   if (env.NODE_ENV !== 'production') return { production: false, checks: [], failedChecks: [] };
   const checks = [];
   const add = (name, passed) => checks.push({ name, passed: Boolean(passed) });
@@ -37,6 +37,8 @@ export const createProductionReadinessChecks = ({ env = process.env, sessionHeal
   add('CATALOG_HEALTHY', catalog.status === 'healthy');
   const checkout = await checkoutHealthService.getHealth();
   add('CHECKOUT_HEALTHY', env.CHECKOUT_LAUNCH_REQUIRED === 'false' || checkout.status === 'healthy');
+  const loyalty = loyaltyHealthService ? await loyaltyHealthService.health() : { status: 'disabled', enabled: false };
+  add('LOYALTY_HEALTHY', env.LOYALTY_ENABLED !== 'true' || loyalty.status === 'healthy');
   const backup = await safeReport(env.BACKUP_VERIFICATION_PATH);
   add('BACKUP_VERIFIED', Boolean(backup?.status === 'verified' && withinHours(backup.verifiedAt, Number.parseInt(env.BACKUP_MAX_AGE_HOURS, 10) || 24, now())));
   const dependency = await safeReport(env.DEPENDENCY_GATE_REPORT_PATH);
@@ -60,5 +62,5 @@ export const createProductionReadinessChecks = ({ env = process.env, sessionHeal
     add(name, report?.status === expected);
   }
   const failedChecks = checks.filter((check) => !check.passed).map((check) => check.name);
-  return { production: true, checks, failedChecks, sessionHealth, catalog, checkout, schema };
+  return { production: true, checks, failedChecks, sessionHealth, catalog, checkout, loyalty, schema };
 };

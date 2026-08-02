@@ -45,6 +45,7 @@ export const createFulfillmentService = ({
   eventRepository = null,
   logger = console,
   sideEffectSink = async () => undefined,
+  loyaltyEventProcessor = null,
 } = {}) => {
   const saveItemData = async (orderId, itemIndex, itemData = {}, nextStatus) => orderRepository.update(orderId, (order) => {
     const items = [...order.items];
@@ -86,6 +87,9 @@ export const createFulfillmentService = ({
         } catch (sideEffectError) {
           logger.warn(`[fulfillment] side effect failed marker=${marker} code=${sideEffectError?.code ?? 'unknown'}`);
         }
+      }
+      if (loyaltyEventProcessor && ['PROVISIONED', 'SHIPPED'].includes(marked.state)) {
+        await loyaltyEventProcessor.onFulfillmentState({ record: marked, order, item, eventId: event?.eventId ?? null });
       }
       return marked;
     } catch (error) {

@@ -13,5 +13,6 @@ export interface CustomerDashboardSummary {
     topups: { total: number; pending: number; completed: number };
     available: { esims: boolean; physicalSims: boolean; devices: boolean; topups: boolean };
   };
+  loyaltySummary: { available: boolean; balance?: number };
   generatedAt: string;
 }

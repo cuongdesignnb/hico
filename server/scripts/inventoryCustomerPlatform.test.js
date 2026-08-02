@@ -99,5 +99,12 @@ test('customer inventory is aggregate-only and classifies ownership without emai
     legacyMockFiles: 1,
     assetApiUserReferenceCount: 0,
     hardCodedAssetValueCount: 0,
+    productionLoyaltySourceCount: 4,
+    hardCodedPointsCount: 0,
+    fakeCashEquivalentCount: 0,
+    walletWordingCount: 0,
+    localPointsBalanceCount: 0,
+    legacyPointsApiReferenceCount: 0,
+    directBalanceMutationCount: 0,
   });
 });
