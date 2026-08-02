@@ -59,8 +59,8 @@
 - `npm run customer-orders:validate` and `migration:status` require `DATABASE_URL` in a local shell; the isolated Docker QA database ran both ownership queries and migration head checks successfully.
 - Root `npm audit --omit=dev` reports the two previously accepted `react-router` advisories; backend `npm --prefix server audit --omit=dev` is 0 vulnerabilities and `npm run security:gate` passes with those two findings explicitly accepted.
 - `git diff --check`: pass.
-- Docker QA: isolated PostgreSQL, migration runner, Mailpit and Backend A/B passed migration 008, summary/list/detail, cross-instance session, IDOR 404, no-store, reveal, re-auth 428, and database outage 503 to recovery 200. QA project `hico-pr154-qa` was removed with its volume.
-- Browser baseline from PR15.3 remains 9 desktop/mobile checks with no page errors. The PR15.4 account routes are protected and use the same private account shell; a production customer browser run remains blocked by the default disabled asset mode and no persisted local customer data.
+- Docker QA: isolated PostgreSQL, migration runner, Mailpit and Backend A/B passed migration 008, summary/list/detail, cross-instance session, IDOR 404, no-store, reveal, re-auth 428, and database outage 503 to recovery 200. The QA volume started empty and used synthetic owned rows; the local restore hook was not executable under the Linux container, so no production-like source data was imported. QA project `hico-pr154-qa` was removed with its volume.
+- Browser baseline from PR15.3 remains 9 desktop/mobile checks with no page errors. A PR15.4 mock-API browser run rendered the eSIM list and detail at 390px with no horizontal overflow or page errors. A production customer browser run remains blocked by the default disabled asset mode and no persisted local customer data.
 - Only `cuongdesign-web`, `cuongdesign-ai-worker` and `cuongdesign-db` remain running.
 
 ## Risks and next phase
