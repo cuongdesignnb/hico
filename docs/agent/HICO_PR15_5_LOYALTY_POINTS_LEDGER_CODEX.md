@@ -2,7 +2,7 @@
 
 ## Handoff evidence
 
-- Based on final PR15.4 completion commit: `da01e1a`.
+- Based on final PR15.4 completion commit: `e37aef7`.
 - PR15.4 source commits: `ea4ff11` and persistence hardening `ab40fdb`.
 - Migration head: `008_customer_assets.sql`.
 - Next-phase Markdown: created at `docs/agent/HICO_PR15_5_LOYALTY_POINTS_LEDGER_CODEX.md`.
@@ -71,7 +71,7 @@ Admin adjustment requires explicit permission, actor identity, reason, request I
 - Local order validation requires `DATABASE_URL`; Docker QA supplied the shared PostgreSQL dependency and passed the ownership checks.
 - Frontend audit retains the two previously accepted `react-router` advisories; backend audit is 0 vulnerabilities and the repository security gate passes.
 - Docker A/B QA passed migration 008, owner isolation, IDOR 404, no-store, re-auth, cross-instance session and database outage/recovery. QA stack was removed with its volume.
-- Browser baseline passed 9 desktop/mobile checks with no page errors. New loyalty UI must add customer points routes without prerendering private data.
+- Browser baseline passed 9 desktop/mobile checks with no page errors, and the PR15.4 mock-API run rendered the eSIM list/detail at 390px without overflow or page errors. New loyalty UI must add customer points routes without prerendering private data.
 
 ## Guardrails
 
