@@ -80,3 +80,17 @@ never changes `LEGACY_UNRESOLVED` to `OWNED`.
 Production remains `NO-GO`. Verified customer authentication, provable order
 ownership, and a non-mock owner-scoped dashboard are Critical blockers for
 PR15.1 through PR15.3.
+
+## PR15.7 implementation snapshot
+
+The repository now contains the additive profile/security/support foundation
+behind `CUSTOMER_PROFILE_ENABLED=false` and `CUSTOMER_SUPPORT_ENABLED=false`.
+The new source is real PostgreSQL-backed code, but the flags remain disabled by
+default while production evidence is incomplete. The inventory script also
+checks hardcoded contact markers, fake security/support data, public attachment
+paths, and local profile state without returning their values.
+
+PR15.7 does not import the two legacy demo profiles, resolve any of the five
+legacy orders, expose mock assets, or implement the full export/delete workflow.
+Legal retention, anonymization execution, and final production migration remain
+explicit blockers for later work.

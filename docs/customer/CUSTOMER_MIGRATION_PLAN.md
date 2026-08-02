@@ -21,7 +21,7 @@ counts and hashes, never raw customer or fulfillment secrets.
 | PR15.4 | Customer assets/reveal and fulfillment asset projection | Reveal audit, no-store, re-auth tests. |
 | PR15.5 | Loyalty ledger, earn/reverse, rules and admin adjustment foundation | Migration 009, idempotency, ownership and reconciliation tests. |
 | PR15.6 | Referral rewards, loyalty notifications and anti-abuse | Reward idempotency/reversal and unread notification tests. |
-| PR15.7 | Retention/anonymization launch policy | Legal retention decision recorded and verified. |
+| PR15.7 | Profile, addresses, contact verification, security sessions/events, and support foundation | Migration 011, owner/IDOR/upload tests, health checks, and fail-closed flags; export/delete remain out of scope. |
 | PR15.8 | Production readiness and controlled rollout | Staging, security, observability, rollback, approval evidence. |
 
 ## PR15.2 staged order import
@@ -73,6 +73,20 @@ trusted event source is explicitly approved.
 Rollback freezes new customer writes, retains source backups, restores the
 approved database backup or routes reads through the read-only JSON adapter,
 then reconciles again. It never infers ownership or exposes fulfillment secrets.
+
+## PR15.7 execution and handoff
+
+PR15.7 uses the existing PostgreSQL customer identity boundary and adds only
+`011_customer_profile_security_support.sql`. Runtime feature flags default to
+false in `.env.example` and compose. QA may enable them only in an isolated
+project with a disposable database and private attachment directory.
+
+The PR15.7 read-only inventory must continue to report five
+`LEGACY_UNRESOLVED` orders, two legacy demo customer profiles, one mock eSIM,
+two mock manual QR records, and no persisted fulfillment/inventory data. The
+next handoff is PR15.8 migration cutover and demo-mode removal; it must use
+fresh runtime counts and must not claim production readiness from source-only
+tests.
 
 ## Production blockers
 

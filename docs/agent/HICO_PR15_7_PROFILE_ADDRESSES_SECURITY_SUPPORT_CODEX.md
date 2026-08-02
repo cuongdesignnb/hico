@@ -1,69 +1,71 @@
-# HICO PR15.7 - Profile, Addresses, Security and Support Handoff
+# HICO PR15.7 - Profile, Addresses, Security and Support Completion
 
-## Starting Point
+## Completion status
 
-- Base source commit: `0b8460d` (`feat(customer): add referral rewards and notifications`).
-- Migration head: `010_referral_notifications.sql`.
-- Backend baseline: `173/173` tests passed; lint, build, prerender, security
-  gate, integrity check, inventory, and isolated Docker QA passed.
-- Runtime inventory baseline: 5 `LEGACY_UNRESOLVED` orders, 2 demo customer
-  profiles, 1 mock eSIM, 2 mock manual QR records, and no persisted
-  fulfillment, inventory, or inventory-movement data. Do not auto-link these
-  orders by email.
-- Docker is off after QA. Only the pre-existing `cuongdesign-*` containers may
-  remain running.
+PR15.7 is implemented as an additive customer platform foundation. Source
+completion commit: `1eeddb2`. The docs completion commit is the commit with
+message `docs(customer): record PR15.7 completion and PR15.8 handoff`.
+Production remains `NO-GO`; no production writes or automatic legacy ownership
+assignment are authorized.
 
-## Scope
+## Delivered
 
-Implement real customer profile and address ownership flows, security-event
-visibility, support handoff, and account export/delete preparation on the
-customer identity boundary. Preserve the separate Admin identity domain and
-the `hico_customer_session` cookie.
+- Migration head: `011_customer_profile_security_support.sql`.
+- PostgreSQL-backed profile read/update with a strict display-field allowlist.
+- Hashed, expiring, single-use email contact change; phone change fails closed
+  until a real SMS provider is configured.
+- Owner-scoped address CRUD with a transaction lock and one-default index.
+- Password change, session list/revoke/logout-all, redacted security events,
+  audit events, and customer security notifications.
+- Owner-scoped support tickets, messages, close flow, order/asset link checks,
+  permissioned admin reply/assignment/status actions, internal notes, and
+  private attachment storage with content signatures and size/count limits.
+- Customer account routes: `/tai-khoan/ho-so`, `/dia-chi`, `/bao-mat`,
+  `/ho-tro`, and `/ho-tro/:ticketId`, protected and noindex.
+- Health endpoints `/api/health/customer-profile` and `/api/health/support`.
+- Read-only profile/support validators and expanded aggregate inventory.
 
-Required outcomes:
+## Feature flags and safety
 
-- Customer-owned profile and address APIs with validation, CSRF protection,
-  owner scoping, audit events, pagination where applicable, and no leakage of
-  secrets or unrelated order data.
-- Security-event history that is safe to display and never exposes token
-  values, passwords, session identifiers, QR/LPA/PIN/PUK data, ICCID, or full
-  payment/shipping secrets.
-- Support handoff that uses stable customer and order references, preserves
-  order ownership checks, and does not create an ownership bypass.
-- Export that is asynchronous or bounded, redacted, auditable, and free of
-  fulfillment secrets unless a later re-authenticated reveal contract
-  explicitly permits the field.
-- Delete flow with a 30-day grace period and profile anonymization after the
-  grace period. Do not invent legal order or audit retention periods; keep the
-  decision as a production blocker until the owner supplies it.
+`.env.example` and compose default `CUSTOMER_PROFILE_ENABLED=false` and
+`CUSTOMER_SUPPORT_ENABLED=false`. QA may enable them only in an isolated
+project. Support attachments are stored below the private backend directory,
+never under the public catalog `/uploads` route. When no malware scanner is
+configured, upload audit records `unscanned` risk and makes no scan claim.
 
-## Constraints
+## Inventory snapshot
 
-- Do not modify migration `010_referral_notifications.sql`; add a new
-  additive migration if schema changes are required.
-- Keep referral, notification, loyalty, and order ownership source-of-truth
-  boundaries intact.
-- Do not assign any of the five legacy unresolved orders to a customer.
-- Keep feature flags fail-closed in `.env.example`; do not enable production
-  behavior as part of development QA.
-- Do not start Docker except for an isolated QA project. Tear it down after QA
-  and verify that `cuongdesign-*` containers were not touched.
+The safe inventory remains: 5 `LEGACY_UNRESOLVED` orders, 2 legacy demo
+customer profiles, 1 mock eSIM, 2 mock manual QR records, no persisted
+fulfillment/inventory/inventory-movement data, and 0 email auto-links. The
+report emits counts and finding codes only; it does not emit email, ICCID,
+QR/LPA/PIN/PUK, tokens, or raw attachment keys.
 
-## Verification Gate
+## Verification
 
-Run and record:
+- `npm run lint`: pass.
+- `npm run build`: pass; existing Vite chunk-size warning remains.
+- `npm run prerender`: pass, 88 public routes generated.
+- `npm --prefix server test`: pass, 178 tests.
+- `npm run customer:inventory`: pass with the snapshot above.
+- `npm run security:gate`: pass; the existing React Router advisory remains an
+  accepted high-risk baseline item. `npm run integrity:check`: pass.
+- Profile/support validators: pass in isolated QA with zero orphan/default/
+  sensitive/storage findings. Host-only validator runs are unavailable without
+  `DATABASE_URL`.
+- `npm audit`: frontend reports the same two accepted React Router advisory
+  entries; backend reports zero vulnerabilities. `docker compose config
+  --quiet`: pass with QA-only required variables.
+- Isolated Docker QA: migration 011 current; backend, frontend, database and
+  Mailpit healthy; customer-profile/support health endpoints returned 200;
+  project and volume were torn down. Browser console/390px screenshot QA was
+  not available because no browser automation runtime is installed.
+- Docker is not started for docs/source verification. Existing
+  `cuongdesign-*` containers are never touched.
 
-- `npm run lint`
-- `npm run build`
-- `npm run prerender`
-- `npm --prefix server test`
-- `npm run security:gate`
-- `npm run integrity:check`
-- `npm run customer:inventory`
-- UTF-8/no-BOM and mojibake checks for changed Markdown and source files
-- owner-scope, CSRF, IDOR, redaction, export, delete-grace, and retention
-  tests
+## Handoff to PR15.8
 
-Production remains `NO-GO` until customer auth, order ownership, profile and
-address ownership, support handoff, export/delete behavior, and legal
-retention decisions are evidenced end to end.
+PR15.8 must perform migration/backfill/cutover evidence using fresh runtime
+counts, remove demo-mode paths only after proof, verify cross-instance revoke,
+support IDOR, attachment privacy, and retain the five legacy orders unresolved.
+It must not implement full export/delete or invent legal retention periods.

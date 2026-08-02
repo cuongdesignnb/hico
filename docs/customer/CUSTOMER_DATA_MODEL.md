@@ -17,6 +17,10 @@ erDiagram
   CUSTOMERS ||--o{ CUSTOMER_EMAIL_VERIFICATIONS : verifies
   CUSTOMERS ||--o{ CUSTOMER_PASSWORD_RESETS : resets
   CUSTOMERS ||--o{ CUSTOMER_SECURITY_EVENTS : audits
+  CUSTOMERS ||--o{ CUSTOMER_CONTACT_CHANGES : verifies
+  CUSTOMERS ||--o{ SUPPORT_TICKETS : opens
+  SUPPORT_TICKETS ||--o{ SUPPORT_TICKET_MESSAGES : contains
+  SUPPORT_TICKETS ||--o{ SUPPORT_ATTACHMENTS : stores
   CUSTOMERS ||--o{ ORDERS : owns
   CUSTOMERS ||--|| LOYALTY_ACCOUNTS : has
   LOYALTY_ACCOUNTS ||--o{ LOYALTY_LEDGER : records
@@ -34,6 +38,10 @@ erDiagram
 | `customer_password_resets` | Hashed one-time token, expiry, consumed timestamp, rate-limit context | Password reset |
 | `customer_security_events` | Customer FK nullable for pre-account events, type, redacted metadata, timestamp | Security audit |
 | `customer_addresses` | Customer FK, immutable address snapshot fields, default flag, timestamps | Saved addresses |
+| `customer_contact_changes` | Customer FK, EMAIL/PHONE target, hashed single-use token, status, expiry, verified/consumed timestamps | Contact verification workflow |
+| `support_tickets` | Customer FK, safe subject/category/status/priority, optional owner-checked order/asset references, assigned admin, timestamps | Customer support cases |
+| `support_ticket_messages` | Ticket FK, CUSTOMER/ADMIN sender, CUSTOMER/INTERNAL visibility, body, timestamps | Support conversation and internal notes |
+| `support_attachments` | Ticket FK, optional message FK, random private storage key, safe filename, allowlisted MIME, size/checksum/status | Private support files |
 
 `email_normalized` is the only v1 account identifier: required, unique, and
 verified before normal account access. Phone is nullable, not unique, and cannot
@@ -104,7 +112,15 @@ customer-scoped; read mutations require the customer CSRF boundary.
 
 ## Retention and deletion boundary
 
-Account export is supported. Delete requests begin a 30-day grace period, then
-anonymize profile data while preserving legally required order/audit record
-shape. Exact legal retention for orders and audit records is undecided and is a
-production blocker for PR15.7.
+Account export and delete are future contracts, not PR15.7 runtime behavior.
+The target delete policy is a 30-day grace period followed by profile
+anonymization while preserving legally required order/audit record shape. Exact
+legal retention for orders and audit records is undecided and is a production
+blocker for PR15.7.
+
+Migration `011_customer_profile_security_support.sql` is additive. It extends
+`customer_profiles` with locale/timezone/avatar and phone verification state,
+adds the one-default partial unique index, creates contact/support tables, and
+extends the notification type constraint. It does not rewrite migration 010,
+change order ownership, import demo profiles, or auto-link the five legacy
+orders.

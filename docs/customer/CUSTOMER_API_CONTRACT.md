@@ -87,6 +87,24 @@ The optional Admin review surface is permissioned separately:
 reject actions. Admin review records a reason and actor audit; it never mutates
 a customer balance directly.
 
+## PR15.7 error codes
+
+| HTTP | Code | Meaning |
+| --- | --- | --- |
+| 404 | `PROFILE_NOT_FOUND` | Profile is not available to this customer. |
+| 400 | `PROFILE_UPDATE_INVALID` | Protected or invalid profile field was submitted. |
+| 503 | `CONTACT_CHANGE_NOT_READY` | A real contact delivery provider is not configured. |
+| 400 | `CONTACT_CHANGE_TOKEN_INVALID` | Contact token is invalid or already consumed. |
+| 410 | `CONTACT_CHANGE_TOKEN_EXPIRED` | Contact token has expired. |
+| 409 | `CONTACT_ALREADY_IN_USE` | Requested email is already used by another account. |
+| 404 | `ADDRESS_NOT_FOUND` | Address is not owned by this customer. |
+| 503 | `SUPPORT_NOT_READY` | Support feature is disabled or persistence is not healthy. |
+| 404 | `SUPPORT_TICKET_NOT_FOUND` | Ticket is not owned by this customer or does not exist. |
+| 409 | `SUPPORT_TICKET_CLOSED` | Closed tickets cannot receive messages. |
+| 400 | `SUPPORT_ATTACHMENT_INVALID` | Attachment type, path, content, or signature is invalid. |
+| 413 | `SUPPORT_ATTACHMENT_TOO_LARGE` | Attachment size or per-ticket limit was exceeded. |
+| 404 | `SUPPORT_ATTACHMENT_FORBIDDEN` | Attachment is not available to this caller. |
+
 ## Error codes
 
 | HTTP | Code | Meaning |
@@ -122,3 +140,40 @@ Link: </api/customer/...>; rel="successor-version"
 
 The adapter does not redirect writes or accept client-provided ownership hints.
 It is not an authorization bypass.
+
+## PR15.7 profile, security, and support routes
+
+PR15.7 adds the following additive routes. They are disabled unless the
+corresponding fail-closed feature flag is explicitly enabled in an isolated
+QA or approved environment: `CUSTOMER_PROFILE_ENABLED` and
+`CUSTOMER_SUPPORT_ENABLED`.
+
+| Method and route | Purpose | Required behavior |
+| --- | --- | --- |
+| `GET /api/customer/profile` | Read mutable profile | Owner session, private no-store, display fields only. |
+| `PUT /api/customer/profile` | Update profile | CSRF; only display fields; identity fields are rejected. |
+| `POST /api/customer/profile/email/change/request` | Start email change | CSRF, hashed expiring token, duplicate-safe verification email. |
+| `POST /api/customer/profile/email/change/confirm` | Consume email change | One-time token, transactional promotion, session revocation, security event. |
+| `POST /api/customer/profile/phone/change/request` | Start phone change | CSRF; returns `CONTACT_CHANGE_NOT_READY` until a real SMS provider exists. |
+| `GET/POST /api/customer/addresses` | List/create addresses | Owner predicate, CSRF for writes, maximum 20, one default per customer. |
+| `PUT/DELETE /api/customer/addresses/:addressId` | Update/delete address | CSRF and owner predicate; non-owner is `404 ADDRESS_NOT_FOUND`. |
+| `POST /api/customer/addresses/:addressId/default` | Select default | CSRF and transaction-safe owner lock. |
+| `POST /api/customer/security/password/change` | Change password | CSRF, current password, revoke other sessions, audit. |
+| `GET /api/customer/security/events` | Read security history | Owner-scoped, redacted type/request id only, bounded page pagination. |
+| `GET/POST /api/customer/tickets` | List/create tickets | Owner-derived customer id, safe subject/body and optional owned links. |
+| `GET /api/customer/tickets/:ticketId` | Read ticket thread | Non-owner returns `404 SUPPORT_TICKET_NOT_FOUND`; internal notes are hidden. |
+| `POST /api/customer/tickets/:ticketId/messages` | Add customer reply | CSRF, owner check, closed tickets rejected. |
+| `POST /api/customer/tickets/:ticketId/close` | Close own ticket | CSRF, owner check, notification and audit. |
+| `POST /api/customer/tickets/:ticketId/attachments` | Upload attachment | CSRF, private random key, JPEG/PNG/WEBP/PDF only, max 5 MiB. |
+
+Customer support links an order or asset only after an owner-scoped repository
+lookup. Lists never include QR, LPA, PIN, PUK, ICCID, or raw storage keys.
+Attachment downloads are authenticated `private, no-store` responses; there is
+no public `/uploads` attachment route. When a malware scanner is absent, the
+upload audit records an unscanned risk and does not claim that scanning ran.
+
+Admin support routes are under `/api/admin/support/tickets` and use the
+existing admin session, CSRF, permission middleware, real actor id, and write
+audit. Read, reply, assign, and status operations map to separate support
+permissions. Status changes require a reason. Internal notes have separate
+visibility and are never returned to customers.

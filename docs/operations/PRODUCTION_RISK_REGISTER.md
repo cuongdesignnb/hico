@@ -10,6 +10,7 @@
 | Customer authentication still lacks real production evidence | Critical | Customer Platform owner | PR15.1 isolated session/CSRF, verification, and two-instance QA are complete; deploy real mode with production delivery/readiness evidence | Before customer launch | Partially mitigated |
 | Legacy orders and APIs do not prove customer ownership | Critical | Customer Platform owner | Deliver PR15.2 canonical order/claim model and PR15.3 IDOR regression evidence; keep five legacy orders unresolved | Before customer launch | Open |
 | Account dashboard is mock-driven and reads unscoped data | Critical | Customer Platform owner | Deliver PR15.3 persisted owner-scoped dashboard with sensitive-data exclusions | Before customer launch | Open |
+| Customer profile/support features lack production runtime evidence and legal retention decision | Critical | Customer Platform owner | Complete PR15.7/PR15.8 health, migration, support IDOR, attachment, anonymization and retention evidence without enabling production writes | Before customer launch | Open |
 | React Router advisory risk acceptance expires 2026-08-31 | High | HICO Platform Security | Re-review advisory/registry before expiry; do not silently retain assessment | 2026-08-31 | Accepted with expiry |
 
 No risk acceptance may open writes when a Critical control is missing.

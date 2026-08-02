@@ -75,9 +75,10 @@ for legal/commercial continuity and separate mutable profiles. Security,
 ownership, and reveal events are append-only with redacted email, address,
 tokens, QR/LPA/PIN/PUK, and provider payloads.
 
-Account export is authorized and audited. Delete requests have a 30-day grace
-period before profile anonymization. Legal order/audit retention is undecided,
-is a PR15.7 production blocker, and must be decided by legal/business owners.
+Account export and delete are not implemented by PR15.7. The target contract is
+an authorized/audited export and a delete request with a 30-day grace period
+before profile anonymization. Legal order/audit retention is undecided, is a
+PR15.7 production blocker, and must be decided by legal/business owners.
 
 ## Threat control matrix
 
@@ -93,3 +94,25 @@ is a PR15.7 production blocker, and must be decided by legal/business owners.
 
 Do not enable customer traffic while `/api/user/*` is unscoped, public checkout
 order lookup remains, or the dashboard is mock-driven.
+
+## Profile, session, and support controls
+
+Profile writes use a strict allowlist and never accept customer id, email,
+verification state, role, or timestamps. Email changes use a hashed, expiring,
+single-use record and revoke the customer's other sessions after transactional
+confirmation. Phone changes remain fail-closed until a real SMS provider is
+configured. Password changes verify the current password, update the
+credential version, revoke other sessions, and create a security event.
+
+Addresses are locked through the customer row during default changes. A partial
+unique index also enforces one default address per customer under concurrency.
+Every address query includes the customer id; an address from another customer
+is indistinguishable from a missing address.
+
+Support ticket, message, and attachment queries derive customer ownership from
+the session. Optional order and asset references are accepted only after an
+owner-scoped lookup. Admin notes have `INTERNAL` visibility and are excluded
+from customer detail responses. Attachments use a random private storage key,
+safe basename, MIME allowlist and content signature, checksum, no public
+static route, and no malware-scanning claim when the scanner is absent.
+Download responses are authenticated and no-store.
