@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { atomicWriteJson, readJson, defaultUploadsDirectory } from '../catalog/write/catalogWritePersistence.js';
 
@@ -18,6 +19,9 @@ export const createFulfillmentRepository = ({
     return Array.isArray(value) ? value : Object.values(value ?? {});
   };
   return {
+    async persistenceReady() {
+      try { await fs.access(filePath); return true; } catch { return false; }
+    },
     async list() { return read(); },
     async get(id) { return (await read()).find((record) => record.id === id) ?? null; },
     async findByOrderId(orderId) { return (await read()).filter((record) => record.orderId === orderId); },

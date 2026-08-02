@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { projectCustomerAsset, projectOwnedAssets } from './customerAssetProjection.js';
 import { createCustomerAssetRevealService } from './customerAssetRevealService.js';
+import { createCustomerAssetRepository } from './customerAssetRepository.js';
 
 const order = (ownershipStatus = 'OWNED') => ({
   orderId: 'HICO-ASSET-1',
@@ -45,4 +46,14 @@ test('asset reveal requires recent re-auth and records only safe field names', a
   assert.deepEqual(result.fields, { iccid: '898520400001234567', qrCode: null, lpa: 'LPA:1$secret', pin: '1234', puk: null, apn: null });
   assert.deepEqual(audits[0].fieldsRevealed, ['iccid', 'lpa', 'pin']);
   assert.equal(JSON.stringify(audits).includes('LPA:1$secret'), false);
+});
+
+test('asset repository fails closed when fulfillment persistence is missing', async () => {
+  const repository = createCustomerAssetRepository({
+    orderRepository: { countForCustomer: async () => 0, listForCustomer: async () => [] },
+    fulfillmentRepository: { persistenceReady: async () => false, findByOrderId: async () => [], list: async () => [] },
+    env: { CUSTOMER_ASSETS_ENABLED: 'true' },
+  });
+  assert.deepEqual((await repository.health()).status, 'not_ready');
+  assert.equal((await repository.summary('customer-1')).available.esims, false);
 });

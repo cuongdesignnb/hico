@@ -5,10 +5,11 @@ const notFound = () => Object.assign(new Error('Customer asset was not found.'),
 
 export const createCustomerAssetRepository = ({ orderRepository, fulfillmentRepository, env = process.env, now = () => new Date() } = {}) => {
   const enabled = String(env.CUSTOMER_ASSETS_ENABLED ?? env.CUSTOMER_ASSETS_AVAILABLE ?? '').toLowerCase() === 'true';
-  const hasSources = Boolean(orderRepository?.listForCustomer && orderRepository?.countForCustomer && fulfillmentRepository?.findByOrderId);
+  const hasSources = Boolean(orderRepository?.listForCustomer && orderRepository?.countForCustomer && fulfillmentRepository?.findByOrderId && fulfillmentRepository?.persistenceReady);
+  const persistenceReady = async () => hasSources && await fulfillmentRepository.persistenceReady();
 
   const readOwnedAssets = async (customerId) => {
-    if (!enabled || !hasSources) throw notReady();
+    if (!enabled || !hasSources || !await persistenceReady()) throw notReady();
     const total = Number(await orderRepository.countForCustomer(customerId, {})) || 0;
     const pageSize = 100;
     const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -24,14 +25,14 @@ export const createCustomerAssetRepository = ({ orderRepository, fulfillmentRepo
   return {
     enabled,
     async health() {
-      if (!enabled || !hasSources) return { status: 'not_ready', enabled, persistence: 'json_fulfillment_projection' };
+      if (!enabled || !hasSources || !await persistenceReady()) return { status: 'not_ready', enabled, persistence: 'json_fulfillment_projection' };
       try {
         await fulfillmentRepository.list();
         return { status: 'healthy', enabled: true, persistence: 'json_fulfillment_projection' };
       } catch { return { status: 'unhealthy', enabled: true, persistence: 'json_fulfillment_projection' }; }
     },
     async summary(customerId) {
-      if (!enabled || !hasSources) return projectCustomerAssetSummary([], { available: false });
+      if (!enabled || !hasSources || !await persistenceReady()) return projectCustomerAssetSummary([], { available: false });
       return projectCustomerAssetSummary(await readOwnedAssets(customerId), { available: true });
     },
     async list(customerId, assetType, { page = 1, pageSize = 20 } = {}) {

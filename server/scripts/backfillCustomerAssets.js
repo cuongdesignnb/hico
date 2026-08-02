@@ -65,7 +65,7 @@ export const backfillCustomerAssets = async ({ pool, orderRepository, fulfillmen
           const orderRecords = records.filter((record) => record.orderId === order.orderId);
           const orderItems = Array.isArray(order.items) ? order.items : [];
           report.missingFulfillment += orderItems.filter((_, index) => !orderRecords.some((record) => record.itemIndex === index || record.orderItemId === `${order.orderId}:item:${index}`)).length;
-          const projected = createCustomerAssetRepository({ orderRepository: { countForCustomer: async () => 1, listForCustomer: async () => [order] }, fulfillmentRepository: { findByOrderId: async () => orderRecords, list: async () => orderRecords }, env: { ...env, CUSTOMER_ASSETS_ENABLED: 'true' } });
+          const projected = createCustomerAssetRepository({ orderRepository: { countForCustomer: async () => 1, listForCustomer: async () => [order] }, fulfillmentRepository: { persistenceReady: async () => true, findByOrderId: async () => orderRecords, list: async () => orderRecords }, env: { ...env, CUSTOMER_ASSETS_ENABLED: 'true' } });
           const result = await projected.list(customerId);
           assets.push(...result.items);
         }
