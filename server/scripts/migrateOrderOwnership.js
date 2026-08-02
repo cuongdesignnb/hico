@@ -9,7 +9,7 @@ const normalize = (value) => Array.isArray(value) ? value : Object.values(value 
 
 export const inspectLegacyOrders = async ({ filePath = source } = {}) => {
   const orders = normalize(await readJson(filePath, []));
-  return { source: filePath, total: orders.length, ownership: { LEGACY_UNRESOLVED: orders.length, autoLinkedByEmail: 0 } };
+  return { source: filePath, totalOrders: orders.length, owned: 0, guestUnclaimed: 0, legacyUnresolved: orders.length, manualReview: 0, conflicts: 0, autoAssignments: 0, ownership: { LEGACY_UNRESOLVED: orders.length, autoLinkedByEmail: 0 } };
 };
 
 export const importLegacyOrders = async ({ pool = createPostgresPool(), filePath = source, dryRun = true } = {}) => {
