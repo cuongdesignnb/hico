@@ -15,9 +15,13 @@
     "customer-assets:backfill": "npm --prefix server run customer-assets:backfill",
     "customer-assets:validate": "npm --prefix server run customer-assets:validate",
     "customer-auth:validate": "npm --prefix server run customer-auth:validate",
+    "customer-orders:validate": "npm --prefix server run customer-orders:validate",
     "customer-dashboard:validate": "npm --prefix server run customer-dashboard:validate",
     "production:launch:validate": "npm --prefix server run production:launch:validate",
-    "production:report": "npm --prefix server run production:report"
+    "production:report": "npm --prefix server run production:report",
+    "integrity:check": "npm --prefix server run integrity:check",
+    "migration:status": "npm --prefix server run migration:status",
+    "production:validate": "npm --prefix server run production:validate"
   },
   "dependencies": {
     "lucide-react": "^1.16.0",

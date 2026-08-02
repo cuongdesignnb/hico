@@ -1,44 +1,70 @@
-# HICO PR15.4 - Customer Assets and Secure Reveal Handoff
+# HICO PR15.4 - Customer Assets Completion and PR15.5 Handoff Baseline
 
-## Starting baseline
+## Commits and migration
 
-- PR15.3 implementation commit: `686dbbf`
-- Migration head: `007_order_ownership.sql`
-- Canonical catalog: `catalog-4080debd5f765c41ca08` with 93 products and 21,879 variants.
-- Production status: `NO-GO` until customer asset ownership and secure reveal evidence are complete.
+- PR15.3 source: `686dbbf`.
+- PR15.4 source: `ea4ff11` (`feat(customer): add customer asset platform`).
+- PR15.4 completion and QA documentation is committed separately after this source baseline.
+- Migration head: `008_customer_assets.sql`.
+- The migration adds `customer_sessions.last_authenticated_at` and an index for recent re-authentication. No duplicate customer asset table was added because the current fulfillment projection is read safely from owned PostgreSQL order snapshots plus fulfillment records.
+- Production status remains `NO-GO`.
 
-## What PR15.3 delivered
+## Delivered runtime contract
 
-- Real customer account routes: `/tai-khoan`, `/tai-khoan/don-hang`, and `/tai-khoan/don-hang/:orderId`.
-- Owner-scoped APIs: `GET /api/customer/dashboard/summary`, paginated `GET /api/customer/orders`, and safe order detail.
-- PostgreSQL aggregate summary for all owner orders, recent-order projection, masked customer/shipping fields, status/currency totals and pending fulfillment counts.
-- Safe projection excludes ICCID, QR/LPA, PIN/PUK, redemption code, provider response and audit data. Private responses use `Cache-Control: private, no-store` and `Pragma: no-cache`.
-- Responsive account navigation, summary cards, recent orders, status filter, pagination, detail state, loading/error/empty states and pending polling with 5/10/20/30 second backoff.
+- `GET /api/customer/assets/summary` returns per-module totals and an explicit `available` map. Dashboard asset capability is derived from that map, never from a hard-coded count.
+- `GET /api/customer/esims` and `GET /api/customer/esims/:esimId` return owner-scoped metadata only. ICCID is masked; QR, LPA, PIN, PUK, redemption code and provider payloads are absent.
+- `POST /api/customer/esims/:esimId/reveal` requires the customer session, CSRF, owner-scoped lookup, a recent authentication within `CUSTOMER_REAUTH_WINDOW_MINUTES` (default 10), rate limiting and safe audit metadata. Response headers are `Cache-Control: private, no-store`, `Pragma: no-cache`, and `Expires: 0`.
+- `GET /api/customer/physical-sims`, `/api/customer/devices`, `/api/customer/topups` and corresponding detail routes use the same ownership boundary. Missing tracking, warranty, serial, activation and expiry values remain `null` or unavailable; no value is inferred.
+- Customer re-authentication is `POST /api/customer/auth/reauth`; customer and Admin cookies remain separate.
+- `/api/user/*` remains a deprecated 410 fail-closed boundary. The new Account pages do not call it.
+- Service worker caching excludes both `/api/*` and `/tai-khoan/*`.
 
-## Current asset and fulfillment facts
+## Source and projection rules
 
-- Inventory report: 5 orders are `LEGACY_UNRESOLVED`; no order was auto-linked by email.
-- Legacy fixtures: 2 demo customer profiles, 1 mock eSIM and 2 manual QR records.
-- Persisted fulfillment projection: none. Persisted inventory projection: none.
-- Customer asset capability is false by default. No customer list API exposes sensitive assets.
-- `src/components/UserDashboard/UserDashboard.tsx` remains a disconnected legacy mock file. Production UserDashboard route count is 0.
-- Account production files contain 0 `/api/user` references and 0 hard-coded sensitive asset markers.
+- Ownership is only `order.customerId -> session.customerId` with `ownershipStatus=OWNED`. Email, phone, ICCID, IP, device and QR filenames are never claim keys.
+- Asset type derives from canonical item operation/medium/fulfillment method. Fulfillment records are the source for secrets, provider references, tracking and completion state. Order snapshots supply immutable product, coverage, quantity, price and currency history.
+- Unassigned QR pool, orphan records, `LEGACY_UNRESOLVED`, guest orders and mock/demo/sample records are excluded.
+- Projection IDs are deterministic per order item and asset type, so callback retry and process restart do not create a second customer asset.
 
-## Required PR15.4 decisions
+## Backfill and validation
 
-1. Define canonical customer asset projection and ownership join from `orders` and fulfillment records without copying raw provider payloads into customer responses.
-2. Define reveal authorization: owner session, CSRF, re-authentication after 10 minutes, append-only audit and `private, no-store` response.
-3. Decide how assets become available for `PROVISIONED` eSIM and `SHIPPED` physical items while preserving immutable order snapshots.
-4. Keep QR/LPA/PIN/PUK out of list and summary APIs. Add explicit redaction and IDOR tests before enabling any reveal endpoint.
-5. Record retention, export and anonymization decisions with the owner; do not invent legal retention periods.
+- `npm run customer-assets:backfill` is dry-run by default and never writes source data. `--write-report` writes an aggregate report under `server/uploads/migration_reports/` without PII or secrets.
+- `npm run customer-assets:validate` checks ownership, duplicate source references, raw-secret redaction, mock exclusion and integrity flags. It passed with asset mode disabled in the local baseline.
+- `008_customer_assets.sql` is the only new migration. There are no asset tables, raw-secret indexes or plaintext asset backups.
 
-## Verification baseline
+## Current data facts
 
-- `npm run lint`: passed.
-- `npm run build`: passed.
-- `npm run prerender`: passed, 88 public routes.
-- Backend tests: 155/155 passed.
-- Inventory scan: passed with aggregate-only output and no raw PII or secrets.
-- Docker QA: dashboard API, PostgreSQL aggregate query, IDOR, no-store and secret redaction passed. QA project was torn down with its volume.
-- Browser QA: 9 checks passed on desktop and mobile with no page errors.
-- Docker is currently off for HICO QA. The unrelated `cuongdesign-*` containers were not touched.
+- Local inventory: 5 orders, all `LEGACY_UNRESOLVED`; auto-linked by email: 0.
+- Legacy demo sources: 2 customer profiles, 1 mock eSIM, 2 mock manual QR records.
+- Fulfillment file: missing. Inventory and inventory movements: missing. Persisted production-like customer asset count: 0.
+- Legacy order status distribution: 4 `PROVISIONED`, 1 `CANCELLED`; currency is absent in all 5 JSON legacy rows (`UNKNOWN: 5`).
+- Local backfill dry-run is `DATABASE_URL_REQUIRED`, so it reports no created assets rather than inventing counts.
+- QA-only synthetic projection verified 2 owned eSIM orders across two customers; each customer saw 1 asset and the other customer returned 404 on detail/reveal access. QA rows and volume were removed.
+
+## Existing promotion and wallet behavior
+
+- The existing surface has legacy promo-code validation and Admin promo CRUD backed by `promos.json`.
+- No customer wallet, points ledger, redemption reservation or membership tier is implemented in this PR. The disconnected legacy dashboard contains promo/demo UI and is not a customer asset source.
+
+## Verification
+
+- `npm run lint`: pass.
+- `npm run build`: pass.
+- `npm run prerender`: pass, 88 public routes; private asset routes are not prerendered.
+- Backend tests: 155 existing tests pass, plus PR15.4 projection/reveal tests pass; current full baseline is 157 tests after the added asset test file.
+- `npm run customer:inventory`: pass; UTF-8 aggregate-only scan, 0 Account `/api/user` references, 0 hard-coded asset values.
+- `npm run customer-dashboard:validate`: pass.
+- `npm run customer-assets:validate`: pass.
+- `npm run customer-orders:validate` and `migration:status` require `DATABASE_URL` in a local shell; the isolated Docker QA database ran both ownership queries and migration head checks successfully.
+- Root `npm audit --omit=dev` reports the two previously accepted `react-router` advisories; backend `npm --prefix server audit --omit=dev` is 0 vulnerabilities and `npm run security:gate` passes with those two findings explicitly accepted.
+- `git diff --check`: pass.
+- Docker QA: isolated PostgreSQL, migration runner, Mailpit and Backend A/B passed migration 008, summary/list/detail, cross-instance session, IDOR 404, no-store, reveal, re-auth 428, and database outage 503 to recovery 200. QA project `hico-pr154-qa` was removed with its volume.
+- Browser baseline from PR15.3 remains 9 desktop/mobile checks with no page errors. The PR15.4 account routes are protected and use the same private account shell; a production customer browser run remains blocked by the default disabled asset mode and no persisted local customer data.
+- Only `cuongdesign-web`, `cuongdesign-ai-worker` and `cuongdesign-db` remain running.
+
+## Risks and next phase
+
+- Five legacy orders remain unresolved and are never auto-assigned.
+- Provider usage API, legal retention/anonymization decisions and production asset persistence readiness remain open blockers.
+- Loyalty, referral, wallet, support and production launch remain out of scope.
+- Next-phase Markdown is created at `docs/agent/HICO_PR15_5_LOYALTY_POINTS_LEDGER_CODEX.md` and must use the final PR15.4 documentation commit SHA below.
