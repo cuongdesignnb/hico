@@ -5,7 +5,7 @@ export interface CustomerDashboardSummary {
   orders: { total: number; pending: number; completed: number; cancelled: number; totalsByCurrency: Record<string, number> };
   fulfillment: { pendingOrders: number; pendingItems: number };
   recentOrders: CustomerOrder[];
-  capabilities: { assets: boolean; loyalty: boolean; notifications: boolean; support: boolean };
+  capabilities: { assets: boolean; loyalty: boolean; notifications: boolean; referrals: boolean; support: boolean };
   assetSummary: {
     esims: { total: number; active: number; pending: number };
     physicalSims: { total: number; pendingShip: number; shipped: number };
@@ -14,5 +14,7 @@ export interface CustomerDashboardSummary {
     available: { esims: boolean; physicalSims: boolean; devices: boolean; topups: boolean };
   };
   loyaltySummary: { available: boolean; balance?: number };
+  notificationsSummary: { available: boolean; unreadCount?: number };
+  referralSummary: { available: boolean };
   generatedAt: string;
 }

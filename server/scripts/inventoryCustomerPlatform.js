@@ -32,6 +32,15 @@ const sourceFiles = [
   'src/services/customerOrdersApi.ts',
   'src/services/customerAssetsApi.ts',
   'src/services/customerLoyaltyApi.ts',
+  'src/services/customerReferralApi.ts',
+  'src/services/customerNotificationApi.ts',
+  'src/hooks/customer/useCustomerReferrals.ts',
+  'src/hooks/customer/useCustomerNotifications.ts',
+  'src/hooks/customer/useUnreadNotificationCount.ts',
+  'src/pages/account/AccountReferralsPage.tsx',
+  'src/pages/account/AccountNotificationsPage.tsx',
+  'src/components/Account/Referrals/ReferralPanel.tsx',
+  'src/components/Account/Notifications/NotificationList.tsx',
   'src/hooks/customer/useCustomerAssetQuery.ts',
   'src/hooks/customer/useCustomerAssetSummary.ts',
   'src/pages/account/AccountEsimsPage.tsx',
@@ -47,6 +56,10 @@ const sourceFiles = [
   'server/loyalty/loyaltyService.js',
   'server/loyalty/loyaltyRouter.js',
   'server/loyalty/loyaltyLedgerRepository.js',
+  'server/referrals/referralRouter.js',
+  'server/referrals/referralService.js',
+  'server/customerNotifications/customerNotificationRouter.js',
+  'server/customerNotifications/customerNotificationService.js',
 ];
 
 const accountProductionFiles = sourceFiles.filter((relativePath) => relativePath.startsWith('src/pages/account/') || relativePath.startsWith('src/services/customer'));
@@ -120,6 +133,12 @@ const demoFacts = [
     source: 'server/hicoBackend.js',
     marker: 'RC_JAPAN_MOCK',
     finding: 'Legacy server seed contains a mock eSIM fixture.',
+  },
+  {
+    code: 'HARDCODED_REFERRAL_DEMO_CODE',
+    source: 'src/pages/account/AccountReferralsPage.tsx',
+    marker: 'HICOSON50',
+    finding: 'Referral page contains a demo referral code.',
   },
 ];
 
@@ -230,6 +249,8 @@ export const inventoryCustomerPlatform = async ({
   const accountSource = accountProductionFiles.map((relativePath) => sources[relativePath] ?? '').join('\n');
   const assetSource = sourceFiles.filter((relativePath) => relativePath.includes('customerAsset') || relativePath.includes('CustomerAsset') || relativePath.includes('EsimReveal')).map((relativePath) => sources[relativePath] ?? '').join('\n');
   const loyaltySource = sourceFiles.filter((relativePath) => relativePath.includes('Loyalty') || relativePath.includes('loyalty')).map((relativePath) => sources[relativePath] ?? '').join('\n');
+  const referralSource = sourceFiles.filter((relativePath) => relativePath.includes('Referral') || relativePath.includes('referral')).map((relativePath) => sources[relativePath] ?? '').join('\n');
+  const notificationSource = sourceFiles.filter((relativePath) => relativePath.includes('Notification') || relativePath.includes('notification')).map((relativePath) => sources[relativePath] ?? '').join('\n');
   const appRouterSource = sources['src/routing/AppRouter.tsx'] ?? '';
 
   return {
@@ -259,6 +280,12 @@ export const inventoryCustomerPlatform = async ({
       localPointsBalanceCount: (accountSource.match(/localStorage[^\n]*(?:points?|diem|balance)/gi) ?? []).length,
       legacyPointsApiReferenceCount: (accountSource.match(/\/api\/(?:user|wallet|points)(?:\/|['"`])/gi) ?? []).length,
       directBalanceMutationCount: (accountSource.match(/\bbalance\s*[+\-*/]?=/gi) ?? []).length,
+      hardCodedReferralAmountCount: (accountSource.match(/HICOSON50|50[.]000\s*(?:đ|vnd)?/gi) ?? []).length,
+      fakeUnreadCount: (accountSource.match(/(?:unread|unreadCount|badge|notificationCount)\s*[:=]\s*[0-9]+/gi) ?? []).length,
+      fakeNotificationCount: (accountSource.match(/(?:const|let|var)\s+notifications\s*=\s*\[/gi) ?? []).length,
+      fakeReferralStatsCount: (accountSource.match(/(?:referral|gioi thieu).{0,80}(?:stats|count|total)\s*[:=]\s*[0-9]+/gi) ?? []).length,
+      directRewardBalanceMutationCount: (accountSource.match(/(?:reward|loyalty|points|diem|balance).{0,40}(?:\+\+|--|[+\-*/]=)/gi) ?? []).length,
+      legacyNotificationApiReferenceCount: (accountSource.match(/\/api\/user\/notifications/gi) ?? []).length,
     },
     browserStorage: {
       keys: sources['src/context/AppContext.tsx']?.includes('hico_cart') ? ['hico_cart'] : [],

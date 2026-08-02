@@ -60,6 +60,16 @@ assign ownership.
 | Security | Non-owner gets `404 ORDER_NOT_FOUND`; replayed/expired claims fail safely. |
 | Rollback | Adapter/database restore drill returns verified pre-cutover state. |
 
+## PR15.6 migration 010
+
+Migration `010_referral_notifications.sql` extends the loyalty type check and
+creates referral code, relationship, event, reward-reference, and customer
+notification tables. It is additive and transactional; migration 009 is not
+rewritten. The default backfill is read-only and reports counts only. It skips
+all legacy unresolved orders and creates no relationship from email, phone,
+address, or demo data. Notification backfill also creates nothing unless a
+trusted event source is explicitly approved.
+
 Rollback freezes new customer writes, retains source backups, restores the
 approved database backup or routes reads through the read-only JSON adapter,
 then reconciles again. It never infers ownership or exposes fulfillment secrets.

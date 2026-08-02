@@ -88,7 +88,7 @@ export const createFulfillmentService = ({
           logger.warn(`[fulfillment] side effect failed marker=${marker} code=${sideEffectError?.code ?? 'unknown'}`);
         }
       }
-      if (loyaltyEventProcessor && ['PROVISIONED', 'SHIPPED'].includes(marked.state)) {
+      if (loyaltyEventProcessor && ['PROVISIONED', 'SHIPPED', 'CANCELLED', 'PENDING_QR_ASSIGN', 'PENDING_SHIP', 'PENDING_CALLBACK'].includes(marked.state)) {
         await loyaltyEventProcessor.onFulfillmentState({ record: marked, order, item, eventId: event?.eventId ?? null });
       }
       return marked;

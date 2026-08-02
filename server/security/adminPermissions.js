@@ -21,6 +21,7 @@ export const permissionForAdminRequest = (req) => {
   if (path.startsWith('/config')) return isWrite(method) ? 'system.config.manage' : 'system.config.read_masked';
   if (path.startsWith('/users')) return isWrite(method) ? 'admin.users.manage' : 'admin.users.read';
   if (path.startsWith('/customers/') && path.endsWith('/loyalty/adjust')) return 'loyalty.adjust';
+  if (path.startsWith('/referrals')) return isWrite(method) ? 'referrals.review' : 'referrals.read';
   if (path.startsWith('/customers') || path.startsWith('/promos')) return isWrite(method) ? 'admin.users.manage' : 'admin.users.read';
   return 'admin.access';
 };

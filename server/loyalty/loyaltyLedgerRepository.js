@@ -60,37 +60,43 @@ export const createLoyaltyLedgerRepository = ({ pool, now = () => new Date() } =
     return { entry: mapEntry(row), idempotent: true };
   };
 
+  const reverseEntryWith = async (client, { originalId, idempotencyKey, businessEventKey, customerId, reason, actorType = 'SYSTEM', actorId = null, effectiveAt } = {}) => {
+    const found = await client.query('SELECT * FROM loyalty_ledger WHERE id = $1 AND customer_id = $2 FOR UPDATE', [originalId, customerId]);
+    const original = found.rows[0];
+    if (!original || !['EARN', 'REFERRAL_REWARD'].includes(original.type)) throw Object.assign(new Error('Loyalty entry was not found.'), { code: 'LOYALTY_ENTRY_NOT_FOUND', status: 404 });
+    await ensureAccount(customerId, client);
+    return insertEntryWith(client, {
+      customerId,
+      type: 'REVERSE',
+      points: -Math.abs(Number(original.points)),
+      orderId: original.order_id,
+      orderItemId: original.order_item_id,
+      ruleId: original.rule_id,
+      ruleVersion: original.rule_version,
+      businessEventKey: businessEventKey ?? `reverse:${original.id}:${reason ?? 'event'}`,
+      idempotencyKey: idempotencyKey ?? `reverse:${original.id}:${reason ?? 'event'}`,
+      effectiveAt,
+      reversedEntryId: original.id,
+      metadata: { reason: String(reason ?? 'business_event').slice(0, 160) },
+      createdByType: actorType,
+      createdById: actorId,
+    });
+  };
+
   return {
     ensureAccount,
     insertEntry(entry) { return insertEntryWith(pool, entry); },
+    insertEntryInTransaction(executor, entry) { return insertEntryWith(executor, entry); },
+    reverseEntryInTransaction(executor, args = {}) { return reverseEntryWith(executor, args); },
     async findEarnEntry({ customerId, orderId, orderItemId } = {}) {
       const result = await pool.query("SELECT * FROM loyalty_ledger WHERE customer_id = $1 AND order_id = $2 AND order_item_id = $3 AND type = 'EARN' ORDER BY effective_at ASC, id ASC LIMIT 1", [customerId, orderId, orderItemId]);
       return mapEntry(result.rows[0]);
     },
-    async reverseEntry({ originalId, idempotencyKey, businessEventKey, customerId, reason, actorType = 'SYSTEM', actorId = null, effectiveAt } = {}) {
+    async reverseEntry(args = {}) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const found = await client.query('SELECT * FROM loyalty_ledger WHERE id = $1 AND customer_id = $2 FOR UPDATE', [originalId, customerId]);
-        const original = found.rows[0];
-        if (!original || original.type !== 'EARN') throw Object.assign(new Error('Loyalty entry was not found.'), { code: 'LOYALTY_ENTRY_NOT_FOUND', status: 404 });
-        await ensureAccount(customerId, client);
-        const result = await insertEntryWith(client, {
-          customerId,
-          type: 'REVERSE',
-          points: -Math.abs(Number(original.points)),
-          orderId: original.order_id,
-          orderItemId: original.order_item_id,
-          ruleId: original.rule_id,
-          ruleVersion: original.rule_version,
-          businessEventKey: businessEventKey ?? `reverse:${original.id}:${reason ?? 'event'}`,
-          idempotencyKey: idempotencyKey ?? `reverse:${original.id}:${reason ?? 'event'}`,
-          effectiveAt,
-          reversedEntryId: original.id,
-          metadata: { reason: String(reason ?? 'business_event').slice(0, 160) },
-          createdByType: actorType,
-          createdById: actorId,
-        });
+        const result = await reverseEntryWith(client, args);
         await client.query('COMMIT');
         return result;
       } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
@@ -99,7 +105,7 @@ export const createLoyaltyLedgerRepository = ({ pool, now = () => new Date() } =
       const result = await pool.query(`
         SELECT
           COALESCE(SUM(points), 0)::int AS balance,
-          COALESCE(SUM(points) FILTER (WHERE type = 'EARN'), 0)::int AS earned,
+          COALESCE(SUM(points) FILTER (WHERE type IN ('EARN', 'REFERRAL_REWARD')), 0)::int AS earned,
           COALESCE(SUM(points) FILTER (WHERE type IN ('REDEEM', 'RESERVE')), 0)::int AS redeemed,
           COALESCE(SUM(points) FILTER (WHERE type = 'REVERSE'), 0)::int AS reversed,
           COUNT(*)::int AS entry_count

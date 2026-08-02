@@ -27,7 +27,7 @@ test('dashboard summary masks identity and calculates owner-scoped aggregates', 
   assert.equal(summary.customer.phone, '********78');
   assert.deepEqual(summary.orders, { total: 3, pending: 1, completed: 0, cancelled: 0, totalsByCurrency: { VND: 200000 } });
   assert.equal(summary.fulfillment.pendingItems, 2);
-  assert.deepEqual(summary.capabilities, { assets: false, loyalty: false, notifications: false, support: false });
+  assert.deepEqual(summary.capabilities, { assets: false, loyalty: false, notifications: false, referrals: false, support: false });
 });
 
 test('dashboard query parsing clamps pagination and accepts stable filters only', () => {

@@ -10,7 +10,7 @@ const safeReport = async (filePath) => {
   try { return JSON.parse(await fs.readFile(filePath, 'utf8')); } catch { return null; }
 };
 
-export const createProductionReadinessChecks = ({ env = process.env, sessionHealthService, userRepository, catalogHealthService, checkoutHealthService, customerAuthReadiness, loyaltyHealthService, pool, now = () => new Date() } = {}) => async () => {
+export const createProductionReadinessChecks = ({ env = process.env, sessionHealthService, userRepository, catalogHealthService, checkoutHealthService, customerAuthReadiness, loyaltyHealthService, referralHealthService, notificationHealthService, pool, now = () => new Date() } = {}) => async () => {
   if (env.NODE_ENV !== 'production') return { production: false, checks: [], failedChecks: [] };
   const checks = [];
   const add = (name, passed) => checks.push({ name, passed: Boolean(passed) });
@@ -39,6 +39,10 @@ export const createProductionReadinessChecks = ({ env = process.env, sessionHeal
   add('CHECKOUT_HEALTHY', env.CHECKOUT_LAUNCH_REQUIRED === 'false' || checkout.status === 'healthy');
   const loyalty = loyaltyHealthService ? await loyaltyHealthService.health() : { status: 'disabled', enabled: false };
   add('LOYALTY_HEALTHY', env.LOYALTY_ENABLED !== 'true' || loyalty.status === 'healthy');
+  const referrals = referralHealthService ? await referralHealthService.health() : { status: 'disabled', enabled: false };
+  add('REFERRALS_HEALTHY', env.REFERRAL_ENABLED !== 'true' || referrals.status === 'healthy');
+  const customerNotifications = notificationHealthService ? await notificationHealthService.health() : { status: 'disabled', enabled: false };
+  add('CUSTOMER_NOTIFICATIONS_HEALTHY', env.CUSTOMER_NOTIFICATIONS_ENABLED !== 'true' || customerNotifications.status === 'healthy');
   const backup = await safeReport(env.BACKUP_VERIFICATION_PATH);
   add('BACKUP_VERIFIED', Boolean(backup?.status === 'verified' && withinHours(backup.verifiedAt, Number.parseInt(env.BACKUP_MAX_AGE_HOURS, 10) || 24, now())));
   const dependency = await safeReport(env.DEPENDENCY_GATE_REPORT_PATH);
@@ -62,5 +66,5 @@ export const createProductionReadinessChecks = ({ env = process.env, sessionHeal
     add(name, report?.status === expected);
   }
   const failedChecks = checks.filter((check) => !check.passed).map((check) => check.name);
-  return { production: true, checks, failedChecks, sessionHealth, catalog, checkout, loyalty, schema };
+  return { production: true, checks, failedChecks, sessionHealth, catalog, checkout, loyalty, referrals, customerNotifications, schema };
 };

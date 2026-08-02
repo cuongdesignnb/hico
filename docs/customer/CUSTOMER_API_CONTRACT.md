@@ -63,6 +63,30 @@ callers.
 | `POST /api/customer/export` | Start account export | Customer session, CSRF, asynchronous audited delivery. |
 | `POST /api/customer/delete-request` | Start account deletion grace period | Customer session, CSRF, recent re-auth. |
 
+## Referral and notification routes
+
+| Method and route | Purpose | Required behavior |
+| --- | --- | --- |
+| `GET /api/customer/referrals` | Read own code and relationship summary | Customer session, private no-store, no reward value when disabled/not ready. |
+| `GET /api/customer/referrals/code` | Read or create own active code | Customer session, race-safe generation, code is not PII-derived. |
+| `POST /api/customer/referrals/apply` | Apply an active referral code | Customer session and CSRF; rate limited; accepted request is generic `202`; suspicious matches become `MANUAL_REVIEW`. |
+| `GET /api/customer/referrals/history` | Read own referral history | Customer session, bounded `page` and `pageSize`, no other customer identifiers. |
+| `GET /api/customer/notifications` | List own notifications | Customer session, private no-store, page/pageSize bounded, no sensitive fulfillment values. |
+| `GET /api/customer/notifications/unread-count` | Read server unread count | Customer session, database count only; no client fallback count. |
+| `POST /api/customer/notifications/:id/read` | Mark one own notification read | Customer session and CSRF; non-owner is `404 NOTIFICATION_NOT_OWNED`. |
+| `POST /api/customer/notifications/read-all` | Mark own unread notifications read | Customer session and CSRF; idempotent. |
+
+Referral rewards are issued only after the referee's first owned qualifying
+fulfillment milestone and are written through the loyalty ledger. Duplicate
+callbacks and retries return the existing idempotent result. Cancellation or
+valid refund events append ledger reversals. Guest, unresolved, cancelled, and
+manual-review orders do not qualify.
+
+The optional Admin review surface is permissioned separately:
+`GET /api/admin/referrals`, `GET /api/admin/referrals/:id`, and POST review or
+reject actions. Admin review records a reason and actor audit; it never mutates
+a customer balance directly.
+
 ## Error codes
 
 | HTTP | Code | Meaning |
@@ -76,6 +100,12 @@ callers.
 | 409 | `CLAIM_ALREADY_CONSUMED` | Valid claim token was consumed. |
 | 410 | `CLAIM_EXPIRED` | Valid claim token expired. |
 | 429 | `RATE_LIMITED` | Request, claim, or reset limit exceeded. |
+| 400 | `REFERRAL_CODE_INVALID` | Referral code or filter is invalid. |
+| 409 | `REFERRAL_ALREADY_APPLIED` | Referee already has an active relationship. |
+| 409 | `REFERRAL_SELF_REFERRAL` | Referrer and referee are the same customer. |
+| 404 | `NOTIFICATION_NOT_OWNED` | Notification is not owned by this customer. |
+| 503 | `REFERRAL_NOT_READY` | Referral feature is enabled but its rule or persistence is not healthy. |
+| 503 | `NOTIFICATIONS_NOT_READY` | Notification feature is enabled but persistence is not healthy. |
 | 500 | `INTERNAL_ERROR` | Server failure with request ID and no sensitive detail. |
 
 ## Legacy compatibility and deprecation

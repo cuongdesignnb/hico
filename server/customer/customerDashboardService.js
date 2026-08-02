@@ -3,12 +3,16 @@ import { projectCustomerDashboardSummary, projectCustomerOrder } from './custome
 
 const notFound = () => Object.assign(new Error('Order not found.'), { code: 'ORDER_NOT_FOUND' });
 
-export const createCustomerDashboardService = ({ repository, env = process.env, assetSummaryService = null, loyaltyService = null } = {}) => {
+export const createCustomerDashboardService = ({ repository, env = process.env, assetSummaryService = null, loyaltyService = null, notificationService = null, referralService = null } = {}) => {
   let assets = assetSummaryService;
   let loyalty = loyaltyService;
+  let notifications = notificationService;
+  let referrals = referralService;
   return {
   setAssetSummaryService(service) { assets = service; },
   setLoyaltyService(service) { loyalty = service; },
+  setNotificationService(service) { notifications = service; },
+  setReferralService(service) { referrals = service; },
   async summary(customer) {
     const query = { page: 1, pageSize: 5, sort: 'newest' };
     const [orders, aggregate] = await Promise.all([
@@ -17,6 +21,8 @@ export const createCustomerDashboardService = ({ repository, env = process.env, 
     ]);
     const assetSummary = assets ? await assets.summary(customer.id) : { esims: { total: 0, active: 0, pending: 0 }, physicalSims: { total: 0, pendingShip: 0, shipped: 0 }, devices: { total: 0 }, topups: { total: 0, pending: 0, completed: 0 }, available: { esims: false, physicalSims: false, devices: false, topups: false } };
     const loyaltySummary = loyalty ? await loyalty.dashboardSummary(customer.id) : { available: false };
+    const notificationsSummary = notifications ? await notifications.dashboardSummary(customer.id) : { available: false, unreadCount: 0 };
+    const referralSummary = referrals ? await referrals.dashboardSummary(customer.id) : { available: false };
     return projectCustomerDashboardSummary({
       customer,
       orders,
@@ -24,11 +30,14 @@ export const createCustomerDashboardService = ({ repository, env = process.env, 
       capabilities: {
         assets: Object.values(assetSummary.available).some(Boolean),
         loyalty: loyaltySummary.available,
-        notifications: env.CUSTOMER_NOTIFICATIONS_AVAILABLE === 'true',
+        notifications: notificationsSummary.available,
+        referrals: referralSummary.available,
         support: env.CUSTOMER_SUPPORT_AVAILABLE === 'true',
       },
       assetSummary,
       loyaltySummary,
+      notificationsSummary,
+      referralSummary,
     });
   },
   async list(customerId, rawQuery) {

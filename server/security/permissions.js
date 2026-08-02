@@ -5,6 +5,7 @@ export const ALL_PERMISSIONS = [
   'orders.read', 'orders.update', 'orders.retry_fulfillment',
   'articles.read', 'articles.manage', 'media.upload', 'media.delete',
   'admin.users.read', 'admin.users.manage', 'admin.sessions.revoke',
+  'referrals.read', 'referrals.review',
   'system.health.read', 'system.config.read_masked', 'system.config.manage', 'admin.dashboard.read', 'admin.access',
 ];
 

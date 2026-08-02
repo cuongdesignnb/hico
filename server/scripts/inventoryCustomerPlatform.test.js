@@ -106,5 +106,31 @@ test('customer inventory is aggregate-only and classifies ownership without emai
     localPointsBalanceCount: 0,
     legacyPointsApiReferenceCount: 0,
     directBalanceMutationCount: 0,
+    hardCodedReferralAmountCount: 0,
+    fakeUnreadCount: 0,
+    fakeNotificationCount: 0,
+    fakeReferralStatsCount: 0,
+    directRewardBalanceMutationCount: 0,
+    legacyNotificationApiReferenceCount: 0,
   });
+});
+
+test('customer inventory detects referral and notification demo patterns without returning source values', async (t) => {
+  const uploadsDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'hico-customer-inventory-findings-'));
+  t.after(() => fs.rm(uploadsDirectory, { recursive: true, force: true }));
+  const report = await inventoryCustomerPlatform({
+    uploadsDirectory,
+    sourceContents: {
+      'src/pages/account/AccountReferralsPage.tsx': 'HICOSON50 referralStats: 7;',
+      'src/pages/account/AccountNotificationsPage.tsx': 'const notifications = []; unreadCount: 3; points += 1; /api/user/notifications',
+    },
+  });
+  assert.equal(report.productionSurface.hardCodedReferralAmountCount, 1);
+  assert.equal(report.productionSurface.fakeUnreadCount, 1);
+  assert.equal(report.productionSurface.fakeNotificationCount, 1);
+  assert.equal(report.productionSurface.fakeReferralStatsCount, 1);
+  assert.equal(report.productionSurface.directRewardBalanceMutationCount, 1);
+  assert.equal(report.productionSurface.legacyNotificationApiReferenceCount, 1);
+  assert.deepEqual(report.demoFindings.map(({ code }) => code), ['MOCK_DASHBOARD_SENSITIVE_ASSET', 'MOCK_DASHBOARD_CART_COUNT', 'MOCK_ESIM_SEED', 'HARDCODED_REFERRAL_DEMO_CODE']);
+  assert.equal(JSON.stringify(report).includes('HICOSON50'), false);
 });

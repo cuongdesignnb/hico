@@ -43,7 +43,7 @@ export const createCatalogPublishRouter = ({
   catalogGuard = (_req, _res, next) => next(),
 } = {}) => {
   const router = express.Router();
-  router.use(catalogGuard);
+  router.use((req, res, next) => req.path.startsWith('/admin/catalog/') ? catalogGuard(req, res, next) : next());
   const routes = [
     ['product', 'publish', true],
     ['product', 'unpublish', false],

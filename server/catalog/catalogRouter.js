@@ -11,7 +11,10 @@ export const createCatalogRouter = ({
   catalogGuard = (_req, _res, next) => next(),
 } = {}) => {
   const router = express.Router();
-  router.use(catalogGuard);
+  router.use((req, res, next) => {
+    const isCatalogPath = req.path.startsWith('/catalog/') || req.path.startsWith('/admin/catalog/');
+    return isCatalogPath ? catalogGuard(req, res, next) : next();
+  });
 
   router.get('/admin/catalog/products', async (_req, res) => {
     try {

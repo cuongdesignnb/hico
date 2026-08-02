@@ -38,7 +38,7 @@ export const createCatalogBulkRouter = ({
   catalogGuard = (_req, _res, next) => next(),
 } = {}) => {
   const router = express.Router();
-  router.use(catalogGuard);
+  router.use((req, res, next) => req.path.startsWith('/admin/catalog/') ? catalogGuard(req, res, next) : next());
 
   router.post('/admin/catalog/bulk/preview', asyncRoute(async (req, res) => {
     res.json(await catalogBulkService.preview(req.body, actorFromRequest(req)));

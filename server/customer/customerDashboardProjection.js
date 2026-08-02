@@ -66,7 +66,7 @@ export const projectCustomerOrder = (order) => {
   };
 };
 
-export const projectCustomerDashboardSummary = ({ customer, orders, totalItems, aggregate, capabilities = {}, assetSummary, loyaltySummary } = {}) => {
+export const projectCustomerDashboardSummary = ({ customer, orders, totalItems, aggregate, capabilities = {}, assetSummary, loyaltySummary, notificationsSummary, referralSummary } = {}) => {
   const projected = (orders ?? []).map(projectCustomerOrder);
   const counts = projected.reduce((result, order) => {
     result.total += 1;
@@ -82,9 +82,11 @@ export const projectCustomerDashboardSummary = ({ customer, orders, totalItems, 
     orders: { total: Number(overall.total), pending: Number(overall.pending), completed: Number(overall.completed), cancelled: Number(overall.cancelled), totalsByCurrency: overall.totalsByCurrency },
     fulfillment: { pendingOrders: Number(overall.pending), pendingItems: Number(overall.pendingItems ?? 0) },
     recentOrders: projected.slice(0, 5),
-    capabilities: { assets: false, loyalty: false, notifications: false, support: false, ...capabilities },
+    capabilities: { assets: false, loyalty: false, notifications: false, referrals: false, support: false, ...capabilities },
     assetSummary: assetSummary ?? { available: false },
     loyaltySummary: loyaltySummary ?? { available: false },
+    notificationsSummary: notificationsSummary ?? { available: false, unreadCount: 0 },
+    referralSummary: referralSummary ?? { available: false },
     generatedAt: new Date().toISOString(),
   };
 };

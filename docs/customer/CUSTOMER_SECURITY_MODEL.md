@@ -32,6 +32,28 @@ expiring, rate-limited, and consumed transactionally with ownership audit.
 Provider callbacks and fulfillment retries can update fulfillment/status only;
 they cannot create, replace, or infer ownership.
 
+## Referral and notification boundaries
+
+Referral code creation and application use the authenticated customer session,
+not an email, phone, order number, or client-supplied customer ID. A customer
+cannot apply their own code. Same verified email or phone is treated as an
+anti-abuse conflict and enters manual review without automatic reward. No IP,
+device, fingerprint, shipping, or payment matching is performed in v1.
+
+Qualification requires an owned referee order and the canonical fulfillment
+milestone for its item. Legacy unresolved, guest-unclaimed, cancelled, and
+manual-review orders are excluded. The referrer/referee relationship is locked
+in a transaction; the ledger entry and `referral_rewards` reference are created
+with stable idempotency keys. Cancellation/refund appends a reversal and never
+edits the original reward.
+
+Notification list, unread count, mark-read, and read-all queries all carry the
+customer ID derived from the session at the repository boundary. A notification
+from another customer returns `404 NOTIFICATION_NOT_OWNED`. Writes require the
+customer CSRF token. Dedupe keys make duplicate fulfillment callbacks safe, and
+notification delivery failure cannot fail the order transaction. Database rows
+are the source of truth; client storage and hardcoded badges are not used.
+
 ## Sensitive fulfillment reveal
 
 QR/LPA/PIN/PUK are excluded from list and dashboard APIs. Reveal requires:

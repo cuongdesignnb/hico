@@ -51,7 +51,7 @@ export const createCatalogWriteRouter = ({
   catalogGuard = (_req, _res, next) => next(),
 } = {}) => {
   const router = express.Router();
-  router.use(catalogGuard);
+  router.use((req, res, next) => req.path.startsWith('/admin/catalog/') ? catalogGuard(req, res, next) : next());
 
   router.post('/admin/catalog/products', asyncRoute(async (req, res) => {
     sendCommand(res, await catalogWriteService.createProduct(

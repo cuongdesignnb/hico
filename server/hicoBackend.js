@@ -77,6 +77,11 @@ import { createCustomerAssetRevealService } from './customer/customerAssetReveal
 import { createCustomerAssetAuditRepository } from './customer/customerAssetAuditRepository.js';
 import { createCustomerAssetRouter } from './customer/customerAssetRouter.js';
 import { createCustomerTokenDelivery } from './customer/customerTokenDelivery.js';
+import { createCustomerNotificationRepository } from './customerNotifications/customerNotificationRepository.js';
+import { createCustomerNotificationService } from './customerNotifications/customerNotificationService.js';
+import { createNotificationEventProcessor } from './customerNotifications/notificationEventProcessor.js';
+import { createCustomerNotificationHealthService } from './customerNotifications/notificationHealthService.js';
+import { createCustomerNotificationRouter } from './customerNotifications/customerNotificationRouter.js';
 import { createCustomerLoyaltyRouter } from './loyalty/loyaltyRouter.js';
 import { createLoyaltyAdminRouter } from './loyalty/loyaltyAdminRouter.js';
 import { createLoyaltyHealthRouter } from './loyalty/loyaltyHealthRouter.js';
@@ -84,6 +89,12 @@ import { createLoyaltyLedgerRepository } from './loyalty/loyaltyLedgerRepository
 import { createLoyaltyRuleService } from './loyalty/loyaltyRuleService.js';
 import { createLoyaltyService } from './loyalty/loyaltyService.js';
 import { createLoyaltyEventProcessor } from './loyalty/loyaltyEventProcessor.js';
+import { createReferralRepository } from './referrals/referralRepository.js';
+import { createReferralCodeService } from './referrals/referralCodeService.js';
+import { createReferralService } from './referrals/referralService.js';
+import { createReferralHealthService } from './referrals/referralHealthService.js';
+import { createCustomerReferralRouter } from './referrals/referralRouter.js';
+import { createReferralAdminRouter } from './referrals/referralAdminRouter.js';
 import { createRequestId } from './security/requestId.js';
 import { createAdminRequestAudit, createSecurityAudit } from './security/securityAudit.js';
 import { createCorsPolicy } from './security/corsPolicy.js';
@@ -208,6 +219,9 @@ const customerOrderService = customerOrderRepository && customerAuthService ? cr
   tokenDelivery: customerTokenDelivery,
   env: process.env,
 }) : null;
+const customerNotificationRepository = authPool ? createCustomerNotificationRepository({ pool: authPool }) : null;
+const customerNotificationService = customerNotificationRepository ? createCustomerNotificationService({ repository: customerNotificationRepository, pool: authPool, env: process.env }) : null;
+const notificationEventProcessor = customerNotificationService ? createNotificationEventProcessor({ notificationService: customerNotificationService, logger }) : null;
 const customerDashboardRepository = customerOrderRepository ? createCustomerDashboardRepository({ orderRepository: customerOrderRepository }) : null;
 const customerDashboardService = customerDashboardRepository && customerAuthService ? createCustomerDashboardService({
   repository: customerDashboardRepository,
@@ -216,6 +230,7 @@ const customerDashboardService = customerDashboardRepository && customerAuthServ
 const loyaltyRuleService = createLoyaltyRuleService({ pool: authPool, env: process.env });
 const loyaltyLedgerRepository = authPool ? createLoyaltyLedgerRepository({ pool: authPool }) : null;
 let loyaltyService = null;
+let referralService = null;
 let productionReadinessService;
 const readinessDelegate = {
   evaluate: (...args) => productionReadinessService?.evaluate(...args) ?? Promise.resolve({ status: 'not_ready', adminWritesAllowed: false, writesEnabled: false, criticalChecksPassed: 0, criticalChecksTotal: 0, failedChecks: ['READINESS_INITIALIZING'], checkedAt: new Date().toISOString() }),
@@ -339,6 +354,14 @@ app.get('/api/health/customer-assets', async (_req, res) => {
   });
 });
 app.get('/api/health/loyalty', createLoyaltyHealthRouter({ loyaltyService: { health: () => loyaltyService?.health?.() ?? Promise.resolve({ status: 'disabled', enabled: false }) } }));
+app.get('/api/health/referrals', async (_req, res) => {
+  const health = await createReferralHealthService({ referralService }).health();
+  return res.status(health.status === 'healthy' || health.status === 'disabled' ? 200 : 503).json(health);
+});
+app.get('/api/health/customer-notifications', async (_req, res) => {
+  const health = await createCustomerNotificationHealthService({ notificationService: customerNotificationService }).health();
+  return res.status(health.status === 'healthy' || health.status === 'disabled' ? 200 : 503).json(health);
+});
 app.get('/api/health/metrics', (_req, res) => res.json({ status: 'healthy', counters: metrics.snapshot() }));
 app.get('/api/health/security', async (_req, res) => {
   const readiness = await readinessDelegate.evaluate();
@@ -572,7 +595,24 @@ loyaltyService = loyaltyLedgerRepository && customerOrderRepository ? createLoya
   audit: securityAudit,
 }) : null;
 if (customerDashboardService && loyaltyService) customerDashboardService.setLoyaltyService(loyaltyService);
-const loyaltyEventProcessor = loyaltyService ? createLoyaltyEventProcessor({ loyaltyService, logger }) : null;
+const referralRepository = authPool ? createReferralRepository({ pool: authPool }) : null;
+const referralCodeService = referralRepository ? createReferralCodeService({ repository: referralRepository }) : null;
+referralService = referralRepository && referralCodeService && loyaltyLedgerRepository && customerOrderRepository ? createReferralService({
+  repository: referralRepository,
+  codeService: referralCodeService,
+  loyaltyRepository: loyaltyLedgerRepository,
+  ruleService: loyaltyRuleService,
+  orderRepository: customerOrderRepository,
+  notificationEventProcessor,
+  env: process.env,
+  audit: securityAudit,
+  logger,
+}) : null;
+if (customerDashboardService && customerNotificationService) customerDashboardService.setNotificationService(customerNotificationService);
+if (customerDashboardService && referralService) customerDashboardService.setReferralService(referralService);
+const loyaltyEventProcessor = loyaltyService || referralService || notificationEventProcessor
+  ? createLoyaltyEventProcessor({ loyaltyService, referralService, notificationEventProcessor, logger })
+  : null;
 const canonicalCatalogReader = createCanonicalCatalogReader({ env: process.env });
 const canonicalFulfillmentService = createFulfillmentService({
   repository: canonicalFulfillmentRepository,
@@ -628,6 +668,8 @@ productionReadinessService = createProductionReadinessService({
     checkoutHealthService: canonicalCheckoutHealthService,
     customerAuthReadiness,
     loyaltyHealthService: loyaltyService,
+    referralHealthService: createReferralHealthService({ referralService }),
+    notificationHealthService: createCustomerNotificationHealthService({ notificationService: customerNotificationService }),
     pool: authPool,
   }),
 });
@@ -663,7 +705,23 @@ if (loyaltyService && customerAuthService) app.use('/api/customer', createCustom
   readiness: customerAuthReadiness,
   loyaltyService,
 }));
+if (referralService && customerAuthService && customerSessionService) app.use('/api/customer', createCustomerReferralRouter({
+  customerAuthService,
+  sessionService: customerSessionService,
+  readiness: customerAuthReadiness,
+  referralService,
+  env: process.env,
+  securityAudit,
+}));
+if (customerNotificationService && customerAuthService && customerSessionService) app.use('/api/customer', createCustomerNotificationRouter({
+  customerAuthService,
+  sessionService: customerSessionService,
+  readiness: customerAuthReadiness,
+  notificationService: customerNotificationService,
+  securityAudit,
+}));
 if (loyaltyService) app.use('/api/admin', createLoyaltyAdminRouter({ loyaltyService }));
+if (referralService) app.use('/api/admin', createReferralAdminRouter({ referralService }));
 app.use('/api', createFulfillmentRouter({ orderRepository: canonicalOrderRepository }));
 app.use('/api/user', (_req, res) => {
   res.set('Deprecation', 'true');

@@ -77,12 +77,30 @@ reveal after owner, CSRF, and recent re-auth checks.
 | --- | --- | --- |
 | `loyalty_accounts` | One account per customer; no mutable balance source of truth | Primary key and customer FK |
 | `loyalty_ledger` | Append-only `EARN`, `REVERSE`, `ADJUST_ADMIN`, and future event records | Non-zero points/sign constraints; unique business event and idempotency keys; index `(customer_id, effective_at DESC)` |
-| `referral_codes` | Customer-owned referral code | Unique normalized code and customer mapping |
-| `referral_events` | Idempotent reward qualification/reversal | Unique qualifying order/event relationship; FK references |
+| `referral_codes` | Customer-owned referral code | Unique normalized code, one active code per customer, no PII-derived value |
+| `referral_relationships` | Referrer/referee attribution and review state | Customer FKs, self-referral check, one active relationship per referee, status index |
+| `referral_events` | Idempotent apply, qualification, reward, and reversal events | Unique business event key, order FK, rule/version snapshot |
+| `referral_rewards` | Link each relationship side to the authoritative ledger entry | Unique relationship/side and ledger-entry FK; no balance column |
+| `customer_notifications` | Durable owner-scoped notification inbox | Customer FK, unique `(customer_id, dedupe_key)`, unread and created indexes, safe action path |
 
 The ledger is authoritative and the balance is `SUM(points)`, never edited in
-place. PR15.5 adds earn/reverse and admin adjustment foundations; redemption,
-referral and membership tiers remain disabled or out of scope.
+place. `REFERRAL_REWARD` is a positive append-only ledger entry and every
+reversal is an append-only `REVERSE` entry. `referral_rewards` stores only the
+ledger reference, not a second balance. Referral configuration is read from the
+versioned `loyalty_rules.config_jsonb`; application code does not invent a
+reward amount.
+
+Referral attribution is created only by an authenticated referee applying an
+active code. Same customer, same verified email, and same verified phone are
+blocked or sent to `MANUAL_REVIEW`; IP, device, fingerprint, shipping, and
+payment matching are not used. Legacy unresolved orders are never backfilled by
+email.
+
+Notifications are the database source of truth. Event processors use a stable
+`<type>:<customerId>:<entityId>:<eventVersion>` dedupe key. Titles, messages,
+metadata, and action paths are allowlisted and never contain QR/LPA/PIN/PUK,
+ICCID, tokens, passwords, or full addresses. List and unread projections are
+customer-scoped; read mutations require the customer CSRF boundary.
 
 ## Retention and deletion boundary
 
