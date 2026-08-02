@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { AppProvider } from './context/AppContext.tsx'
 import { AuthProvider } from './auth/AuthProvider.tsx'
+import { CustomerAuthProvider } from './auth/customer/CustomerAuthProvider.tsx'
 import { BrowserRouter } from 'react-router-dom'
 import { redirectLegacyHash } from './routing/legacyHashRedirect.ts'
 
@@ -11,9 +12,11 @@ const renderApp = () => createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <AppProvider>
-          <App />
-        </AppProvider>
+        <CustomerAuthProvider>
+          <AppProvider>
+            <App />
+          </AppProvider>
+        </CustomerAuthProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

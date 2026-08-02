@@ -10,7 +10,7 @@ const safeReport = async (filePath) => {
   try { return JSON.parse(await fs.readFile(filePath, 'utf8')); } catch { return null; }
 };
 
-export const createProductionReadinessChecks = ({ env = process.env, sessionHealthService, userRepository, catalogHealthService, checkoutHealthService, pool, now = () => new Date() } = {}) => async () => {
+export const createProductionReadinessChecks = ({ env = process.env, sessionHealthService, userRepository, catalogHealthService, checkoutHealthService, customerAuthReadiness, pool, now = () => new Date() } = {}) => async () => {
   if (env.NODE_ENV !== 'production') return { production: false, checks: [], failedChecks: [] };
   const checks = [];
   const add = (name, passed) => checks.push({ name, passed: Boolean(passed) });
@@ -23,6 +23,10 @@ export const createProductionReadinessChecks = ({ env = process.env, sessionHeal
   add('ADMIN_USER_STORE_HEALTHY', userHealth.status === 'healthy');
   const schema = pool ? await migrationStatus({ pool }) : { status: 'unavailable' };
   add('AUTH_SCHEMA_CURRENT', schema.status === 'current');
+  if (customerAuthReadiness) {
+    const customerAuth = await customerAuthReadiness.evaluate();
+    add('CUSTOMER_AUTH_REAL_AND_HEALTHY', customerAuth.mode === 'real' && customerAuth.status === 'healthy');
+  }
   add('SESSION_SECRET_CONFIGURED', configured(env.SESSION_SECRET));
   add('CSRF_SECRET_CONFIGURED', configured(env.CSRF_SECRET));
   add('CORS_ALLOWLIST_CONFIGURED', Boolean(String(env.CORS_ALLOWED_ORIGINS ?? '').trim()) && !String(env.CORS_ALLOWED_ORIGINS).includes('*'));

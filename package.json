@@ -11,6 +11,8 @@
     "prerender": "node scripts/prerender-public-routes.mjs",
     "security:audit": "npm audit --omit=dev && npm --prefix server audit --omit=dev",
     "security:gate": "node scripts/security-gate.mjs",
+    "customer:inventory": "npm --prefix server run customer:inventory",
+    "customer-auth:validate": "npm --prefix server run customer-auth:validate",
     "production:launch:validate": "npm --prefix server run production:launch:validate",
     "production:report": "npm --prefix server run production:report"
   },

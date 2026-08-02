@@ -60,6 +60,13 @@ import { createAuthService } from './auth/authService.js';
 import { createAuthCookies } from './auth/authCookies.js';
 import { createAuthRouter } from './auth/authRouter.js';
 import { createAdminSecurityRouter } from './auth/adminSecurityRouter.js';
+import { createPostgresCustomerRepository } from './customer/customerRepository.js';
+import { createPostgresCustomerSessionRepository } from './customer/customerSessionRepository.js';
+import { createCustomerAuthService } from './customer/customerAuthService.js';
+import { createCustomerAuthCookies } from './customer/customerAuthCookies.js';
+import { createCustomerAuthReadiness } from './customer/customerAuthReadiness.js';
+import { createCustomerAuthRouter } from './customer/customerAuthRouter.js';
+import { createCustomerTokenDelivery } from './customer/customerTokenDelivery.js';
 import { createRequestId } from './security/requestId.js';
 import { createAdminRequestAudit, createSecurityAudit } from './security/securityAudit.js';
 import { createCorsPolicy } from './security/corsPolicy.js';
@@ -142,6 +149,41 @@ const authService = createAuthService({
 });
 await authService.ensureBootstrap();
 const authCookies = createAuthCookies({ env: process.env });
+const customerRepository = authPool ? createPostgresCustomerRepository({ pool: authPool }) : null;
+const customerSessionRepository = authPool ? createPostgresCustomerSessionRepository({ pool: authPool }) : null;
+const customerSessionService = customerSessionRepository ? createSessionService({
+  sessionRepository: customerSessionRepository,
+  sessionSecret: process.env.CUSTOMER_SESSION_SECRET ?? process.env.SESSION_SECRET ?? '',
+  csrfSecret: process.env.CUSTOMER_CSRF_SECRET ?? process.env.CSRF_SECRET ?? '',
+  env: {
+    ...process.env,
+    AUTH_SESSION_TTL_MINUTES: process.env.CUSTOMER_AUTH_SESSION_TTL_MINUTES ?? process.env.AUTH_SESSION_TTL_MINUTES,
+    AUTH_ABSOLUTE_TTL_MINUTES: process.env.CUSTOMER_AUTH_ABSOLUTE_TTL_MINUTES ?? process.env.AUTH_ABSOLUTE_TTL_MINUTES,
+  },
+}) : null;
+const customerSessionCleanupService = customerSessionRepository ? createSessionCleanupService({
+  sessionRepository: customerSessionRepository,
+  env: process.env,
+  logger,
+}) : null;
+const customerTokenDelivery = createCustomerTokenDelivery({ env: process.env });
+const customerAuthReadiness = createCustomerAuthReadiness({
+  env: process.env,
+  pool: authPool,
+  customerRepository,
+  customerSessionRepository,
+  sessionService: customerSessionService,
+  tokenDelivery: customerTokenDelivery,
+});
+const customerAuthService = customerRepository && customerSessionService ? createCustomerAuthService({
+  customerRepository,
+  customerSessionRepository,
+  sessionService: customerSessionService,
+  tokenDelivery: customerTokenDelivery,
+  env: process.env,
+  securityAudit,
+}) : null;
+const customerAuthCookies = createCustomerAuthCookies({ env: process.env });
 let productionReadinessService;
 const readinessDelegate = {
   evaluate: (...args) => productionReadinessService?.evaluate(...args) ?? Promise.resolve({ status: 'not_ready', adminWritesAllowed: false, writesEnabled: false, criticalChecksPassed: 0, criticalChecksTotal: 0, failedChecks: ['READINESS_INITIALIZING'], checkedAt: new Date().toISOString() }),
@@ -208,8 +250,20 @@ app.use('/uploads', (req, res, next) => {
 });
 app.use('/uploads', express.static(catalogUploadsDirectory, { dotfiles: 'deny', index: false, fallthrough: false }));
 app.use('/api/auth', createAuthRouter({ authService, sessionService, authCookies, env: process.env, securityAudit }));
+app.use('/api/customer', createCustomerAuthRouter({
+  customerAuthService,
+  sessionService: customerSessionService,
+  authCookies: customerAuthCookies,
+  readiness: customerAuthReadiness,
+  env: process.env,
+  securityAudit,
+}));
 app.get('/api/health/session-store', async (_req, res) => {
   const health = await sessionHealthService.getHealth();
+  return res.status(health.status === 'healthy' ? 200 : 503).json(health);
+});
+app.get('/api/health/customer-auth', async (_req, res) => {
+  const health = await customerAuthReadiness.evaluate();
   return res.status(health.status === 'healthy' ? 200 : 503).json(health);
 });
 app.get('/api/health/metrics', (_req, res) => res.json({ status: 'healthy', counters: metrics.snapshot() }));
@@ -473,6 +527,7 @@ productionReadinessService = createProductionReadinessService({
     userRepository,
     catalogHealthService,
     checkoutHealthService: canonicalCheckoutHealthService,
+    customerAuthReadiness,
     pool: authPool,
   }),
 });
@@ -2259,6 +2314,11 @@ if (sessionDriver === 'postgres') {
   void sessionCleanupService.run({ force: true });
   const cleanupTimer = setInterval(() => { void sessionCleanupService.run(); }, Number.parseInt(process.env.SESSION_CLEANUP_INTERVAL_MS, 10) || 3_600_000);
   cleanupTimer.unref();
+}
+if (customerSessionCleanupService) {
+  void customerSessionCleanupService.run({ force: true });
+  const customerCleanupTimer = setInterval(() => { void customerSessionCleanupService.run(); }, Number(process.env.SESSION_CLEANUP_INTERVAL_MS, 10) || 3_600_000);
+  customerCleanupTimer.unref();
 }
 
 app.listen(PORT, () => {

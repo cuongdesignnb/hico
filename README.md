@@ -34,6 +34,18 @@ security check. Operational commands live under `server/package.json`:
 
 See `docs/operations/PRODUCTION_LAUNCH_CHECKLIST.md` before a rollout.
 
+## Customer authentication
+
+Customer identity is separate from Admin identity. Customer routes use
+`/api/customer/*`, the `hico_customer_session` cookie, and the
+`hico_customer_csrf` token. Set `CUSTOMER_ACCOUNT_MODE=real` only with the
+PostgreSQL migration current and configured session/CSRF keys. Production
+rejects `demo` mode and remains `NO-GO` until customer auth, order ownership,
+and the real dashboard controls have evidence.
+
+Customer sign-in is `/dang-nhap`; Admin sign-in is `/quan-tri/dang-nhap`.
+No customer session or access token is stored in browser localStorage.
+
 HICO là hệ thống bán eSIM, SIM vật lý và thiết bị 4G/5G. Repository gồm frontend React/Vite, backend Express và Worldmove simulator để thử luồng cấp eSIM trên máy local.
 
 ## Thành phần

@@ -31,6 +31,12 @@ services:
         condition: service_healthy
     restart: always
 
+  mailpit:
+    image: axllent/mailpit:v1.22.3
+    ports:
+      - "8025:8025"
+    restart: "no"
+
   migrate:
     build:
       context: ./server
@@ -108,6 +114,21 @@ services:
       SESSION_CLEANUP_INTERVAL_MS: ${SESSION_CLEANUP_INTERVAL_MS:-3600000}
       SESSION_CLEANUP_BATCH_SIZE: ${SESSION_CLEANUP_BATCH_SIZE:-500}
       SESSION_REVOKED_RETENTION_HOURS: ${SESSION_REVOKED_RETENTION_HOURS:-720}
+      CUSTOMER_ACCOUNT_MODE: ${CUSTOMER_ACCOUNT_MODE:-demo}
+      CUSTOMER_SESSION_SECRET: ${CUSTOMER_SESSION_SECRET:-}
+      CUSTOMER_CSRF_SECRET: ${CUSTOMER_CSRF_SECRET:-}
+      CUSTOMER_TOKEN_SECRET: ${CUSTOMER_TOKEN_SECRET:-}
+      CUSTOMER_AUTH_SESSION_TTL_MINUTES: ${CUSTOMER_AUTH_SESSION_TTL_MINUTES:-30}
+      CUSTOMER_AUTH_ABSOLUTE_TTL_MINUTES: ${CUSTOMER_AUTH_ABSOLUTE_TTL_MINUTES:-480}
+      CUSTOMER_AUTH_MAX_FAILED_LOGINS: ${CUSTOMER_AUTH_MAX_FAILED_LOGINS:-5}
+      CUSTOMER_AUTH_LOCK_MINUTES: ${CUSTOMER_AUTH_LOCK_MINUTES:-15}
+      CUSTOMER_EMAIL_VERIFICATION_TTL_MINUTES: ${CUSTOMER_EMAIL_VERIFICATION_TTL_MINUTES:-60}
+      CUSTOMER_PASSWORD_RESET_TTL_MINUTES: ${CUSTOMER_PASSWORD_RESET_TTL_MINUTES:-30}
+      CUSTOMER_RATE_LIMIT_WINDOW_MS: ${CUSTOMER_RATE_LIMIT_WINDOW_MS:-900000}
+      CUSTOMER_RATE_LIMIT_REGISTER_MAX: ${CUSTOMER_RATE_LIMIT_REGISTER_MAX:-5}
+      CUSTOMER_RATE_LIMIT_LOGIN_MAX: ${CUSTOMER_RATE_LIMIT_LOGIN_MAX:-10}
+      CUSTOMER_RATE_LIMIT_PASSWORD_RESET_MAX: ${CUSTOMER_RATE_LIMIT_PASSWORD_RESET_MAX:-5}
+      CUSTOMER_RATE_LIMIT_VERIFICATION_MAX: ${CUSTOMER_RATE_LIMIT_VERIFICATION_MAX:-5}
       DEPENDENCY_GATE_REPORT_PATH: ${DEPENDENCY_GATE_REPORT_PATH:-}
       BACKUP_VERIFICATION_PATH: ${BACKUP_VERIFICATION_PATH:-}
       SECRET_ROTATION_METADATA_PATH: ${SECRET_ROTATION_METADATA_PATH:-}
@@ -117,6 +138,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_started
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -124,6 +147,13 @@ services:
       retries: 30
       start_period: 10s
     restart: always
+
+  backend-secondary:
+    profiles: ["qa"]
+    extends:
+      service: backend
+    ports: !reset
+      - "5001:5000"
 
 volumes:
   hico-postgres-data:

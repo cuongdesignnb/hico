@@ -11,9 +11,13 @@ export const validateProductionEnvironment = async ({ env = process.env } = {}) 
   try { publicOrigin = new URL(env.PUBLIC_SITE_URL); if (publicOrigin.protocol !== 'https:') blockers.push('PUBLIC_SITE_URL_HTTPS_REQUIRED'); } catch { blockers.push('PUBLIC_SITE_URL_REQUIRED'); }
   if (!env.VITE_PUBLIC_SITE_URL || env.VITE_PUBLIC_SITE_URL !== env.PUBLIC_SITE_URL) blockers.push('PUBLIC_SITE_URL_MISMATCH');
   if (String(env.SESSION_STORE_DRIVER ?? '').toLowerCase() !== 'postgres') blockers.push('SESSION_STORE_POSTGRES_REQUIRED');
+  if (String(env.CUSTOMER_ACCOUNT_MODE ?? '').toLowerCase() !== 'real') blockers.push('CUSTOMER_ACCOUNT_MODE_REAL_REQUIRED');
   if (!env.DATABASE_URL || (env.DATABASE_SSL !== 'true' && env.DATABASE_SSL_DISABLE !== 'true')) blockers.push('DATABASE_SSL_POLICY_REQUIRED');
   if (!configured(env.SESSION_SECRET)) blockers.push('SESSION_SECRET_REQUIRED');
   if (!configured(env.CSRF_SECRET)) blockers.push('CSRF_SECRET_REQUIRED');
+  if (!configured(env.CUSTOMER_SESSION_SECRET ?? env.SESSION_SECRET)) blockers.push('CUSTOMER_SESSION_SECRET_REQUIRED');
+  if (!configured(env.CUSTOMER_CSRF_SECRET ?? env.CSRF_SECRET)) blockers.push('CUSTOMER_CSRF_SECRET_REQUIRED');
+  if (!env.SMTP_HOST || !env.SMTP_FROM) blockers.push('CUSTOMER_EMAIL_DELIVERY_REQUIRED');
   if (!configured(env.WORLDMOVE_TOKEN)) blockers.push('WORLDMOVE_CREDENTIAL_REQUIRED');
   if (!configured(env.WORLDMOVE_WEBHOOK_SECRET)) blockers.push('WORLDMOVE_WEBHOOK_SECRET_REQUIRED');
   if (!String(env.CORS_ALLOWED_ORIGINS ?? '').trim() || String(env.CORS_ALLOWED_ORIGINS).includes('*')) blockers.push('CORS_ALLOWLIST_REQUIRED');

@@ -14,5 +14,6 @@ export const validateProductionSecurity = (env = process.env) => {
   if (!configured(env.WORLDMOVE_WEBHOOK_SECRET)) blockers.push('WORLDMOVE_WEBHOOK_SECRET_REQUIRED');
   if (env.ADMIN_BOOTSTRAP_PASSWORD) blockers.push('BOOTSTRAP_PASSWORD_FORBIDDEN');
   if (String(env.SESSION_STORE_DRIVER ?? env.AUTH_STORE ?? '').toLowerCase() !== 'postgres') blockers.push('AUTH_SHARED_STORE_REQUIRED');
+  if (String(env.CUSTOMER_ACCOUNT_MODE ?? '').toLowerCase() !== 'real') blockers.push('CUSTOMER_ACCOUNT_MODE_REAL_REQUIRED');
   return { status: blockers.length ? 'not_ready' : 'healthy', production: true, blockers };
 };

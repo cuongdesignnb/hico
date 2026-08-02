@@ -6,7 +6,7 @@ export const ProtectedRoute = ({ children, permission = 'admin.dashboard.read' }
   const { status, hasPermission } = useAuth();
   const location = useLocation();
   if (status === 'loading') return <main className="route-state" role="status">Checking session...</main>;
-  if (status === 'anonymous') return <Navigate to="/dang-nhap" replace state={{ from: location.pathname }} />;
+  if (status === 'anonymous') return <Navigate to="/quan-tri/dang-nhap" replace state={{ from: location.pathname }} />;
   if (!hasPermission(permission)) return <Navigate to="/khong-co-quyen" replace />;
   return <>{children}</>;
 };
