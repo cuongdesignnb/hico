@@ -4,7 +4,8 @@
 
 - PR15.3 source: `686dbbf`.
 - PR15.4 source: `ea4ff11` (`feat(customer): add customer asset platform`).
-- PR15.4 completion and QA documentation is committed separately after this source baseline.
+- PR15.4 persistence hardening: `ab40fdb` (`fix(customer): fail closed without fulfillment persistence`).
+- PR15.4 completion and QA documentation is committed separately after these source commits.
 - Migration head: `008_customer_assets.sql`.
 - The migration adds `customer_sessions.last_authenticated_at` and an index for recent re-authentication. No duplicate customer asset table was added because the current fulfillment projection is read safely from owned PostgreSQL order snapshots plus fulfillment records.
 - Production status remains `NO-GO`.
@@ -51,7 +52,7 @@
 - `npm run lint`: pass.
 - `npm run build`: pass.
 - `npm run prerender`: pass, 88 public routes; private asset routes are not prerendered.
-- Backend tests: 155 existing tests pass, plus PR15.4 projection/reveal tests pass; current full baseline is 157 tests after the added asset test file.
+- Backend tests: current full baseline is 158/158, including projection, reveal and missing-persistence fail-closed tests.
 - `npm run customer:inventory`: pass; UTF-8 aggregate-only scan, 0 Account `/api/user` references, 0 hard-coded asset values.
 - `npm run customer-dashboard:validate`: pass.
 - `npm run customer-assets:validate`: pass.
