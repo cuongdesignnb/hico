@@ -35,6 +35,7 @@ export const createCustomerTokenDelivery = ({ env = process.env, transport } = {
     sendVerification: ({ email, token }) => send({ email, token, subject: 'Verify your HICO account', path: '/xac-thuc-email' }),
     sendPasswordReset: ({ email, token }) => send({ email, token, subject: 'Reset your HICO password', path: '/dat-lai-mat-khau' }),
     sendOrderClaim: ({ email, token, orderId }) => send({ email, token, subject: 'Claim your HICO order', path: `/tai-khoan/don-hang/${encodeURIComponent(orderId)}/claim` }),
+    sendContactChange: ({ email, token, contactType }) => send({ email, token, subject: `Confirm your HICO ${String(contactType).toLowerCase()} change`, path: '/tai-khoan/ho-so/xac-thuc-lien-he' }),
     getHealth: () => ({ configured }),
   };
 };

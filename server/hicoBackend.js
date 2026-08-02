@@ -77,6 +77,9 @@ import { createCustomerAssetRevealService } from './customer/customerAssetReveal
 import { createCustomerAssetAuditRepository } from './customer/customerAssetAuditRepository.js';
 import { createCustomerAssetRouter } from './customer/customerAssetRouter.js';
 import { createCustomerTokenDelivery } from './customer/customerTokenDelivery.js';
+import { createCustomerProfileRepository } from './customer/customerProfileRepository.js';
+import { createCustomerProfileService } from './customer/customerProfileService.js';
+import { createCustomerProfileRouter } from './customer/customerProfileRouter.js';
 import { createCustomerNotificationRepository } from './customerNotifications/customerNotificationRepository.js';
 import { createCustomerNotificationService } from './customerNotifications/customerNotificationService.js';
 import { createNotificationEventProcessor } from './customerNotifications/notificationEventProcessor.js';
@@ -95,6 +98,12 @@ import { createReferralService } from './referrals/referralService.js';
 import { createReferralHealthService } from './referrals/referralHealthService.js';
 import { createCustomerReferralRouter } from './referrals/referralRouter.js';
 import { createReferralAdminRouter } from './referrals/referralAdminRouter.js';
+import { createSupportRepository } from './support/supportRepository.js';
+import { createSupportService } from './support/supportService.js';
+import { createSupportRouter } from './support/supportRouter.js';
+import { createSupportAdminRouter } from './support/supportAdminRouter.js';
+import { createSupportAttachmentService } from './support/supportAttachmentService.js';
+import { createSupportHealthService } from './support/supportHealthService.js';
 import { createRequestId } from './security/requestId.js';
 import { createAdminRequestAudit, createSecurityAudit } from './security/securityAudit.js';
 import { createCorsPolicy } from './security/corsPolicy.js';
@@ -195,6 +204,15 @@ const customerSessionCleanupService = customerSessionRepository ? createSessionC
   logger,
 }) : null;
 const customerTokenDelivery = createCustomerTokenDelivery({ env: process.env });
+const customerProfileRepository = authPool ? createCustomerProfileRepository({ pool: authPool }) : null;
+const customerProfileService = customerProfileRepository ? createCustomerProfileService({
+  repository: customerProfileRepository,
+  customerRepository,
+  customerSessionRepository,
+  tokenDelivery: customerTokenDelivery,
+  env: process.env,
+  securityAudit,
+}) : null;
 const customerAuthReadiness = createCustomerAuthReadiness({
   env: process.env,
   pool: authPool,
@@ -222,6 +240,9 @@ const customerOrderService = customerOrderRepository && customerAuthService ? cr
 const customerNotificationRepository = authPool ? createCustomerNotificationRepository({ pool: authPool }) : null;
 const customerNotificationService = customerNotificationRepository ? createCustomerNotificationService({ repository: customerNotificationRepository, pool: authPool, env: process.env }) : null;
 const notificationEventProcessor = customerNotificationService ? createNotificationEventProcessor({ notificationService: customerNotificationService, logger }) : null;
+const supportStorageDirectory = path.join(__dirname, 'private', 'support_attachments');
+const supportRepository = authPool ? createSupportRepository({ pool: authPool }) : null;
+const supportAttachmentService = supportRepository ? createSupportAttachmentService({ repository: supportRepository, storageDirectory: supportStorageDirectory, env: process.env }) : null;
 const customerDashboardRepository = customerOrderRepository ? createCustomerDashboardRepository({ orderRepository: customerOrderRepository }) : null;
 const customerDashboardService = customerDashboardRepository && customerAuthService ? createCustomerDashboardService({
   repository: customerDashboardRepository,
@@ -305,6 +326,13 @@ app.use('/api/customer', createCustomerAuthRouter({
   env: process.env,
   securityAudit,
 }));
+if (customerProfileService && customerAuthService && customerSessionService) app.use('/api/customer', createCustomerProfileRouter({
+  customerAuthService,
+  customerSessionService,
+  readiness: customerAuthReadiness,
+  profileService: customerProfileService,
+  securityAudit,
+}));
 if (customerDashboardService) app.use('/api/customer', createCustomerDashboardRouter({
   customerAuthService,
   readiness: customerAuthReadiness,
@@ -323,6 +351,18 @@ app.get('/api/health/session-store', async (_req, res) => {
 app.get('/api/health/customer-auth', async (_req, res) => {
   const health = await customerAuthReadiness.evaluate();
   return res.status(health.status === 'healthy' ? 200 : 503).json(health);
+});
+app.get('/api/health/customer-profile', async (_req, res) => {
+  const auth = await customerAuthReadiness.evaluate();
+  const profile = customerProfileService ? await customerProfileService.health() : { status: 'unavailable', persistence: 'none' };
+  const healthy = auth.status === 'healthy' && (profile.status === 'healthy' || profile.status === 'disabled');
+  return res.status(healthy ? 200 : 503).json({ status: healthy ? 'healthy' : 'not_ready', auth: auth.status, profile });
+});
+app.get('/api/health/support', async (_req, res) => {
+  const auth = await customerAuthReadiness.evaluate();
+  const support = supportHealthService ? await supportHealthService.health() : { status: 'unavailable', enabled: false };
+  const healthy = auth.status === 'healthy' && (support.status === 'healthy' || support.status === 'disabled');
+  return res.status(healthy ? 200 : 503).json({ status: healthy ? 'healthy' : 'not_ready', auth: auth.status, support });
 });
 app.get('/api/health/customer-orders', async (_req, res) => {
   const auth = await customerAuthReadiness.evaluate();
@@ -586,6 +626,23 @@ const customerAssetRevealService = customerAssetRepository ? createCustomerAsset
   auditRepository: customerAssetAuditRepository,
   env: process.env,
 }) : null;
+const supportService = supportRepository ? createSupportService({
+  repository: supportRepository,
+  orderRepository: customerOrderRepository,
+  assetRepository: customerAssetRepository,
+  attachmentService: supportAttachmentService,
+  notificationEventProcessor,
+  env: process.env,
+  securityAudit,
+}) : null;
+const supportHealthService = supportService ? createSupportHealthService({ supportService, attachmentService: supportAttachmentService, env: process.env }) : null;
+if (supportService && customerAuthService && customerSessionService) app.use('/api/customer', createSupportRouter({
+  customerAuthService,
+  customerSessionService,
+  readiness: customerAuthReadiness,
+  supportService,
+  securityAudit,
+}));
 if (customerDashboardService && customerAssetRepository) customerDashboardService.setAssetSummaryService(customerAssetRepository);
 loyaltyService = loyaltyLedgerRepository && customerOrderRepository ? createLoyaltyService({
   repository: loyaltyLedgerRepository,
@@ -667,6 +724,8 @@ productionReadinessService = createProductionReadinessService({
     catalogHealthService,
     checkoutHealthService: canonicalCheckoutHealthService,
     customerAuthReadiness,
+    customerProfileHealthService: customerProfileService,
+    supportHealthService,
     loyaltyHealthService: loyaltyService,
     referralHealthService: createReferralHealthService({ referralService }),
     notificationHealthService: createCustomerNotificationHealthService({ notificationService: customerNotificationService }),
@@ -722,6 +781,7 @@ if (customerNotificationService && customerAuthService && customerSessionService
 }));
 if (loyaltyService) app.use('/api/admin', createLoyaltyAdminRouter({ loyaltyService }));
 if (referralService) app.use('/api/admin', createReferralAdminRouter({ referralService }));
+if (supportService) app.use('/api/admin', createSupportAdminRouter({ supportService }));
 app.use('/api', createFulfillmentRouter({ orderRepository: canonicalOrderRepository }));
 app.use('/api/user', (_req, res) => {
   res.set('Deprecation', 'true');

@@ -11,6 +11,13 @@ const eventCopy = {
   REFERRAL_QUALIFIED: ['Gioi thieu da du dieu kien', 'Moi quan he gioi thieu da dat su kien du dieu kien.'],
   REFERRAL_REWARD: ['Thuong gioi thieu', 'Thuong gioi thieu da duoc ghi nhan vao so cai diem.'],
   SECURITY_EVENT: ['Bao mat tai khoan', 'Tai khoan cua ban vua co mot su kien bao mat.'],
+  SUPPORT_TICKET_CREATED: ['Ho tro da tiep nhan', 'Yeu cau ho tro cua ban da duoc tao.'],
+  SUPPORT_REPLY_RECEIVED: ['Phan hoi ho tro moi', 'Yeu cau ho tro cua ban co phan hoi moi.'],
+  SUPPORT_STATUS_CHANGED: ['Cap nhat ho tro', 'Trang thai yeu cau ho tro cua ban da thay doi.'],
+  SUPPORT_TICKET_CLOSED: ['Ho tro da dong', 'Yeu cau ho tro cua ban da duoc dong.'],
+  SECURITY_PROFILE_CHANGED: ['Ho so da cap nhat', 'Thong tin ho so tai khoan cua ban da thay doi.'],
+  SECURITY_PASSWORD_CHANGED: ['Mat khau da thay doi', 'Mat khau tai khoan cua ban da duoc thay doi.'],
+  SECURITY_SESSION_REVOKED: ['Phien da thu hoi', 'Mot phien dang nhap cua ban da bi thu hoi.'],
 };
 
 export const createNotificationEventProcessor = ({ notificationService, logger = console } = {}) => ({

@@ -1,0 +1,5 @@
+export interface CustomerSupportTicket { id: string; customerId: string; subject: string; category: string; status: string; priority: string; orderId: string | null; customerAssetId: string | null; assignedAdminId: string | null; createdAt: string; updatedAt: string; closedAt: string | null; }
+export interface CustomerSupportMessage { id: string; ticketId: string; senderType: 'CUSTOMER' | 'ADMIN'; senderCustomerId: string | null; senderAdminId: string | null; visibility: 'CUSTOMER' | 'INTERNAL'; body: string; createdAt: string; editedAt: string | null; }
+export interface CustomerSupportAttachment { id: string; ticketId: string; messageId: string | null; uploadedByType: 'CUSTOMER' | 'ADMIN'; originalName: string; mimeType: string; sizeBytes: number; checksum: string; status: string; createdAt: string; scanner?: string; risk?: string | null; }
+export interface CustomerSupportDetail { ticket: CustomerSupportTicket; messages: CustomerSupportMessage[]; attachments: CustomerSupportAttachment[]; }
+export interface CustomerSupportList { items: CustomerSupportTicket[]; pagination: { page: number; pageSize: number; totalItems: number; totalPages: number }; }

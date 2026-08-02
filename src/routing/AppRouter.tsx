@@ -25,7 +25,6 @@ import { AccountLayout } from '../pages/account/AccountLayout';
 import { AccountOverviewPage } from '../pages/account/AccountOverviewPage';
 import { AccountOrdersPage } from '../pages/account/AccountOrdersPage';
 import { AccountOrderDetailPage } from '../pages/account/AccountOrderDetailPage';
-import { AccountComingSoonPage } from '../pages/account/AccountComingSoonPage';
 import { AccountEsimsPage } from '../pages/account/AccountEsimsPage';
 import { AccountEsimDetailPage } from '../pages/account/AccountEsimDetailPage';
 import { AccountPhysicalSimsPage } from '../pages/account/AccountPhysicalSimsPage';
@@ -36,6 +35,11 @@ import { AccountTopupDetailPage } from '../pages/account/AccountTopupDetailPage'
 import { AccountLoyaltyPage } from '../pages/account/AccountLoyaltyPage';
 import { AccountReferralsPage } from '../pages/account/AccountReferralsPage';
 import { AccountNotificationsPage } from '../pages/account/AccountNotificationsPage';
+import { AccountProfilePage } from '../pages/account/AccountProfilePage';
+import { AccountAddressesPage } from '../pages/account/AccountAddressesPage';
+import { AccountSecurityPage } from '../pages/account/AccountSecurityPage';
+import { AccountSupportPage } from '../pages/account/AccountSupportPage';
+import { AccountSupportTicketPage } from '../pages/account/AccountSupportTicketPage';
 import '../App.css';
 
 const PublicLayout = () => {
@@ -75,7 +79,10 @@ export const AppRouter: React.FC = () => <RouteErrorBoundary><ScrollRestoration 
     <Route index element={<AccountOverviewPage />} />
     <Route path="don-hang" element={<AccountOrdersPage />} />
     <Route path="don-hang/:orderId" element={<AccountOrderDetailPage />} />
-    <Route path="thong-tin" element={<AccountComingSoonPage />} />
+    <Route path="thong-tin" element={<AccountProfilePage />} />
+    <Route path="ho-so" element={<AccountProfilePage />} />
+    <Route path="dia-chi" element={<AccountAddressesPage />} />
+    <Route path="bao-mat" element={<AccountSecurityPage />} />
     <Route path="esim" element={<AccountEsimsPage />} />
     <Route path="esim/:esimId" element={<AccountEsimDetailPage />} />
     <Route path="sim-thiet-bi" element={<AccountPhysicalSimsPage />} />
@@ -86,7 +93,8 @@ export const AppRouter: React.FC = () => <RouteErrorBoundary><ScrollRestoration 
     <Route path="diem-thuong" element={<AccountLoyaltyPage />} />
     <Route path="gioi-thieu" element={<AccountReferralsPage />} />
     <Route path="thong-bao" element={<AccountNotificationsPage />} />
-    <Route path="ho-tro" element={<AccountComingSoonPage />} />
+    <Route path="ho-tro" element={<AccountSupportPage />} />
+    <Route path="ho-tro/:ticketId" element={<AccountSupportTicketPage />} />
   </Route>
   <Route path="quan-tri" element={<ProtectedRoute><PrivateAdmin /></ProtectedRoute>} />
   <Route path="quan-tri/dang-nhap" element={<LoginPage />} />

@@ -57,6 +57,10 @@ export const createPostgresCustomerSessionRepository = ({ pool } = {}) => {
       const result = await pool.query('UPDATE customer_sessions SET revoked_at = NOW(), revoke_reason = $3 WHERE id = $1 AND customer_id = $2 AND revoked_at IS NULL RETURNING *', [sessionId, customerId, reason]);
       return mapSession(result.rows[0]);
     },
+    async revokeOtherSessions(customerId, currentSessionId, reason) {
+      const result = await pool.query('UPDATE customer_sessions SET revoked_at = NOW(), revoke_reason = $3 WHERE customer_id = $1 AND id <> $2 AND revoked_at IS NULL RETURNING id', [customerId, currentSessionId, reason]);
+      return result.rowCount;
+    },
     async cleanup({ batchSize = 500, revokedRetentionHours = 720 } = {}) {
       const result = await pool.query("WITH candidates AS (SELECT id FROM customer_sessions WHERE expires_at < NOW() OR (revoked_at IS NOT NULL AND revoked_at < NOW() - ($2::TEXT || ' hours')::INTERVAL) ORDER BY expires_at NULLS FIRST LIMIT $1) DELETE FROM customer_sessions WHERE id IN (SELECT id FROM candidates)", [batchSize, revokedRetentionHours]);
       return result.rowCount;

@@ -167,14 +167,37 @@ export const createCustomerAuthService = ({
       await sessionService.revoke(session, 'logout');
       await audit('CUSTOMER_LOGOUT', customerId, requestId);
     },
-    async listSessions(customerId) {
+    async listSessions(customerId, { currentSessionId = null } = {}) {
       const sessions = await customerSessionRepository.listByUserId(customerId);
       return sessions.map((session) => ({
         id: session.id,
+        current: session.id === currentSessionId,
         createdAt: session.createdAt,
         lastSeenAt: session.lastSeenAt,
+        lastAuthenticatedAt: session.lastAuthenticatedAt,
         expiresAt: session.expiresAt,
       }));
+    },
+    async changePassword({ session, customerId, currentPassword, newPassword, requestId }) {
+      const customer = await customerRepository.findById(customerId);
+      const validation = validatePassword(newPassword);
+      if (!customer || !await verifyPassword(String(currentPassword ?? ''), customer.passwordHash) || !validation.valid) {
+        await audit('CUSTOMER_PASSWORD_CHANGE_FAILURE', customerId, requestId);
+        throw codedError('PASSWORD_CHANGE_FAILED', 'Password change failed.');
+      }
+      const timestamp = now().toISOString();
+      await customerRepository.update(customerId, {
+        passwordHash: await hashPassword(newPassword),
+        passwordChangedAt: timestamp,
+        credentialVersion: Number(customer.credentialVersion ?? 1) + 1,
+        failedLoginCount: 0,
+        lockedUntil: null,
+        updatedAt: timestamp,
+      });
+      if (customerSessionRepository.revokeOtherSessions) await customerSessionRepository.revokeOtherSessions(customerId, session.id, 'password_changed');
+      await customerSessionRepository.update(session.id, { lastAuthenticatedAt: timestamp });
+      await audit('CUSTOMER_PASSWORD_CHANGED', customerId, requestId);
+      return { changedAt: timestamp };
     },
     async revokeSession(sessionId, customerId, requestId) {
       const session = await customerSessionRepository.revokeOwnedSession(sessionId, customerId, 'customer_session_revoked');

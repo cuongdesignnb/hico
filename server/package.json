@@ -45,6 +45,8 @@
     "loyalty:reconcile": "node scripts/reconcileLoyaltyBalances.js",
     "referrals:validate": "node scripts/validateReferralData.js",
     "customer-notifications:validate": "node scripts/validateCustomerNotifications.js",
+    "customer-profile:validate": "node scripts/validateCustomerProfileData.js",
+    "support:validate": "node scripts/validateSupportData.js",
     "referrals:backfill": "node scripts/backfillReferralRelationships.js",
     "customer-orders:docker-qa": "node scripts/orderOwnershipDockerQa.js",
     "production:validate": "node scripts/validateProductionEnvironment.js",

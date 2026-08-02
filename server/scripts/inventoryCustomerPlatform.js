@@ -60,6 +60,19 @@ const sourceFiles = [
   'server/referrals/referralService.js',
   'server/customerNotifications/customerNotificationRouter.js',
   'server/customerNotifications/customerNotificationService.js',
+  'server/customer/customerProfileService.js',
+  'server/customer/customerProfileRouter.js',
+  'server/customer/customerProfileRepository.js',
+  'server/support/supportService.js',
+  'server/support/supportRouter.js',
+  'server/support/supportAttachmentService.js',
+  'src/pages/account/AccountProfilePage.tsx',
+  'src/pages/account/AccountAddressesPage.tsx',
+  'src/pages/account/AccountSecurityPage.tsx',
+  'src/pages/account/AccountSupportPage.tsx',
+  'src/pages/account/AccountSupportTicketPage.tsx',
+  'src/services/customerProfileApi.ts',
+  'src/services/customerSupportApi.ts',
 ];
 
 const accountProductionFiles = sourceFiles.filter((relativePath) => relativePath.startsWith('src/pages/account/') || relativePath.startsWith('src/services/customer'));
@@ -139,6 +152,12 @@ const demoFacts = [
     source: 'src/pages/account/AccountReferralsPage.tsx',
     marker: 'HICOSON50',
     finding: 'Referral page contains a demo referral code.',
+  },
+  {
+    code: 'MOCK_CUSTOMER_PROFILE_SOURCE',
+    source: 'src/pages/account/AccountProfilePage.tsx',
+    marker: 'demoCustomerProfile',
+    finding: 'Customer profile source contains a demo profile marker.',
   },
 ];
 
@@ -251,6 +270,8 @@ export const inventoryCustomerPlatform = async ({
   const loyaltySource = sourceFiles.filter((relativePath) => relativePath.includes('Loyalty') || relativePath.includes('loyalty')).map((relativePath) => sources[relativePath] ?? '').join('\n');
   const referralSource = sourceFiles.filter((relativePath) => relativePath.includes('Referral') || relativePath.includes('referral')).map((relativePath) => sources[relativePath] ?? '').join('\n');
   const notificationSource = sourceFiles.filter((relativePath) => relativePath.includes('Notification') || relativePath.includes('notification')).map((relativePath) => sources[relativePath] ?? '').join('\n');
+  const profileSource = sourceFiles.filter((relativePath) => relativePath.includes('customerProfile') || relativePath.includes('AccountProfile') || relativePath.includes('AccountAddresses') || relativePath.includes('AccountSecurity')).map((relativePath) => sources[relativePath] ?? '').join('\n');
+  const supportSource = sourceFiles.filter((relativePath) => relativePath.includes('support') || relativePath.includes('Support')).map((relativePath) => sources[relativePath] ?? '').join('\n');
   const appRouterSource = sources['src/routing/AppRouter.tsx'] ?? '';
 
   return {
@@ -290,6 +311,14 @@ export const inventoryCustomerPlatform = async ({
     browserStorage: {
       keys: sources['src/context/AppContext.tsx']?.includes('hico_cart') ? ['hico_cart'] : [],
       authenticationKeys: [],
+    },
+    customerSurface: {
+      demoCustomerProfileCount: datasetsWithRecords.customerProfiles.count,
+      hardcodedContactCount: (profileSource.match(/(?:@example\.|@test\.|demoCustomer|mock.*email|phone\s*[:=])/gi) ?? []).length,
+      fakeSecurityDataCount: (profileSource.match(/(?:mock|demo|fixture).{0,30}(?:session|security|password)/gi) ?? []).length,
+      fakeSupportDataCount: (supportSource.match(/(?:mock|demo|fixture).{0,30}(?:ticket|support|message)/gi) ?? []).length,
+      publicAttachmentPathCount: (supportSource.match(/(?:\/uploads|express\.static|public.*attachment)/gi) ?? []).length,
+      localProfileStateCount: (profileSource.match(/localStorage|sessionStorage/gi) ?? []).length,
     },
     sensitiveDataPolicy: {
       rawValuesIncluded: false,

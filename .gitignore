@@ -52,6 +52,7 @@ server/backups/
 server/restore-output/
 server/uploads/inventory_movements.json
 server/uploads/inventory.json
+server/private/
 
 # Exclude legacy archives and old folders
 old/

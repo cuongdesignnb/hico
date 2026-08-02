@@ -141,7 +141,7 @@ export const createCustomerAuthRouter = ({
     const csrfToken = parseCookies(req.get('cookie')).hico_customer_csrf;
     return res.set('Cache-Control', 'no-store').json({ customer: req.customerAuth.customer, csrfToken });
   });
-  router.get('/sessions', ...secured, async (req, res) => res.set('Cache-Control', 'no-store').json({ sessions: await customerAuthService.listSessions(req.customerAuth.customer.id) }));
+  router.get('/sessions', ...secured, async (req, res) => res.set('Cache-Control', 'no-store').json({ sessions: await customerAuthService.listSessions(req.customerAuth.customer.id, { currentSessionId: req.customerAuth.session.id }) }));
   router.delete('/sessions/:sessionId', ...securedWrite, async (req, res) => {
     const revoked = await customerAuthService.revokeSession(req.params.sessionId, req.customerAuth.customer.id, req.requestId);
     if (!revoked) return res.status(404).json({ error: 'Customer session was not found.', code: 'CUSTOMER_SESSION_INVALID' });
