@@ -27,6 +27,7 @@ test('customer readiness reports healthy only for real shared dependencies', asy
         { version: '004_auth_indexes.sql' },
         { version: '005_admin_permission_seed.sql' },
         { version: '006_customer_identity.sql' },
+        { version: '007_order_ownership.sql' },
       ] };
       return { rows: [] };
     },

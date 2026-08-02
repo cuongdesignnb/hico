@@ -45,6 +45,7 @@ import { createFulfillmentIdempotencyRepository } from './fulfillment/fulfillmen
 import { createManualQrRepository } from './fulfillment/manualQrRepository.js';
 import { createInventoryRepository } from './fulfillment/inventoryRepository.js';
 import { createOrderRepository } from './orders/orderRepository.js';
+import { createPostgresOrderRepository } from './orders/postgresOrderRepository.js';
 import { createOrderService } from './orders/orderService.js';
 import { createWorldmoveClient } from './providers/worldmove/worldmoveClient.js';
 import { createWorldmoveWebhookRouter } from './webhooks/worldmoveWebhookRouter.js';
@@ -66,6 +67,8 @@ import { createCustomerAuthService } from './customer/customerAuthService.js';
 import { createCustomerAuthCookies } from './customer/customerAuthCookies.js';
 import { createCustomerAuthReadiness } from './customer/customerAuthReadiness.js';
 import { createCustomerAuthRouter } from './customer/customerAuthRouter.js';
+import { createCustomerOrderRouter } from './customer/customerOrderRouter.js';
+import { createCustomerOrderService } from './customer/customerOrderService.js';
 import { createCustomerTokenDelivery } from './customer/customerTokenDelivery.js';
 import { createRequestId } from './security/requestId.js';
 import { createAdminRequestAudit, createSecurityAudit } from './security/securityAudit.js';
@@ -184,6 +187,13 @@ const customerAuthService = customerRepository && customerSessionService ? creat
   securityAudit,
 }) : null;
 const customerAuthCookies = createCustomerAuthCookies({ env: process.env });
+const customerOrderRepository = authPool ? createPostgresOrderRepository({ pool: authPool }) : null;
+const customerOrderService = customerOrderRepository && customerAuthService ? createCustomerOrderService({
+  pool: authPool,
+  orderRepository: customerOrderRepository,
+  tokenDelivery: customerTokenDelivery,
+  env: process.env,
+}) : null;
 let productionReadinessService;
 const readinessDelegate = {
   evaluate: (...args) => productionReadinessService?.evaluate(...args) ?? Promise.resolve({ status: 'not_ready', adminWritesAllowed: false, writesEnabled: false, criticalChecksPassed: 0, criticalChecksTotal: 0, failedChecks: ['READINESS_INITIALIZING'], checkedAt: new Date().toISOString() }),
@@ -258,6 +268,12 @@ app.use('/api/customer', createCustomerAuthRouter({
   env: process.env,
   securityAudit,
 }));
+if (customerOrderService) app.use('/api/customer', createCustomerOrderRouter({
+  customerAuthService,
+  sessionService: customerSessionService,
+  readiness: customerAuthReadiness,
+  customerOrderService,
+}));
 app.get('/api/health/session-store', async (_req, res) => {
   const health = await sessionHealthService.getHealth();
   return res.status(health.status === 'healthy' ? 200 : 503).json(health);
@@ -265,6 +281,12 @@ app.get('/api/health/session-store', async (_req, res) => {
 app.get('/api/health/customer-auth', async (_req, res) => {
   const health = await customerAuthReadiness.evaluate();
   return res.status(health.status === 'healthy' ? 200 : 503).json(health);
+});
+app.get('/api/health/customer-orders', async (_req, res) => {
+  const auth = await customerAuthReadiness.evaluate();
+  const orders = customerOrderRepository ? await customerOrderRepository.health() : { status: 'unavailable', persistence: 'none' };
+  const healthy = auth.status === 'healthy' && orders.status === 'healthy';
+  return res.status(healthy ? 200 : 503).json({ status: healthy ? 'healthy' : 'not_ready', auth: auth.status, orders });
 });
 app.get('/api/health/metrics', (_req, res) => res.json({ status: 'healthy', counters: metrics.snapshot() }));
 app.get('/api/health/security', async (_req, res) => {
@@ -467,9 +489,10 @@ const ordersDb = createPersistentMap('orders.json', (m) => {
   });
 });
 
-const canonicalOrderRepository = createOrderRepository({
+const legacyOrderRepository = createOrderRepository({
   filePath: path.join(__dirname, 'uploads', 'orders.json'),
 });
+const canonicalOrderRepository = customerOrderRepository ?? legacyOrderRepository;
 const canonicalFulfillmentRepository = createFulfillmentRepository();
 const canonicalFulfillmentIdempotencyRepository = createFulfillmentIdempotencyRepository();
 const canonicalQrRepository = createManualQrRepository();
@@ -546,9 +569,15 @@ app.use('/api', createCheckoutRouter({
   catalogHealthService,
   canonicalRepository: createCanonicalCatalogRepository({ uploadsDirectory: catalogUploadsDirectory }),
   checkoutHealthService: canonicalCheckoutHealthService,
+  customerAuthService,
   env: process.env,
 }));
 app.use('/api', createFulfillmentRouter({ orderRepository: canonicalOrderRepository }));
+app.use('/api/user', (_req, res) => {
+  res.set('Deprecation', 'true');
+  res.set('Sunset', 'Thu, 31 Dec 2026 23:59:59 GMT');
+  return res.status(410).json({ error: 'This endpoint is no longer available.', code: 'LEGACY_USER_API_DEPRECATED' });
+});
 
 const devicesDb = createPersistentMap('devices.json', (m) => {
   m.set('device-wifi-mini', {

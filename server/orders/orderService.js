@@ -2,12 +2,13 @@ import { createOrderId } from './orderRepository.js';
 import { projectOrderForDashboard } from './orderValidation.js';
 
 export const createOrderService = ({ repository, fulfillmentService }) => ({
-  async createCanonicalOrder({ request, validated, snapshotFactory }) {
+  async createCanonicalOrder({ request, validated, snapshotFactory, ownership }) {
     const order = snapshotFactory({
       orderId: createOrderId(),
       request,
       validated,
       createdAt: new Date().toISOString(),
+      ownership,
     });
     const saved = await repository.create(order);
     const fulfillment = await fulfillmentService.createForOrder(saved);

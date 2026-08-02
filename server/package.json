@@ -33,6 +33,8 @@
     "customer:inventory": "node scripts/inventoryCustomerPlatform.js",
     "customer-auth:validate": "node scripts/validateCustomerAuth.js",
     "customer-auth:docker-qa": "node scripts/customerAuthDockerQa.js",
+    "orders:ownership:migrate": "node scripts/migrateOrderOwnership.js",
+    "orders:ownership:migrate:write": "node scripts/migrateOrderOwnership.js --write",
     "production:validate": "node scripts/validateProductionEnvironment.js",
     "production:launch:validate": "node scripts/validateProductionLaunch.js",
     "production:domain:verify": "node scripts/verifyProductionDomain.js",

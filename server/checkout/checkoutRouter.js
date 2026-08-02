@@ -1,6 +1,7 @@
 import express from 'express';
 import { readCheckoutEngine } from './checkoutValidation.js';
 import { CheckoutError, sendCheckoutError } from './checkoutError.js';
+import { parseCookies } from '../auth/authCookies.js';
 
 export const createCheckoutRouter = ({
   checkoutService,
@@ -9,6 +10,7 @@ export const createCheckoutRouter = ({
   catalogHealthService,
   canonicalRepository,
   checkoutHealthService,
+  customerAuthService,
   env = process.env,
 } = {}) => {
   const router = express.Router();
@@ -40,12 +42,14 @@ export const createCheckoutRouter = ({
     });
   });
   router.post('/checkout/validate', requireReadyCanonical((req) => checkoutService.validate(req.body)));
-  router.post('/checkout/orders', requireReadyCanonical((req) => checkoutService.createOrder(req.body)));
-  router.get('/checkout/orders/:orderId', handleExistingOrder(async (req) => {
-    const order = await orderRepository.get(req.params.orderId);
-    if (!order) throw new CheckoutError('Order not found.', 'ORDER_NOT_FOUND', 404);
-    return order;
+  router.post('/checkout/orders', requireReadyCanonical(async (req) => {
+    const token = parseCookies(req.get('cookie')).hico_customer_session;
+    if (!token) return checkoutService.createOrder(req.body);
+    if (!customerAuthService) throw new CheckoutError('Customer authentication is unavailable.', 'CUSTOMER_AUTH_NOT_READY', 503);
+    const auth = await customerAuthService.authenticate(token, req.requestId);
+    if (auth.status !== 'active') throw new CheckoutError('Customer authentication is required.', 'CUSTOMER_AUTH_REQUIRED', 401);
+    return checkoutService.createOrder(req.body, auth.customer);
   }));
-  router.post('/checkout/orders/:orderId/retry-fulfillment', handleExistingOrder((req) => fulfillmentService.retry(req.params.orderId)));
+  router.post('/admin/orders/:orderId/retry-fulfillment', handleExistingOrder((req) => fulfillmentService.retry(req.params.orderId)));
   return router;
 };

@@ -48,7 +48,7 @@ export const createCheckoutService = ({
         warnings: [],
       };
     },
-    async createOrder(request) {
+    async createOrder(request, customerIdentity = null) {
       validateCheckoutRequest(request);
       if (typeof request.idempotencyKey !== 'string' || request.idempotencyKey.trim() === '') {
         throw new CheckoutError('Thiếu idempotencyKey.', 'CHECKOUT_INVALID_REQUEST');
@@ -62,11 +62,25 @@ export const createCheckoutService = ({
           }
           return { ...existing.response, idempotentReplay: true };
         }
-        const validated = await load(request, true);
+        const effectiveRequest = customerIdentity ? {
+          ...request,
+          customer: {
+            name: customerIdentity.displayName || request.customer?.name || 'Customer',
+            email: customerIdentity.email,
+            phone: customerIdentity.phone || request.customer?.phone || 'not-provided',
+          },
+        } : request;
+        const validated = await load(effectiveRequest, true);
         const order = await orderService.createCanonicalOrder({
-          request,
+          request: effectiveRequest,
           validated,
           snapshotFactory: createOrderSnapshot,
+          ownership: customerIdentity ? { customerId: customerIdentity.id, ownershipStatus: 'OWNED' } : {
+            customerId: null,
+            ownershipStatus: 'GUEST_UNCLAIMED',
+            guestEmailSnapshot: validated.customer.email,
+            guestPhoneSnapshot: validated.customer.phone,
+          },
         });
         const response = { order, orderId: order.orderId, status: order.status };
         await idempotencyRepository.save({ key: request.idempotencyKey, payload: request, orderId: order.orderId, response });

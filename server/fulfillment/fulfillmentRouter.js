@@ -1,16 +1,10 @@
 import express from 'express';
-import { projectOrderForDashboard } from '../orders/orderValidation.js';
-import { sendCheckoutError } from '../checkout/checkoutError.js';
-
-export const createFulfillmentRouter = ({ orderRepository } = {}) => {
+export const createFulfillmentRouter = () => {
   const router = express.Router();
-  router.get('/user/orders', async (req, res) => {
-    try {
-      const orders = await orderRepository.list();
-      return res.json(orders.map(projectOrderForDashboard));
-    } catch (error) {
-      return sendCheckoutError(res, error);
-    }
+  router.get('/user/orders', (_req, res) => {
+    res.set('Deprecation', 'true');
+    res.set('Sunset', 'Thu, 31 Dec 2026 23:59:59 GMT');
+    return res.status(410).json({ error: 'This endpoint is no longer available.', code: 'LEGACY_USER_API_DEPRECATED' });
   });
   return router;
 };

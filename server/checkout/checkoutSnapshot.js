@@ -25,7 +25,7 @@ export const createOrderItemSnapshot = ({ product, variant, quantity }) => ({
   duration: optional(variant.duration),
 });
 
-export const createOrderSnapshot = ({ orderId, request, validated, createdAt }) => ({
+export const createOrderSnapshot = ({ orderId, request, validated, createdAt, ownership = {} }) => ({
   orderId,
   checkoutEngine: 'canonical',
   fulfillmentVersion: 1,
@@ -43,4 +43,8 @@ export const createOrderSnapshot = ({ orderId, request, validated, createdAt }) 
   )),
   fulfillmentRecordIds: [],
   idempotencyKey: request.idempotencyKey,
+  customerId: ownership.customerId ?? null,
+  ownershipStatus: ownership.ownershipStatus ?? 'GUEST_UNCLAIMED',
+  guestEmailSnapshot: ownership.guestEmailSnapshot ?? null,
+  guestPhoneSnapshot: ownership.guestPhoneSnapshot ?? null,
 });
