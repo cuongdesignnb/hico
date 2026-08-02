@@ -72,6 +72,10 @@ import { createCustomerOrderService } from './customer/customerOrderService.js';
 import { createCustomerDashboardRepository } from './customer/customerDashboardRepository.js';
 import { createCustomerDashboardService } from './customer/customerDashboardService.js';
 import { createCustomerDashboardRouter } from './customer/customerDashboardRouter.js';
+import { createCustomerAssetRepository } from './customer/customerAssetRepository.js';
+import { createCustomerAssetRevealService } from './customer/customerAssetRevealService.js';
+import { createCustomerAssetAuditRepository } from './customer/customerAssetAuditRepository.js';
+import { createCustomerAssetRouter } from './customer/customerAssetRouter.js';
 import { createCustomerTokenDelivery } from './customer/customerTokenDelivery.js';
 import { createRequestId } from './security/requestId.js';
 import { createAdminRequestAudit, createSecurityAudit } from './security/securityAudit.js';
@@ -307,6 +311,23 @@ app.get('/api/health/customer-dashboard', async (_req, res) => {
   const healthy = auth.status === 'healthy' && dashboard.status === 'healthy';
   return res.status(healthy ? 200 : 503).json({ status: healthy ? 'healthy' : 'not_ready', auth: auth.status, dashboard });
 });
+app.get('/api/health/customer-assets', async (_req, res) => {
+  const auth = await customerAuthReadiness.evaluate();
+  const assets = customerAssetRepository ? await customerAssetRepository.health() : { status: 'unavailable', persistence: 'none' };
+  const healthy = auth.status === 'healthy' && assets.status === 'healthy';
+  const projectionReady = assets.status === 'healthy';
+  return res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'healthy' : 'not_ready',
+    auth: auth.status,
+    assets,
+    esimProjection: projectionReady,
+    physicalSimProjection: projectionReady,
+    deviceProjection: projectionReady,
+    topupProjection: projectionReady,
+    sensitiveReveal: projectionReady && Boolean(customerAssetRevealService),
+    mockAssetsExposed: false,
+  });
+});
 app.get('/api/health/metrics', (_req, res) => res.json({ status: 'healthy', counters: metrics.snapshot() }));
 app.get('/api/health/security', async (_req, res) => {
   const readiness = await readinessDelegate.evaluate();
@@ -517,6 +538,21 @@ const canonicalFulfillmentIdempotencyRepository = createFulfillmentIdempotencyRe
 const canonicalQrRepository = createManualQrRepository();
 const canonicalInventoryRepository = createInventoryRepository();
 const canonicalWebhookEventRepository = createWebhookEventRepository();
+const customerAssetRepository = customerOrderRepository ? createCustomerAssetRepository({
+  orderRepository: customerOrderRepository,
+  fulfillmentRepository: canonicalFulfillmentRepository,
+  env: process.env,
+}) : null;
+const customerAssetAuditRepository = customerRepository ? createCustomerAssetAuditRepository({
+  customerRepository,
+  securityAudit,
+}) : null;
+const customerAssetRevealService = customerAssetRepository ? createCustomerAssetRevealService({
+  assetRepository: customerAssetRepository,
+  auditRepository: customerAssetAuditRepository,
+  env: process.env,
+}) : null;
+if (customerDashboardService && customerAssetRepository) customerDashboardService.setAssetSummaryService(customerAssetRepository);
 const canonicalCatalogReader = createCanonicalCatalogReader({ env: process.env });
 const canonicalFulfillmentService = createFulfillmentService({
   repository: canonicalFulfillmentRepository,
@@ -590,6 +626,15 @@ app.use('/api', createCheckoutRouter({
   checkoutHealthService: canonicalCheckoutHealthService,
   customerAuthService,
   env: process.env,
+}));
+if (customerAssetRepository && customerAssetRevealService && customerAuthService && customerSessionService) app.use('/api/customer', createCustomerAssetRouter({
+  customerAuthService,
+  sessionService: customerSessionService,
+  readiness: customerAuthReadiness,
+  assetRepository: customerAssetRepository,
+  revealService: customerAssetRevealService,
+  env: process.env,
+  securityAudit,
 }));
 app.use('/api', createFulfillmentRouter({ orderRepository: canonicalOrderRepository }));
 app.use('/api/user', (_req, res) => {

@@ -43,6 +43,7 @@ self.addEventListener('fetch', (event) => {
 
   // Private customer data must always come from the network and never enter the SW cache.
   if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname.startsWith('/tai-khoan')) return;
 
   // 1. Network-First Strategy for HTML/Page Navigations (prevents old index.html cache lock)
   if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {

@@ -5,6 +5,7 @@ const mapSession = (row) => row ? {
   csrfTokenHash: row.csrf_hash,
   createdAt: row.created_at?.toISOString?.() ?? row.created_at,
   lastSeenAt: row.last_seen_at?.toISOString?.() ?? row.last_seen_at,
+  lastAuthenticatedAt: row.last_authenticated_at?.toISOString?.() ?? row.last_authenticated_at,
   expiresAt: row.expires_at?.toISOString?.() ?? row.expires_at,
   absoluteExpiresAt: row.absolute_expires_at?.toISOString?.() ?? row.absolute_expires_at,
   revokedAt: row.revoked_at?.toISOString?.() ?? row.revoked_at,
@@ -22,12 +23,12 @@ export const createPostgresCustomerSessionRepository = ({ pool } = {}) => {
     },
     create(session) {
       return pool.query(
-        'INSERT INTO customer_sessions (id, token_hash, customer_id, csrf_hash, created_at, last_seen_at, expires_at, absolute_expires_at, revoked_at, revoke_reason, session_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-        [session.id, session.tokenHash, session.userId, session.csrfTokenHash, session.createdAt, session.lastSeenAt, session.expiresAt, session.absoluteExpiresAt, session.revokedAt, session.revokeReason ?? null, session.sessionVersion ?? 1],
+        'INSERT INTO customer_sessions (id, token_hash, customer_id, csrf_hash, created_at, last_seen_at, last_authenticated_at, expires_at, absolute_expires_at, revoked_at, revoke_reason, session_version) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+        [session.id, session.tokenHash, session.userId, session.csrfTokenHash, session.createdAt, session.lastSeenAt, session.lastAuthenticatedAt ?? null, session.expiresAt, session.absoluteExpiresAt, session.revokedAt, session.revokeReason ?? null, session.sessionVersion ?? 1],
       ).then(() => lookup(session.id));
     },
     async update(sessionId, update) {
-      const allowed = { lastSeenAt: 'last_seen_at', expiresAt: 'expires_at', absoluteExpiresAt: 'absolute_expires_at', revokedAt: 'revoked_at', revokeReason: 'revoke_reason', csrfTokenHash: 'csrf_hash', sessionVersion: 'session_version' };
+      const allowed = { lastSeenAt: 'last_seen_at', lastAuthenticatedAt: 'last_authenticated_at', expiresAt: 'expires_at', absoluteExpiresAt: 'absolute_expires_at', revokedAt: 'revoked_at', revokeReason: 'revoke_reason', csrfTokenHash: 'csrf_hash', sessionVersion: 'session_version' };
       const entries = Object.entries(update).filter(([key]) => key in allowed);
       if (!entries.length) return lookup(sessionId);
       const values = entries.map(([, value]) => value);

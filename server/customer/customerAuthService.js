@@ -128,7 +128,7 @@ export const createCustomerAuthService = ({
         lockedUntil: null,
         updatedAt: timestamp.toISOString(),
       });
-      const credentials = await sessionService.create(activeCustomer.id);
+      const credentials = await sessionService.create(activeCustomer.id, { lastAuthenticatedAt: timestamp.toISOString() });
       await audit('CUSTOMER_LOGIN_SUCCESS', activeCustomer.id, requestId);
       return { customer: publicCustomer(activeCustomer), credentials };
     },
@@ -141,6 +141,18 @@ export const createCustomerAuthService = ({
         return { status: 'revoked' };
       }
       return { status: 'active', session: validation.session, customer: publicCustomer(customer), rawCustomer: customer, requestId };
+    },
+    async reauthenticate({ session, customerId, password, requestId }) {
+      const customer = await customerRepository.findById(customerId);
+      const valid = customer?.status === 'active' && customer.emailVerifiedAt && await verifyPassword(String(password ?? ''), customer.passwordHash);
+      if (!valid) {
+        await audit('CUSTOMER_REAUTH_FAILURE', customerId, requestId);
+        throw codedError('INVALID_CREDENTIALS', 'Customer re-authentication failed.');
+      }
+      const authenticatedAt = now().toISOString();
+      const updatedSession = await customerSessionRepository.update(session.id, { lastAuthenticatedAt: authenticatedAt });
+      await audit('CUSTOMER_REAUTH_SUCCESS', customerId, requestId);
+      return { authenticatedAt, session: updatedSession };
     },
     async refresh(session, customerId, requestId) {
       const credentials = await sessionService.rotate(session);

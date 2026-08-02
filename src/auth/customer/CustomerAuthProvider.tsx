@@ -74,6 +74,11 @@ export const CustomerAuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthenticated(await customerAuthApi.refresh(csrfToken));
   }, [csrfToken, setAuthenticated]);
 
-  const value = useMemo(() => ({ status, customer, error, login, register, logout, refresh }), [customer, error, login, logout, refresh, register, status]);
+  const reauth = useCallback(async (password: string) => {
+    if (!csrfToken) throw new Error('Customer session is unavailable.');
+    await customerAuthApi.reauth(password, csrfToken);
+  }, [csrfToken]);
+
+  const value = useMemo(() => ({ status, customer, error, csrfToken, login, register, logout, refresh, reauth }), [csrfToken, customer, error, login, logout, reauth, refresh, register, status]);
   return <CustomerAuthContext.Provider value={value}>{children}</CustomerAuthContext.Provider>;
 };

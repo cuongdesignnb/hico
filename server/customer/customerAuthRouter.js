@@ -100,6 +100,19 @@ export const createCustomerAuthRouter = ({
     authCookies.set(res, credentials);
     return res.json({ customer: req.customerAuth.customer, csrfToken: credentials.csrfToken });
   });
+  router.post('/auth/reauth', ...securedWrite, limiter('CUSTOMER_RATE_LIMIT_REAUTH_MAX', 10), async (req, res) => {
+    try {
+      await customerAuthService.reauthenticate({
+        session: req.customerAuth.session,
+        customerId: req.customerAuth.customer.id,
+        password: req.body?.password,
+        requestId: req.requestId,
+      });
+      return res.json({ reauthenticated: true });
+    } catch (error) {
+      return toError(res, error);
+    }
+  });
   router.post('/auth/request-password-reset', requireReady, limiter('CUSTOMER_RATE_LIMIT_PASSWORD_RESET_MAX', 5), async (req, res) => {
     try {
       await customerAuthService.requestPasswordReset({ ...req.body, requestId: req.requestId });

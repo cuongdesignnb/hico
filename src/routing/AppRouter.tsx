@@ -26,6 +26,13 @@ import { AccountOverviewPage } from '../pages/account/AccountOverviewPage';
 import { AccountOrdersPage } from '../pages/account/AccountOrdersPage';
 import { AccountOrderDetailPage } from '../pages/account/AccountOrderDetailPage';
 import { AccountComingSoonPage } from '../pages/account/AccountComingSoonPage';
+import { AccountEsimsPage } from '../pages/account/AccountEsimsPage';
+import { AccountEsimDetailPage } from '../pages/account/AccountEsimDetailPage';
+import { AccountPhysicalSimsPage } from '../pages/account/AccountPhysicalSimsPage';
+import { AccountPhysicalSimDetailPage } from '../pages/account/AccountPhysicalSimDetailPage';
+import { AccountDeviceDetailPage } from '../pages/account/AccountDeviceDetailPage';
+import { AccountTopupsPage } from '../pages/account/AccountTopupsPage';
+import { AccountTopupDetailPage } from '../pages/account/AccountTopupDetailPage';
 import '../App.css';
 
 const PublicLayout = () => {
@@ -66,7 +73,13 @@ export const AppRouter: React.FC = () => <RouteErrorBoundary><ScrollRestoration 
     <Route path="don-hang" element={<AccountOrdersPage />} />
     <Route path="don-hang/:orderId" element={<AccountOrderDetailPage />} />
     <Route path="thong-tin" element={<AccountComingSoonPage />} />
-    <Route path="esim" element={<AccountComingSoonPage />} />
+    <Route path="esim" element={<AccountEsimsPage />} />
+    <Route path="esim/:esimId" element={<AccountEsimDetailPage />} />
+    <Route path="sim-thiet-bi" element={<AccountPhysicalSimsPage />} />
+    <Route path="sim-thiet-bi/sim/:assetId" element={<AccountPhysicalSimDetailPage />} />
+    <Route path="sim-thiet-bi/thiet-bi/:assetId" element={<AccountDeviceDetailPage />} />
+    <Route path="nap-them" element={<AccountTopupsPage />} />
+    <Route path="nap-them/:topupId" element={<AccountTopupDetailPage />} />
     <Route path="diem-thuong" element={<AccountComingSoonPage />} />
     <Route path="ho-tro" element={<AccountComingSoonPage />} />
   </Route>

@@ -31,6 +31,7 @@ export const login = (email: string, password: string) => request<CustomerPayloa
 export const register = (input: { email: string; password: string; displayName: string; phone?: string }) => request<{ customer: Customer; verificationRequired: boolean }>('/api/customer/auth/register', { method: 'POST', body: JSON.stringify(input) });
 export const logout = (csrfToken: string) => request<void>('/api/customer/auth/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken } });
 export const refresh = (csrfToken: string) => request<CustomerPayload>('/api/customer/auth/refresh', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken } });
+export const reauth = (password: string, csrfToken: string) => request<{ reauthenticated: boolean }>('/api/customer/auth/reauth', { method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ password }) });
 export const requestPasswordReset = (email: string) => request<{ accepted: boolean }>('/api/customer/auth/request-password-reset', { method: 'POST', body: JSON.stringify({ email }) });
 export const resetPassword = (token: string, password: string) => request<void>('/api/customer/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, password }) });
 export const verifyEmail = (token: string) => request<void>('/api/customer/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) });

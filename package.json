@@ -12,7 +12,10 @@
     "security:audit": "npm audit --omit=dev && npm --prefix server audit --omit=dev",
     "security:gate": "node scripts/security-gate.mjs",
     "customer:inventory": "npm --prefix server run customer:inventory",
+    "customer-assets:backfill": "npm --prefix server run customer-assets:backfill",
+    "customer-assets:validate": "npm --prefix server run customer-assets:validate",
     "customer-auth:validate": "npm --prefix server run customer-auth:validate",
+    "customer-dashboard:validate": "npm --prefix server run customer-dashboard:validate",
     "production:launch:validate": "npm --prefix server run production:launch:validate",
     "production:report": "npm --prefix server run production:report"
   },

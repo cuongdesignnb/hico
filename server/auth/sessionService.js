@@ -19,7 +19,7 @@ export const createSessionService = ({
   const tokenHashCandidates = (token) => [sessionSecret, ...previousSessionSecrets].filter(Boolean).map((secret) => hashValue(token, secret));
   const csrfHashCandidates = (token) => [csrfSecret, ...previousCsrfSecrets].filter(Boolean).map((secret) => hashValue(token, secret));
 
-  const create = async (userId) => {
+  const create = async (userId, { lastAuthenticatedAt = null } = {}) => {
     const issuedAt = now();
     const token = randomBytes(32).toString('base64url');
     const csrfToken = randomBytes(24).toString('base64url');
@@ -32,6 +32,7 @@ export const createSessionService = ({
       expiresAt: new Date(issuedAt.getTime() + sessionTtlMinutes * 60_000).toISOString(),
       absoluteExpiresAt: new Date(issuedAt.getTime() + absoluteTtlMinutes * 60_000).toISOString(),
       lastSeenAt: issuedAt.toISOString(),
+      lastAuthenticatedAt,
       revokedAt: null,
     };
     await sessionRepository.create(session);
@@ -64,7 +65,7 @@ export const createSessionService = ({
         ? await sessionRepository.revokeIfActive(session.id, 'rotated')
         : true;
       if (!revoked) return null;
-      return create(session.userId);
+      return create(session.userId, { lastAuthenticatedAt: session.lastAuthenticatedAt ?? null });
     },
     async revoke(session, reason = 'logout') { await sessionRepository.revokeById(session.id, reason); },
     async revokeAll(userId, reason = 'revoke_all') { await sessionRepository.revokeByUserId(userId, reason); },

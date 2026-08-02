@@ -13,8 +13,10 @@ export interface CustomerAuthContextValue {
   status: CustomerAuthStatus;
   customer: Customer | null;
   error: string | null;
+  csrfToken: string;
   login: (email: string, password: string) => Promise<void>;
   register: (input: { email: string; password: string; displayName: string; phone?: string }) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  reauth: (password: string) => Promise<void>;
 }

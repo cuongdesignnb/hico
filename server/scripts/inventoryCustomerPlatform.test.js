@@ -97,5 +97,7 @@ test('customer inventory is aggregate-only and classifies ownership without emai
     accountApiUserReferenceCount: 0,
     hardCodedSensitiveDataCount: 0,
     legacyMockFiles: 1,
+    assetApiUserReferenceCount: 0,
+    hardCodedAssetValueCount: 0,
   });
 });

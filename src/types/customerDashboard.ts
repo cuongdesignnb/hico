@@ -6,5 +6,12 @@ export interface CustomerDashboardSummary {
   fulfillment: { pendingOrders: number; pendingItems: number };
   recentOrders: CustomerOrder[];
   capabilities: { assets: boolean; loyalty: boolean; notifications: boolean; support: boolean };
+  assetSummary: {
+    esims: { total: number; active: number; pending: number };
+    physicalSims: { total: number; pendingShip: number; shipped: number };
+    devices: { total: number };
+    topups: { total: number; pending: number; completed: number };
+    available: { esims: boolean; physicalSims: boolean; devices: boolean; topups: boolean };
+  };
   generatedAt: string;
 }

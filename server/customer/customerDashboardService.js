@@ -3,23 +3,28 @@ import { projectCustomerDashboardSummary, projectCustomerOrder } from './custome
 
 const notFound = () => Object.assign(new Error('Order not found.'), { code: 'ORDER_NOT_FOUND' });
 
-export const createCustomerDashboardService = ({ repository, env = process.env } = {}) => ({
+export const createCustomerDashboardService = ({ repository, env = process.env, assetSummaryService = null } = {}) => {
+  let assets = assetSummaryService;
+  return {
+  setAssetSummaryService(service) { assets = service; },
   async summary(customer) {
     const query = { page: 1, pageSize: 5, sort: 'newest' };
     const [orders, aggregate] = await Promise.all([
       repository.listOwnedOrders(customer.id, query),
       repository.summarizeOwnedOrders(customer.id),
     ]);
+    const assetSummary = assets ? await assets.summary(customer.id) : { esims: { total: 0, active: 0, pending: 0 }, physicalSims: { total: 0, pendingShip: 0, shipped: 0 }, devices: { total: 0 }, topups: { total: 0, pending: 0, completed: 0 }, available: { esims: false, physicalSims: false, devices: false, topups: false } };
     return projectCustomerDashboardSummary({
       customer,
       orders,
       aggregate,
       capabilities: {
-        assets: env.CUSTOMER_ASSETS_AVAILABLE === 'true',
+        assets: Object.values(assetSummary.available).some(Boolean),
         loyalty: env.CUSTOMER_LOYALTY_AVAILABLE === 'true',
         notifications: env.CUSTOMER_NOTIFICATIONS_AVAILABLE === 'true',
         support: env.CUSTOMER_SUPPORT_AVAILABLE === 'true',
       },
+      assetSummary,
     });
   },
   async list(customerId, rawQuery) {
@@ -39,4 +44,5 @@ export const createCustomerDashboardService = ({ repository, env = process.env }
     return projectCustomerOrder(order);
   },
   health() { return repository.health(); },
-});
+  };
+};

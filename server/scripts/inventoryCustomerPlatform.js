@@ -30,6 +30,19 @@ const sourceFiles = [
   'src/pages/account/AccountOrderDetailPage.tsx',
   'src/services/customerDashboardApi.ts',
   'src/services/customerOrdersApi.ts',
+  'src/services/customerAssetsApi.ts',
+  'src/hooks/customer/useCustomerAssetQuery.ts',
+  'src/hooks/customer/useCustomerAssetSummary.ts',
+  'src/pages/account/AccountEsimsPage.tsx',
+  'src/pages/account/AccountEsimDetailPage.tsx',
+  'src/pages/account/AccountPhysicalSimsPage.tsx',
+  'src/pages/account/AccountPhysicalSimDetailPage.tsx',
+  'src/pages/account/AccountDeviceDetailPage.tsx',
+  'src/pages/account/AccountTopupsPage.tsx',
+  'src/pages/account/AccountTopupDetailPage.tsx',
+  'src/components/Account/Assets/EsimRevealDialog.tsx',
+  'server/customer/customerAssetProjection.js',
+  'server/customer/customerAssetRevealService.js',
 ];
 
 const accountProductionFiles = sourceFiles.filter((relativePath) => relativePath.startsWith('src/pages/account/') || relativePath.startsWith('src/services/customer'));
@@ -211,6 +224,7 @@ export const inventoryCustomerPlatform = async ({
     ([name, { count, state }]) => [name, { count, state }],
   ));
   const accountSource = accountProductionFiles.map((relativePath) => sources[relativePath] ?? '').join('\n');
+  const assetSource = sourceFiles.filter((relativePath) => relativePath.includes('customerAsset') || relativePath.includes('CustomerAsset') || relativePath.includes('EsimReveal')).map((relativePath) => sources[relativePath] ?? '').join('\n');
   const appRouterSource = sources['src/routing/AppRouter.tsx'] ?? '';
 
   return {
@@ -231,6 +245,8 @@ export const inventoryCustomerPlatform = async ({
       accountApiUserReferenceCount: (accountSource.match(/\/api\/user/g) ?? []).length,
       hardCodedSensitiveDataCount: (accountSource.match(/qrcodeContent|redemptionCode|pin1|pin2|puk1|puk2|iccid/g) ?? []).length,
       legacyMockFiles: sources['src/components/UserDashboard/UserDashboard.tsx'] ? 1 : 0,
+      assetApiUserReferenceCount: (assetSource.match(/\/api\/user/g) ?? []).length,
+      hardCodedAssetValueCount: (assetSource.match(/(?:LPA:|RC_[A-Z0-9_]+|\b\d{16,22}\b)/g) ?? []).length,
     },
     browserStorage: {
       keys: sources['src/context/AppContext.tsx']?.includes('hico_cart') ? ['hico_cart'] : [],
