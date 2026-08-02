@@ -2,8 +2,8 @@
 
 ## Handoff evidence
 
-- Based on final PR15.4 completion commit: `6a3871d`.
-- PR15.4 source commit: `ea4ff11`.
+- Based on final PR15.4 completion commit: `da01e1a`.
+- PR15.4 source commits: `ea4ff11` and persistence hardening `ab40fdb`.
 - Migration head: `008_customer_assets.sql`.
 - Next-phase Markdown: created at `docs/agent/HICO_PR15_5_LOYALTY_POINTS_LEDGER_CODEX.md`.
 - Production remains `NO-GO`.
@@ -65,7 +65,7 @@ Admin adjustment requires explicit permission, actor identity, reason, request I
 - `npm run lint`: pass.
 - `npm run build`: pass.
 - `npm run prerender`: pass, 88 public routes.
-- Backend baseline after PR15.4: 157/157 tests.
+- Backend baseline after PR15.4: 158/158 tests.
 - `npm run customer:inventory`: pass, aggregate-only and no raw PII/secrets.
 - `npm run customer-assets:validate`: pass.
 - Local order validation requires `DATABASE_URL`; Docker QA supplied the shared PostgreSQL dependency and passed the ownership checks.
