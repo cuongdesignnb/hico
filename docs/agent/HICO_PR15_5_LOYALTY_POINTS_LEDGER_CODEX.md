@@ -1,81 +1,87 @@
-# HICO PR15.5 - Loyalty Points Ledger Handoff
+# HICO PR15.5 - Loyalty Points Ledger Completion
 
-## Handoff evidence
+## Completion
 
-- Based on final PR15.4 completion commit: `e37aef7`.
-- PR15.4 source commits: `ea4ff11` and persistence hardening `ab40fdb`.
-- Migration head: `008_customer_assets.sql`.
-- Next-phase Markdown: created at `docs/agent/HICO_PR15_5_LOYALTY_POINTS_LEDGER_CODEX.md`.
-- Production remains `NO-GO`.
+- Source and QA completion commit: `f5589ea` (`feat(loyalty): add customer points ledger foundation`).
+- Migration head: `009_loyalty_ledger.sql`.
+- Production remains `NO-GO`; `LOYALTY_ENABLED=false` is the default and no
+  production ledger writes were enabled.
+- Docker QA used isolated project `hico-pr155-qa`; it was removed with
+  `down -v --remove-orphans`. Existing `cuongdesign-*` containers were not
+  changed.
 
-## PR15.4 runtime baseline
+## Data model
 
-- Local inventory contains 5 orders, all `LEGACY_UNRESOLVED`, with no email auto-linking.
-- Local legacy sources contain 2 demo customer profiles, 1 mock eSIM and 2 mock manual QR records.
-- Local persisted fulfillment, inventory and inventory-movement datasets are absent; production-like customer asset count is therefore 0.
-- Local legacy order status counts are 4 `PROVISIONED` and 1 `CANCELLED`. Currency is absent from all five rows, so the safe distribution is `UNKNOWN: 5`.
-- QA-only synthetic data verified two owned VND eSIM orders, one visible to each isolated customer. QA data and volume were removed after testing.
-- Current source of truth is the owned PostgreSQL order snapshot joined to fulfillment records. No asset table or loyalty ledger exists yet.
+- `loyalty_accounts`: one customer-owned account row, no mutable balance source
+  of truth.
+- `loyalty_ledger`: append-only `EARN`, `REDEEM`, `RESERVE`, `RELEASE`,
+  `REVERSE`, `ADJUST_ADMIN`, and `EXPIRE` entries.
+- `loyalty_rules`: versioned VND/floor rule seed `catalog_fulfillment/v1`.
+- Foreign keys protect customer/order ownership. Constraints reject zero points,
+  invalid signs and self-reversal. Unique business event/idempotency keys and
+  customer/time, order, type and reverse-source indexes are present.
+- Balance is `SUM(loyalty_ledger.points)`. There is no direct balance mutation;
+  reconciliation reports that no cached balance projection is enabled.
 
-## Fulfillment milestones for earn
+## Runtime contract
 
-PR15.5 must use canonical fulfillment/item milestones, not a client callback or dashboard load:
+- Customer: `GET /api/customer/loyalty`,
+  `GET /api/customer/loyalty/transactions?page=&pageSize=`, and
+  `GET /api/customer/loyalty/rules/public`.
+- Admin: `POST /api/admin/customers/:customerId/loyalty/adjust`, protected by
+  admin auth, CSRF, rate limit, production write gate and `loyalty.adjust`.
+  Adjustment requires a signed integer, reason and `Idempotency-Key`.
+- Health: `GET /api/health/loyalty`; production readiness checks loyalty only
+  when the feature flag is enabled.
+- Customer responses are owner-scoped, private/no-store and expose safe ledger
+  projections only. Public rules omit internal JSON configuration.
+- Earn keys are stable per order/item/rule/milestone. Fulfillment events earn
+  eSIM/top-up at `PROVISIONED`, physical SIM/device at `SHIPPED`; cancellation
+  reversal appends one linked `REVERSE` entry. Unowned or legacy-unresolved
+  orders are skipped.
+- Redemption, reservation runtime, expiry, tiers, referral rewards and customer
+  notifications are not enabled in PR15.5.
 
-- eSIM and top-up: earn when the item reaches `PROVISIONED`.
-- Physical SIM and device: earn when the item reaches `SHIPPED`.
-- Cancellation/refund reversal: append a compensating `REVERSE` entry only after a valid canonical event is available.
-- `PENDING_CALLBACK`, `PENDING_QR_ASSIGN` and `PENDING_SHIP` do not earn points.
-- The source event must include order ID, stable order item ID, canonical item snapshot and the fulfillment milestone. Provider retries must reuse the same idempotency key.
+## Inventory and reconciliation
 
-## Existing promo and wallet behavior
+The aggregate inventory report remains safe and reproducible:
 
-- The current storefront validates legacy promo codes through `/api/promos/validate/:code`.
-- Admin promo records are stored in the legacy `promos.json` map and managed through Admin promo routes.
-- No customer wallet, points balance, reservation, redemption or membership tier exists today.
-- The disconnected legacy dashboard includes demo/promo UI. It is not a loyalty source and must not be imported into the ledger.
+- 5 legacy orders, all `LEGACY_UNRESOLVED`; zero email auto-links.
+- 2 demo customer profiles, 1 mock eSIM and 2 mock manual QR records.
+- Fulfillment, inventory and inventory-movement JSON datasets are absent.
+- Production loyalty scan reports no fake cash equivalent, wallet wording,
+  local points balance, legacy points API reference or direct balance mutation.
+- Default local scripts return `DATABASE_REQUIRED` without creating data.
+- Docker synthetic test created one owned VND eSIM order, then verified 8
+  concurrent earn calls produce 1 `EARN`, 3 concurrent reversal calls produce
+  1 `REVERSE`, and ledger balance returns to 0. Synthetic rows were deleted.
 
-## Required PR15.5 design
+## Verification
 
-Implement an append-only ledger with a unique idempotency key per order item and earning milestone. Do not use a mutable balance as the source of truth.
-
-- Earn rule: `floor(eligible fulfilled item subtotal / 10,000)` points for positive VND canonical items.
-- Eligibility: canonical item, positive price, VND currency, not excluded and not already reversed.
-- No cap and no expiry until the owner approves a legal retention/expiry policy.
-- Earn-only in the first slice; no membership tier.
-- Reversal is an append-only `REVERSE` entry linked to the original earn entry and canonical refund/cancellation event.
-- Keep currency separation explicit. Do not convert non-VND values using an invented exchange rate.
-- Referral is out of scope for PR15.5 except a minimal schema/event hook if the owner keeps the PR15.0 business decision.
-
-## Redemption and Admin scope
-
-The ledger PR must define reservation state transitions `RESERVE`, `COMMIT`, `RELEASE` with transaction-safe concurrency and idempotency. A failed or expired reservation must not consume points permanently.
-
-Admin adjustment requires explicit permission, actor identity, reason, request ID and audit metadata. Customer points APIs and pages must be owner-scoped and must not expose ledger internals that are not needed by the customer.
-
-## Open decisions before implementation
-
-- Confirm whether partial fulfillment earns per eligible item or only after the entire order is fulfilled. The PR15.4 projection supports per-item milestones, but owner confirmation is required.
-- Confirm the canonical refund/cancellation event and whether reversal amount is item-level or order-level.
-- Confirm legal retention, export and anonymization policy before adding expiry or deletion behavior.
-- Confirm whether non-VND orders remain ineligible or require a separately approved currency ledger.
-- Confirm Admin adjustment permission name and maximum operational review requirements.
-
-## Regression and QA baseline
-
+- Backend: `165/165` tests passed.
 - `npm run lint`: pass.
-- `npm run build`: pass.
-- `npm run prerender`: pass, 88 public routes.
-- Backend baseline after PR15.4: 158/158 tests.
-- `npm run customer:inventory`: pass, aggregate-only and no raw PII/secrets.
-- `npm run customer-assets:validate`: pass.
-- Local order validation requires `DATABASE_URL`; Docker QA supplied the shared PostgreSQL dependency and passed the ownership checks.
-- Frontend audit retains the two previously accepted `react-router` advisories; backend audit is 0 vulnerabilities and the repository security gate passes.
-- Docker A/B QA passed migration 008, owner isolation, IDOR 404, no-store, re-auth, cross-instance session and database outage/recovery. QA stack was removed with its volume.
-- Browser baseline passed 9 desktop/mobile checks with no page errors, and the PR15.4 mock-API run rendered the eSIM list/detail at 390px without overflow or page errors. New loyalty UI must add customer points routes without prerendering private data.
+- `npm run build`: pass; prerender generated 88 public routes.
+- `npm run security:gate`: pass with the two previously accepted React Router
+  advisories; backend audit baseline remains 0 vulnerabilities.
+- `npm run integrity:check`: pass.
+- `docker compose config --quiet`: pass with QA-only required variables.
+- Docker A/B loyalty health: ports 5000 and 5001 both returned 200; migration
+  output reported `009_loyalty_ledger.sql` current. During database outage the
+  loyalty health endpoint returned 503 and after recovery returned 200.
+- UTF-8/no-BOM and raw secret/QR/LPA/PIN/PUK checks remain covered by existing
+  inventory/security tests. No new raw sensitive value is committed.
+- No authenticated browser session was used for this private feature during QA;
+  the existing PR15.4 browser baseline remains the visual baseline. A real
+  customer browser smoke test is a follow-up before enabling the feature.
 
-## Guardrails
+## Risks and handoff
 
-- Do not enable production writes or change the production `NO-GO` state in PR15.5.
-- Do not import the five unresolved orders, mock eSIM, mock QR records, promo UI, or legacy wallet-like demo state.
-- Do not change the six frozen order statuses.
-- Keep Docker off outside QA and do not touch `cuongdesign-*` containers.
+- Production-like fulfillment/inventory persistence is still missing locally;
+  real earning remains fail-closed until canonical fulfillment evidence exists.
+- Legal retention/anonymization and redemption conversion are unresolved and
+  remain production blockers.
+- Existing legacy promo/demo sources remain inventory findings and are not a
+  loyalty source.
+- PR15.6 must add referral attribution/reward events, idempotent and reversible
+  referral ledger entries, customer notification/unread delivery, and anti-abuse
+  limits. It must not add support/profile scope or infer ownership from email.
