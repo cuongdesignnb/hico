@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { useApp } from '../../context/AppContext';
+import React, { useCallback, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useApp } from '../../context/useApp';
+import { useAuth } from '../../auth/useAuth';
+import type { EsimData, UserOrder } from '../../types/legacy';
 import { 
   LayoutDashboard, Cpu, ClipboardList, Wifi, Wallet, Gift, 
   Headphones, User, Search, ChevronDown, Bell, ShoppingCart, 
@@ -10,11 +13,13 @@ import {
 import './UserDashboard.css';
 
 export const UserDashboard: React.FC = () => {
-  const { cart, addToCart, setIsCartOpen, triggerNotification, setIsLoggedIn, currentUser, setCurrentUser } = useApp();
+  const navigate = useNavigate();
+  const { cart, addToCart, setIsCartOpen, triggerNotification } = useApp();
+  const { logout } = useAuth();
   const [activeMenu, setActiveMenu] = useState('Tổng quan');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-  const [esimData, setEsimData] = useState({
+  const [esimData, setEsimData] = useState<EsimData>({
     iccid: '898520400001234567',
     rcode: 'RC_JAPAN_MOCK',
     status: 'Đang hoạt động',
@@ -31,11 +36,11 @@ export const UserDashboard: React.FC = () => {
     apnExplain: 'Carrier NTT Docomo APN: spmode.ne.jp'
   });
   const [isBackendConnected, setIsBackendConnected] = useState(false);
-  const [userOrders, setUserOrders] = useState<any[]>([]);
+  const [userOrders, setUserOrders] = useState<UserOrder[]>([]);
   const [loadingEsimActivation, setLoadingEsimActivation] = useState(false);
   const [activeIccid, setActiveIccid] = useState('898520400001234567');
 
-  const fetchUserOrders = async () => {
+  const fetchUserOrders = useCallback(async () => {
     try {
       const res = await fetch('/api/user/orders');
       if (res.ok) {
@@ -44,24 +49,25 @@ export const UserDashboard: React.FC = () => {
         setIsBackendConnected(true);
         
         // Find if there is any PENDING_CALLBACK order
-        const pending = data.find((o: any) => o.status === 'PENDING_CALLBACK');
+        const pending = data.find((o: UserOrder) => o.status === 'PENDING_CALLBACK');
         if (pending) {
           setLoadingEsimActivation(true);
         } else {
           setLoadingEsimActivation(false);
           // Auto switch active ICCID to the newly provisioned SIM if any
-          const latestProv = data.find((o: any) => o.status === 'PROVISIONED' && o.items && o.items.length > 0);
-          if (latestProv && latestProv.items[0].iccid !== activeIccid) {
-            setActiveIccid(latestProv.items[0].iccid);
+          const latestProv = data.find((o: UserOrder) => o.status === 'PROVISIONED' && o.items && o.items.length > 0);
+           const latestIccid = latestProv?.items?.[0]?.iccid;
+           if (latestIccid) {
+             setActiveIccid((currentIccid) => currentIccid === latestIccid ? currentIccid : latestIccid);
           }
         }
       }
     } catch (e) {
       console.warn("Failed to fetch user orders:", e);
     }
-  };
+  }, []);
 
-  const fetchEsimData = async () => {
+  const fetchEsimData = useCallback(async () => {
     if (!activeIccid) return;
     try {
       const response = await fetch(`/api/user/esim/${activeIccid}`);
@@ -77,33 +83,22 @@ export const UserDashboard: React.FC = () => {
     } catch (e) {
       console.warn("Failed to fetch eSIM data:", e);
     }
-  };
+  }, [activeIccid]);
 
   useEffect(() => {
-    setIsLoggedIn(true);
-    if (!currentUser) {
-      setCurrentUser({
-        name: 'Sơn Nguyễn',
-        email: 'son.nguyen@gmail.com',
-        phone: '0912345678'
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchUserOrders();
-  }, []);
+    queueMicrotask(() => { void fetchUserOrders(); });
+  }, [fetchUserOrders]);
 
   // Poll orders when waiting for callback activation
   useEffect(() => {
-    const timer = setInterval(fetchUserOrders, loadingEsimActivation ? 3000 : 10000);
+    const timer = setInterval(() => { void fetchUserOrders(); }, loadingEsimActivation ? 3000 : 10000);
     return () => clearInterval(timer);
-  }, [loadingEsimActivation]);
+  }, [fetchUserOrders, loadingEsimActivation]);
 
   // Refetch eSIM data when activeIccid or activation state changes
   useEffect(() => {
-    fetchEsimData();
-  }, [activeIccid, loadingEsimActivation]);
+    queueMicrotask(() => { void fetchEsimData(); });
+  }, [activeIccid, fetchEsimData, loadingEsimActivation]);
 
   // Cart total items count
   const cartItemCount = cart.reduce((total, item) => total + item.quantity, 0);
@@ -149,7 +144,7 @@ export const UserDashboard: React.FC = () => {
           fetchEsimData();
           return;
         }
-      } catch (e) {
+      } catch {
         // fallback to cart below
       }
     }
@@ -317,10 +312,10 @@ export const UserDashboard: React.FC = () => {
               {/* Profile Dropdown */}
               {isProfileOpen && (
                 <div className="profile-dropdown-menu">
-                  <button className="dropdown-item" onClick={() => window.location.hash = ''}>
+                  <button className="dropdown-item" onClick={() => navigate('/')}>
                     Trang chủ HICO
                   </button>
-                  <button className="dropdown-item" onClick={() => window.location.hash = '#/admin'}>
+                  <button className="dropdown-item" onClick={() => navigate('/quan-tri')}>
                     Trang quản trị
                   </button>
                   <button className="dropdown-item" onClick={() => triggerNotification('Tính năng Hồ sơ cá nhân đang phát triển!', 'info')}>
@@ -329,9 +324,8 @@ export const UserDashboard: React.FC = () => {
                   <button 
                     className="dropdown-item" 
                     onClick={() => {
-                      setIsLoggedIn(false);
-                      setCurrentUser(null);
-                      window.location.hash = '';
+                      void logout();
+                      navigate('/');
                       triggerNotification('Đăng xuất thành công!', 'info');
                     }}
                     style={{ borderTop: '1px solid var(--border-light)', color: 'red' }}
@@ -369,7 +363,7 @@ export const UserDashboard: React.FC = () => {
               </div>
               <span className="stat-card-value">1</span>
               <a 
-                href="#/dashboard" 
+                href="/tai-khoan"
                 onClick={(e) => { e.preventDefault(); triggerNotification('Đang cuộn tới chi tiết eSIM đang hoạt động'); }} 
                 className="stat-card-link"
               >
@@ -414,7 +408,7 @@ export const UserDashboard: React.FC = () => {
               </div>
               <span className="stat-card-value">1.250 điểm</span>
               <a 
-                href="#/dashboard" 
+                href="/tai-khoan"
                 onClick={(e) => { e.preventDefault(); triggerNotification('Chuyển hướng đến cửa hàng đổi quà HICO!'); }} 
                 className="stat-card-link"
               >
@@ -624,7 +618,7 @@ export const UserDashboard: React.FC = () => {
               <div className="dashboard-card-wrapper">
                 <div className="card-header-row">
                   <h2 className="card-title-text">Đơn hàng gần đây</h2>
-                  <a href="#/dashboard" onClick={(e) => { e.preventDefault(); triggerNotification('Hiển thị tất cả đơn hàng lịch sử!'); }} className="card-action-link">
+                  <a href="/tai-khoan" onClick={(e) => { e.preventDefault(); triggerNotification('Hiển thị tất cả đơn hàng lịch sử!'); }} className="card-action-link">
                     Xem tất cả đơn hàng →
                   </a>
                 </div>
@@ -665,7 +659,7 @@ export const UserDashboard: React.FC = () => {
 
                           return {
                             code: o.orderId,
-                            dest: isPhysical ? 'SIM Vật Lý' : (firstItem ? firstItem.productName.split(' ')[0] : 'eSIM Du Lịch'),
+                            dest: isPhysical ? 'SIM Vật Lý' : (firstItem?.productName ? firstItem.productName.split(' ')[0] : 'eSIM Du Lịch'),
                             flag: isPhysical ? '📦' : '🗺️',
                             pkg: firstItem ? firstItem.productName : 'Gói cước du lịch',
                             date: o.createdAt ? o.createdAt.split(' ')[0] : new Date().toLocaleDateString('vi-VN'),
@@ -742,7 +736,7 @@ export const UserDashboard: React.FC = () => {
               <div className="dashboard-card-wrapper">
                 <div className="card-header-row">
                   <h2 className="card-title-text">Thông báo</h2>
-                  <a href="#/dashboard" onClick={(e) => { e.preventDefault(); triggerNotification('Đã đánh dấu tất cả thông báo là đã đọc!', 'success'); }} className="card-action-link">
+                  <a href="/tai-khoan" onClick={(e) => { e.preventDefault(); triggerNotification('Đã đánh dấu tất cả thông báo là đã đọc!', 'success'); }} className="card-action-link">
                     Đánh dấu tất cả đã đọc
                   </a>
                 </div>
@@ -786,7 +780,7 @@ export const UserDashboard: React.FC = () => {
                 </div>
 
                 <a 
-                  href="#/dashboard" 
+                  href="/tai-khoan"
                   onClick={(e) => { e.preventDefault(); triggerNotification('Đang tải toàn bộ thông báo lịch sử...'); }}
                   className="card-action-link"
                   style={{ display: 'block', textAlign: 'center', marginTop: '16px', fontWeight: 'bold' }}
@@ -799,7 +793,7 @@ export const UserDashboard: React.FC = () => {
               <div className="dashboard-card-wrapper">
                 <div className="card-header-row">
                   <h2 className="card-title-text">Chuyến đi sắp tới</h2>
-                  <a href="#/dashboard" onClick={(e) => { e.preventDefault(); triggerNotification('Hiển thị tất cả lịch trình chuyến đi!'); }} className="card-action-link">
+                  <a href="/tai-khoan" onClick={(e) => { e.preventDefault(); triggerNotification('Hiển thị tất cả lịch trình chuyến đi!'); }} className="card-action-link">
                     Xem tất cả →
                   </a>
                 </div>
@@ -835,7 +829,7 @@ export const UserDashboard: React.FC = () => {
               <div className="dashboard-card-wrapper">
                 <div className="card-header-row">
                   <h2 className="card-title-text">Thiết bị 4G/5G gợi ý cho bạn</h2>
-                  <a href="#/dashboard" onClick={(e) => { e.preventDefault(); triggerNotification('Xem tất cả thiết bị phát WiFi'); }} className="card-action-link">
+                  <a href="/tai-khoan" onClick={(e) => { e.preventDefault(); triggerNotification('Xem tất cả thiết bị phát WiFi'); }} className="card-action-link">
                     Xem tất cả →
                   </a>
                 </div>
@@ -924,7 +918,7 @@ export const UserDashboard: React.FC = () => {
                     </div>
                     <p className="ticket-update-time">Cập nhật: 12/05/2024 14:30</p>
                   </div>
-                  <a href="#/dashboard" onClick={(e) => { e.preventDefault(); triggerNotification('Xem lịch sử tất cả phiếu yêu cầu hỗ trợ!'); }} className="card-action-link" style={{ display: 'block', textAlign: 'center', marginTop: '12px' }}>
+                  <a href="/tai-khoan" onClick={(e) => { e.preventDefault(); triggerNotification('Xem lịch sử tất cả phiếu yêu cầu hỗ trợ!'); }} className="card-action-link" style={{ display: 'block', textAlign: 'center', marginTop: '12px' }}>
                     Xem tất cả yêu cầu →
                   </a>
                 </div>
@@ -975,7 +969,7 @@ export const UserDashboard: React.FC = () => {
                 </div>
 
                 <a 
-                  href="#/dashboard" 
+                  href="/tai-khoan"
                   onClick={(e) => { e.preventDefault(); triggerNotification('Đang mở trang cài đặt thông tin cá nhân!', 'info'); }}
                   className="card-action-link"
                   style={{ display: 'block', textAlign: 'center', marginTop: '16px', fontWeight: 'bold' }}

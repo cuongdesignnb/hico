@@ -2,5 +2,8 @@ node_modules
 dist
 .git
 .vercel
-server
 *.log
+*.dump
+*.sql
+server/backups/
+server/restore-output/

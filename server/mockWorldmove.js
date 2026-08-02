@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import CryptoJS from 'crypto-js';
 import axios from 'axios';
+import crypto from 'node:crypto';
 
 const app = express();
 const PORT = 4000;
@@ -14,10 +15,31 @@ app.use(express.json());
 const activeOrders = new Map();
 const activeRedemptions = new Map();
 const esimUsageTracker = new Map(); // rcode -> totalBytes Used
+const webhookSecret = process.env.WORLDMOVE_WEBHOOK_SECRET || '';
 
 // SHA1 encryption helper
 function calculateSha1(content) {
   return CryptoJS.SHA1(content).toString(CryptoJS.enc.Hex).toUpperCase();
+}
+
+const canonicalRequest = (req) => req.get('X-HICO-Checkout-Engine') === 'canonical';
+
+async function sendCanonicalEvent(payload, attempt = 1) {
+  if (!webhookSecret) return;
+  const rawBody = JSON.stringify(payload);
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = `sha256=${crypto.createHmac('sha256', webhookSecret).update(`${timestamp}.${rawBody}`, 'utf8').digest('hex')}`;
+  try {
+    const response = await axios.post(
+      process.env.HICO_WEBHOOK_URL || 'http://localhost:5000/api/webhooks/worldmove/events',
+      rawBody,
+      { headers: { 'Content-Type': 'application/json', 'X-Worldmove-Timestamp': timestamp, 'X-Worldmove-Signature': signature } },
+    );
+    if (!response.data?.ok) throw new Error('HICO did not acknowledge canonical event');
+  } catch (error) {
+    console.error(`[WM] Canonical callback failed: ${error.message}`);
+    if (attempt < 4) setTimeout(() => sendCanonicalEvent(payload, attempt + 1), 5000);
+  }
 }
 
 console.log('=== WORLDMOVE SIMULATOR ACTIVE ===');
@@ -82,9 +104,8 @@ app.post('/Api/SOrder/mybuyesim', (req, res) => {
   res.json({ code: 0, msg: 'Success', orderId });
 
   // Schedule async callback to HICO Backend in 5 seconds
-  setTimeout(() => {
-    triggerOrderCallback(orderId);
-  }, 5000);
+  if (canonicalRequest(req)) setTimeout(() => triggerCanonicalOrderEvent(orderId), 1000);
+  else setTimeout(() => triggerOrderCallback(orderId), 5000);
 });
 
 // 2b. Buy leSIM (Async Order Creation without Email)
@@ -122,10 +143,27 @@ app.post('/Api/SOrder/mybuyesimRedemption', (req, res) => {
   res.json({ code: 0, msg: 'Success', orderId });
 
   // Schedule async callback to HICO Backend in 5 seconds
-  setTimeout(() => {
-    triggerOrderCallback(orderId);
-  }, 5000);
+  if (canonicalRequest(req)) setTimeout(() => triggerCanonicalOrderEvent(orderId), 1000);
+  else setTimeout(() => triggerOrderCallback(orderId), 5000);
 });
+
+async function triggerCanonicalOrderEvent(orderId) {
+  const order = activeOrders.get(orderId);
+  if (!order) return;
+  const itemList = order.prodList.map((p) => {
+    const iccid = `89852${Math.floor(1000000000000 + Math.random() * 9000000000000)}`;
+    const redemptionCode = `RC_${Math.random().toString(36).substring(2, 10).toLowerCase()}`;
+    activeRedemptions.set(redemptionCode, { iccid, productName: 'Worldmove eSIM', orderId });
+    return { iccid, productName: 'Worldmove eSIM', redemptionCode };
+  });
+  await sendCanonicalEvent({
+    eventId: `evt-${orderId}-order`,
+    eventType: 'ESIM_ORDER_CALLBACK',
+    providerOrderId: orderId,
+    orderId,
+    itemList,
+  });
+}
 
 // Helper for Order Callback
 async function triggerOrderCallback(orderId, attempt = 1) {
@@ -210,9 +248,47 @@ app.post('/Api/OrderRedemption/redemption', (req, res) => {
   res.json({ code: 0, msg: '成功' });
 
   // Schedule async callback to HICO Backend in 3 seconds
-  setTimeout(() => {
-    triggerRedeemCallback(rcode, qrcodeType);
-  }, 3000);
+  if (canonicalRequest(req)) setTimeout(() => triggerCanonicalRedeemEvent(rcode, qrcodeType), 1000);
+  else setTimeout(() => triggerRedeemCallback(rcode, qrcodeType), 3000);
+});
+
+async function triggerCanonicalRedeemEvent(rcode, qrcodeType) {
+  const details = activeRedemptions.get(rcode);
+  if (!details) return;
+  await sendCanonicalEvent({
+    eventId: `evt-${details.orderId}-${rcode}-redeem`,
+    eventType: 'REDEEM_CALLBACK',
+    providerOrderId: details.orderId,
+    orderId: details.orderId,
+    item: {
+      iccid: details.iccid,
+      productName: details.productName,
+      rcode,
+      qrcodeType,
+      qrcode: 'https://tfmshippingsys.fastmove.com.tw/tApi/images/redeem_sample.jpg',
+      qrcodeContent: `LPA:1$rsp.worldmove.com$${rcode}`,
+      pin1: '1111',
+      puk1: '33334444',
+      apnExplain: 'Worldmove APN',
+    },
+  });
+}
+
+app.post('/Api/SOrder/mybuysim', (req, res) => {
+  const { merchantId, deptId, email, prodList, encStr } = req.body;
+  if (!merchantId || !deptId || !email || !Array.isArray(prodList) || !encStr) return res.json({ code: 400, msg: 'Parameters cannot be empty.' });
+  const orderId = `WM_SIM_${Date.now()}`;
+  activeOrders.set(orderId, { orderId, email, prodList, merchantId, deptId });
+  res.json({ code: 0, msg: 'Success', orderId });
+  if (canonicalRequest(req)) setTimeout(() => sendCanonicalEvent({ eventId: `evt-${orderId}-shipping`, eventType: 'SHIPPING_UPDATE', providerOrderId: orderId, orderId, shipped: true, trackingCode: `QA-${orderId}` }), 1000);
+});
+
+app.post('/Api/SOrder/mydeposit', (req, res) => {
+  const { merchantId, deptId, email, prodList, encStr } = req.body;
+  if (!merchantId || !deptId || !email || !Array.isArray(prodList) || !encStr) return res.json({ code: 400, msg: 'Parameters cannot be empty.' });
+  const orderId = `WM_TOPUP_${Date.now()}`;
+  res.json({ code: 0, msg: 'Success', orderId });
+  if (canonicalRequest(req)) setTimeout(() => sendCanonicalEvent({ eventId: `evt-${orderId}-topup`, eventType: 'TOPUP_CALLBACK', providerOrderId: orderId, orderId, provisioned: true }), 1000);
 });
 
 // Helper for Redeem Callback

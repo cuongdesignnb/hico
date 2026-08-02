@@ -385,3 +385,13 @@
   background-color: var(--text-light);
   cursor: not-allowed;
 }
+.checkout-currency-warning {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #e5b45c;
+  border-radius: 6px;
+  background: #fff8e8;
+  color: #7a4b00;
+  font-size: 13px;
+  line-height: 1.45;
+}

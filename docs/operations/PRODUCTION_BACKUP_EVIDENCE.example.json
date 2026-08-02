@@ -1,0 +1,19 @@
+{
+  "status": "verified",
+  "backupId": "offsite-provider-backup-id",
+  "locationType": "offsite",
+  "encryption": "AES-256-GCM; key held by secret manager",
+  "retentionApproved": true,
+  "immutability": true,
+  "createdAt": "2026-08-02T00:00:00.000Z",
+  "verifiedAt": "2026-08-02T00:05:00.000Z",
+  "retention": "Approved business retention reference",
+  "restoreDrill": {
+    "status": "passed",
+    "durationSeconds": 120,
+    "rpo": "Measured result",
+    "rto": "Measured result"
+  },
+  "owner": "Operations owner",
+  "approver": "Operations approver"
+}

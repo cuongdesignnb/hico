@@ -92,8 +92,15 @@
     <script type="module" src="/src/main.tsx"></script>
 
     <!-- Service Worker & PWA Install Prompter Registration -->
-    <script>
-      if ('serviceWorker' in navigator) {
+    <script type="module">
+      if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations()
+          .then(registrations => Promise.all(
+            registrations.map(registration => registration.unregister())
+          ));
+      }
+
+      if (import.meta.env.PROD && 'serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js')
             .then(reg => {

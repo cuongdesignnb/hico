@@ -1,0 +1,15 @@
+{
+  "status": "verified",
+  "phase": "limited",
+  "trafficScope": "Approved internal account or traffic slice",
+  "releaseVersion": "release-id",
+  "commitSha": "git-sha",
+  "imageDigest": "sha256:image-digest",
+  "startedAt": "2026-08-02T00:00:00.000Z",
+  "completedAt": "2026-08-02T00:30:00.000Z",
+  "abortThresholds": "Approved reference",
+  "metricsReference": "Metrics-system-reference",
+  "incidents": [],
+  "owner": "Release owner",
+  "approver": "Canary approver"
+}

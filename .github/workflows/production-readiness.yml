@@ -1,0 +1,26 @@
+name: Production Readiness
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm --prefix server ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npm --prefix server test
+      - run: npm run security:gate
+      - run: docker compose config --quiet
+      - run: docker build -t hico-frontend:${{ github.sha }} .
+      - run: docker build -t hico-backend:${{ github.sha }} ./server
+
+# Production deployment supplies secret metadata, runs the migration job, stores
+# immutable image digests, then runs production:validate and smoke tests.

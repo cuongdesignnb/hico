@@ -1,38 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-
-export interface CartItem {
-  id: string;
-  name: string;
-  type: 'esim' | 'device' | 'physical';
-  simType?: string;
-  price: number; // In USD for eSIM, VND for devices
-  originalPrice?: number;
-  duration?: string;
-  dataLimit?: string;
-  image?: string;
-  quantity: number;
-}
-
-interface AppContextType {
-  cart: CartItem[];
-  addToCart: (item: Omit<CartItem, 'quantity'>) => void;
-  removeFromCart: (id: string) => void;
-  updateQuantity: (id: string, quantity: number) => void;
-  clearCart: () => void;
-  isCartOpen: boolean;
-  setIsCartOpen: (open: boolean) => void;
-  searchQuery: string;
-  setSearchQuery: (query: string) => void;
-  isOnline: boolean;
-  triggerNotification: (message: string, type?: 'success' | 'info' | 'error') => void;
-  notification: { message: string; type: 'success' | 'info' | 'error' } | null;
-  isLoggedIn: boolean;
-  setIsLoggedIn: (val: boolean) => void;
-  currentUser: { name: string; email: string; phone: string } | null;
-  setCurrentUser: (user: { name: string; email: string; phone: string } | null) => void;
-}
-
-const AppContext = createContext<AppContextType | undefined>(undefined);
+import React, { useCallback, useEffect, useState } from 'react';
+import { AppContext, type CartItem, type CurrentUser } from './contextValue';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -43,34 +10,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [searchQuery, setSearchQuery] = useState('');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    return localStorage.getItem('hico_logged_in') === 'true';
-  });
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; phone: string } | null>(() => {
-    const savedUser = localStorage.getItem('hico_user');
-    return savedUser ? JSON.parse(savedUser) : null;
-  });
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
-  // Save login state to localStorage
-  useEffect(() => {
-    localStorage.setItem('hico_logged_in', isLoggedIn ? 'true' : 'false');
-    if (currentUser) {
-      localStorage.setItem('hico_user', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('hico_user');
-    }
-  }, [isLoggedIn, currentUser]);
+  const triggerNotification = useCallback((message: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => {
+      setNotification(null);
+    }, 4000);
+  }, []);
 
-  // Default logged in user if state is true
-  useEffect(() => {
-    if (isLoggedIn && !currentUser) {
-      setCurrentUser({
-        name: 'Sơn Nguyễn',
-        email: 'son.nguyen@gmail.com',
-        phone: '0912345678'
-      });
-    }
-  }, [isLoggedIn, currentUser]);
+  const handleSetIsLoggedIn = useCallback((value: boolean) => setIsLoggedIn(value), []);
 
   // Monitor online/offline status
   useEffect(() => {
@@ -90,19 +40,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [triggerNotification]);
 
   // Save cart to localstorage
   useEffect(() => {
     localStorage.setItem('hico_cart', JSON.stringify(cart));
   }, [cart]);
-
-  const triggerNotification = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
-    setNotification({ message, type });
-    setTimeout(() => {
-      setNotification(null);
-    }, 4000);
-  };
 
   const addToCart = (newItem: Omit<CartItem, 'quantity'>) => {
     setCart((prevCart) => {
@@ -159,7 +102,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         triggerNotification,
         notification,
         isLoggedIn,
-        setIsLoggedIn,
+        setIsLoggedIn: handleSetIsLoggedIn,
         currentUser,
         setCurrentUser,
       }}
@@ -167,12 +110,4 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       {children}
     </AppContext.Provider>
   );
-};
-
-export const useApp = () => {
-  const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error('useApp must be used within an AppProvider');
-  }
-  return context;
 };

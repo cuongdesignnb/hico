@@ -1328,6 +1328,39 @@
 }
 
 @media (max-width: 600px) {
+  .admin-header {
+    gap: 10px;
+    padding: 0 12px;
+  }
+  .admin-header-left {
+    min-width: 0;
+  }
+  .admin-header-title {
+    font-size: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .admin-header-subtitle,
+  .admin-user-profile {
+    display: none;
+  }
+  .admin-header-right {
+    gap: 8px;
+    margin-left: auto;
+  }
+  .admin-create-btn {
+    width: 36px;
+    height: 36px;
+    justify-content: center;
+    padding: 0;
+  }
+  .admin-create-btn span {
+    display: none;
+  }
+  .admin-container {
+    padding: 12px;
+  }
   .admin-stats-grid {
     grid-template-columns: 1fr;
   }
@@ -2394,6 +2427,29 @@
 .admin-pagination-btn:disabled {
   opacity: 0.5 !important;
   cursor: not-allowed !important;
+}
+
+.admin-create-btn:disabled,
+.admin-action-btn-mini:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.admin-canonical-readonly {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-top: 1px solid #f4c27a;
+  border-bottom: 1px solid #f4c27a;
+  background: #fff7e8;
+  color: #7a4310;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-canonical-readonly svg {
+  flex: 0 0 auto;
 }
 
 /* ==========================================================================

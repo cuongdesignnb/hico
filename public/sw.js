@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hico-esim-v4'; // Bump version to force update
+const CACHE_NAME = 'hico-esim-v5'; // BrowserRouter and pre-rendered pages require a fresh shell.
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

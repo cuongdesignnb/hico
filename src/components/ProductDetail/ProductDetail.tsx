@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { useApp } from '../../context/AppContext';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
+import { useApp } from '../../context/useApp';
+import { useAuth } from '../../auth/useAuth';
 import { 
   Star, Check, Plus, Minus, Clock, 
   ShieldCheck, Mail, Globe, Radio, Settings, Headphones, Users, CheckCircle2,
   MapPin, Calendar, Database, Zap, HardDrive
 } from 'lucide-react';
 import './ProductDetail.css';
-import { updateSeoTags } from '../../utils/seo';
+import type { LegacyProduct, LegacyVariant, ProductReview } from '../../types/legacy';
 
 interface DataOption {
   id: string;
@@ -51,7 +52,9 @@ const POPULAR_COMBINATIONS = [
   { dataId: '20gb-total', duration: 30 },
 ];
 
-interface CountryDetail {
+const EMPTY_VARIANTS: LegacyVariant[] = [];
+
+interface CountryDetail extends LegacyProduct {
   id: string;
   name: string;
   flag: string;
@@ -61,7 +64,6 @@ interface CountryDetail {
   price?: number;
   compareAtPrice?: number;
   guide?: string;
-  variants?: any[];
   images: { id: number; url: string; title: string }[];
 }
 
@@ -188,7 +190,7 @@ const COUNTRIES: Record<string, CountryDetail> = {
   }
 };
 
-const FALLBACK_PACKAGES_MAP: Record<string, any> = {
+const FALLBACK_PACKAGES_MAP: Record<string, CountryDetail> = {
   'asia-pacific-esim': {
     id: 'asia-pacific-esim',
     name: 'Gói Châu Á - Thái Bình Dương',
@@ -223,11 +225,14 @@ const FALLBACK_PACKAGES_MAP: Record<string, any> = {
   }
 };
 
-export const ProductDetail: React.FC = () => {
-  const { addToCart, setIsCartOpen, triggerNotification, isLoggedIn, currentUser } = useApp();
+export const ProductDetail: React.FC<{ productId: string }> = ({ productId }) => {
+  const { addToCart, setIsCartOpen, triggerNotification } = useApp();
+  const { status: authStatus, user: authUser } = useAuth();
+  const isLoggedIn = authStatus === 'authenticated';
+  const currentUser = authUser ? { name: authUser.displayName, email: authUser.email, phone: '' } : null;
   
   const [resolvedId, setResolvedId] = useState(() => {
-    const rawId = window.location.hash.replace('#/product/', '');
+    const rawId = productId;
     return rawId === 'japan' ? 'jp-esim' : 
            rawId === 'usa' ? 'us-esim' : 
            rawId === 'thailand' ? 'th-esim' : 
@@ -235,11 +240,11 @@ export const ProductDetail: React.FC = () => {
            rawId || 'jp-esim';
   });
 
-  const [destinations, setDestinations] = useState<any[]>([]);
-  const [packages, setPackages] = useState<any[]>([]);
+  const [destinations, setDestinations] = useState<LegacyProduct[]>([]);
+  const [packages, setPackages] = useState<LegacyProduct[]>([]);
 
   // Reviews state hooks
-  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<ProductReview[]>([]);
   const [sortOption, setSortOption] = useState<'newest' | 'highest' | 'lowest'>('newest');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [newRating, setNewRating] = useState(5);
@@ -251,16 +256,16 @@ export const ProductDetail: React.FC = () => {
   const [isSubmitSuccess, setIsSubmitSuccess] = useState(false);
   const [isDescExpanded, setIsDescExpanded] = useState(false);
 
-  const fetchReviews = () => {
+  const fetchReviews = useCallback(() => {
     fetch(`/api/products/${resolvedId}/reviews`)
       .then(res => res.ok ? res.json() : [])
       .then(data => setReviews(data))
       .catch(err => console.error("Failed to fetch reviews:", err));
-  };
+  }, [resolvedId]);
 
   useEffect(() => {
     fetchReviews();
-  }, [resolvedId]);
+  }, [fetchReviews]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -345,7 +350,8 @@ const fallbackItem = COUNTRIES[fallbackKey] || FALLBACK_PACKAGES_MAP[fallbackKey
     image: dynamicItem.image || fallbackItem?.image,
     price: dynamicItem.price,
     compareAtPrice: dynamicItem.compareAtPrice,
-    guide: dynamicItem.guide || dynamicItem.description || '',
+    guide: (dynamicItem.guide || dynamicItem.description || '')
+      .replaceAll('../uploads/202409/buue7vhq.jpg', '/images/dest_thailand.png'),
     variants: dynamicItem.variants || fallbackItem?.variants || [],
     images: fallbackItem?.images || [
       { id: 1, url: dynamicItem.image || '/images/dest_japan.png', title: dynamicItem.name },
@@ -365,93 +371,95 @@ const fallbackItem = COUNTRIES[fallbackKey] || FALLBACK_PACKAGES_MAP[fallbackKey
   const [selectedVariantDuration, setSelectedVariantDuration] = useState<string>('');
 
   const hasVariants = Array.isArray(currentCountry?.variants) && currentCountry.variants.length > 0;
+  const currentCountryId = currentCountry?.id;
+  const currentVariants = useMemo(() => currentCountry?.variants ?? EMPTY_VARIANTS, [currentCountry?.variants]);
 
   // Find unique SIM types available for this country
   const availableSimTypes = hasVariants
-    ? Array.from(new Set(currentCountry.variants.map((v: any) => v.simType || 'eSIM'))) as string[]
+    ? Array.from(new Set(currentVariants.map((v: LegacyVariant) => v.simType || 'eSIM')))
     : ['eSIM'];
 
   useEffect(() => {
-    console.log('[DEBUG EFFECT] Running variant initialization effect. countryId:', currentCountry?.id, 'hasVariants:', hasVariants);
-    if (currentCountry && hasVariants) {
+    console.log('[DEBUG EFFECT] Running variant initialization effect. countryId:', currentCountryId, 'hasVariants:', hasVariants);
+    if (hasVariants) {
       // Find all unique simTypes in variants
-      const simTypes = Array.from(new Set(currentCountry.variants.map((v: any) => v.simType || 'eSIM'))) as string[];
+      const simTypes = Array.from(new Set(currentVariants.map((v: LegacyVariant) => v.simType || 'eSIM')));
       if (simTypes.length > 0) {
         const defaultType = simTypes.includes('eSIM') ? 'eSIM' : (simTypes.includes('leSIM') ? 'leSIM' : simTypes[0]);
-        setSelectedSimType(defaultType);
+        queueMicrotask(() => setSelectedSimType(defaultType));
         
         // Pick first variant of this default type
-        const validVars = currentCountry.variants.filter((v: any) => (v.simType || 'eSIM') === defaultType);
+        const validVars = currentVariants.filter((v: LegacyVariant) => (v.simType || 'eSIM') === defaultType);
         if (validVars.length > 0) {
-          setSelectedVariantData(validVars[0].dataLimit);
-          setSelectedVariantDuration(validVars[0].duration);
+          queueMicrotask(() => {
+            setSelectedVariantData(validVars[0].dataLimit ?? '');
+            setSelectedVariantDuration(validVars[0].duration ?? '');
+          });
         }
       }
     } else {
-      setSelectedSimType('eSIM');
-      setSelectedVariantData('');
-      setSelectedVariantDuration('');
+      queueMicrotask(() => {
+        setSelectedSimType('eSIM');
+        setSelectedVariantData('');
+        setSelectedVariantDuration('');
+      });
     }
-  }, [currentCountry?.id, hasVariants]);
+  }, [currentCountryId, currentVariants, hasVariants]);
 
   // Filter variants by chosen SIM type
   const filteredVariants = hasVariants
-    ? currentCountry.variants.filter((v: any) => (v.simType || 'eSIM') === selectedSimType)
+    ? currentVariants.filter((v: LegacyVariant) => (v.simType || 'eSIM') === selectedSimType)
     : [];
 
   const uniqueDataLimits = hasVariants
-    ? Array.from(new Set(filteredVariants.map((v: any) => v.dataLimit))) as string[]
+    ? Array.from(new Set(filteredVariants.map((v: LegacyVariant) => v.dataLimit).filter((value): value is string => Boolean(value))) )
     : [];
 
   const uniqueDurations = hasVariants
-    ? Array.from(new Set(filteredVariants.map((v: any) => v.duration))) as string[]
+    ? Array.from(new Set(filteredVariants.map((v: LegacyVariant) => v.duration).filter((value): value is string => Boolean(value))) )
     : [];
 
   const handleSimTypeClick = (type: string) => {
     setSelectedSimType(type);
-    const validVars = currentCountry.variants.filter((v: any) => (v.simType || 'eSIM') === type);
+    const validVars = currentVariants.filter((v: LegacyVariant) => (v.simType || 'eSIM') === type);
     if (validVars.length > 0) {
-      setSelectedVariantData(validVars[0].dataLimit);
-      setSelectedVariantDuration(validVars[0].duration);
+      setSelectedVariantData(validVars[0].dataLimit ?? '');
+      setSelectedVariantDuration(validVars[0].duration ?? '');
     }
   };
 
   const handleDataLimitClick = (dl: string) => {
     setSelectedVariantData(dl);
-    const validVars = filteredVariants.filter((v: any) => v.dataLimit === dl);
-    const hasSameDuration = validVars.some((v: any) => v.duration === selectedVariantDuration);
+    const validVars = filteredVariants.filter((v: LegacyVariant) => v.dataLimit === dl);
+    const hasSameDuration = validVars.some((v: LegacyVariant) => v.duration === selectedVariantDuration);
     if (!hasSameDuration && validVars.length > 0) {
-      setSelectedVariantDuration(validVars[0].duration);
+      setSelectedVariantDuration(validVars[0].duration ?? '');
     }
   };
 
   const handleDurationClick = (dur: string) => {
     setSelectedVariantDuration(dur);
-    const validVars = filteredVariants.filter((v: any) => v.duration === dur);
-    const hasSameData = validVars.some((v: any) => v.dataLimit === selectedVariantData);
+    const validVars = filteredVariants.filter((v: LegacyVariant) => v.duration === dur);
+    const hasSameData = validVars.some((v: LegacyVariant) => v.dataLimit === selectedVariantData);
     if (!hasSameData && validVars.length > 0) {
-      setSelectedVariantData(validVars[0].dataLimit);
+      setSelectedVariantData(validVars[0].dataLimit ?? '');
     }
   };
 
   console.log('[DEBUG RENDER] countryId:', currentCountry?.id, 'hasVariants:', hasVariants, 'selectedSimType:', selectedSimType, 'selectedVariantData:', selectedVariantData, 'selectedVariantDuration:', selectedVariantDuration);
   const activeVariant = hasVariants
-    ? filteredVariants.find((v: any) => v.dataLimit === selectedVariantData && v.duration === selectedVariantDuration) || filteredVariants[0]
+    ? filteredVariants.find((v: LegacyVariant) => v.dataLimit === selectedVariantData && v.duration === selectedVariantDuration) || filteredVariants[0]
     : null;
 
   const selectedData = DATA_OPTIONS.find(o => o.id === selectedDataId) || DATA_OPTIONS[1];
   const baseFactor = COUNTRY_FACTORS[resolvedId] || (currentCountry.price ? currentCountry.price / 490000 : 1.0);
   
-  let calculatedPrice = 0;
-  let calculatedCompareAtPrice = 0;
-  
-  if (selectedData.type === 'daily') {
-    calculatedPrice = Math.round(selectedData.baseDailyPrice * selectedDuration * baseFactor);
-    calculatedCompareAtPrice = Math.round(selectedData.baseCompareDailyPrice * selectedDuration * baseFactor);
-  } else {
-    calculatedPrice = Math.round(((selectedData.baseDailyPrice * selectedDuration) + (selectedData.flatFee || 0)) * baseFactor);
-    calculatedCompareAtPrice = Math.round(((selectedData.baseCompareDailyPrice * selectedDuration) + (selectedData.flatCompareFee || 0)) * baseFactor);
-  }
+  const calculatedPrice = selectedData.type === 'daily'
+    ? Math.round(selectedData.baseDailyPrice * selectedDuration * baseFactor)
+    : Math.round(((selectedData.baseDailyPrice * selectedDuration) + (selectedData.flatFee || 0)) * baseFactor);
+  const calculatedCompareAtPrice = selectedData.type === 'daily'
+    ? Math.round(selectedData.baseCompareDailyPrice * selectedDuration * baseFactor)
+    : Math.round(((selectedData.baseCompareDailyPrice * selectedDuration) + (selectedData.flatCompareFee || 0)) * baseFactor);
 
   const formatPrice = (p: number) => `${p.toLocaleString('vi-VN')}đ`;
 
@@ -476,11 +484,14 @@ const fallbackItem = COUNTRIES[fallbackKey] || FALLBACK_PACKAGES_MAP[fallbackKey
   const [selectedImage, setSelectedImage] = useState(currentCountry.images[0].url);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState<'kythuat' | 'caidat' | 'tuongthich' | 'danhgia' | 'faq'>('kythuat');
+  const firstImageUrl = currentCountry.images[0]?.url;
+  const countryName = currentCountry.name;
+  const countryNetwork = currentCountry.network;
 
   // Sync state on hash/route change
   useEffect(() => {
     const handleHash = () => {
-      const rawId = window.location.hash.replace('#/product/', '');
+      const rawId = productId;
       const newId = rawId === 'japan' ? 'jp-esim' : 
                     rawId === 'usa' ? 'us-esim' : 
                     rawId === 'thailand' ? 'th-esim' : 
@@ -488,33 +499,33 @@ const fallbackItem = COUNTRIES[fallbackKey] || FALLBACK_PACKAGES_MAP[fallbackKey
                     rawId || 'jp-esim';
       setResolvedId(newId);
     };
-    window.addEventListener('hashchange', handleHash);
-    return () => window.removeEventListener('hashchange', handleHash);
-  }, []);
+    handleHash();
+    return undefined;
+  }, [productId]);
 
   useEffect(() => {
-    if (currentCountry && currentCountry.images && currentCountry.images.length > 0) {
-      setSelectedImage(currentCountry.images[0].url);
+    if (firstImageUrl) {
+       queueMicrotask(() => setSelectedImage(firstImageUrl));
     }
-    setQuantity(1);
-    setIsDescExpanded(false);
+    queueMicrotask(() => {
+      setQuantity(1);
+      setIsDescExpanded(false);
+    });
     // Scroll to top of the window
-    window.scrollTo({ top: 0, behavior: 'instant' as any });
-  }, [resolvedId, destinations]);
+     window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [resolvedId, destinations, currentCountryId, firstImageUrl]);
 
   useEffect(() => {
-    if (currentCountry) {
-      const title = dynamicItem?.seoTitle || `eSIM ${currentCountry.name} Du Lịch Tốc Độ Cao - HICO`;
-      const description = dynamicItem?.seoDescription || `Mua eSIM ${currentCountry.name} nhận ngay mã QR qua email trong 3 phút. Mạng ${currentCountry.network || '4G/5G'} tốc độ cao, hỗ trợ chia sẻ hotspot và chăm sóc khách hàng 24/7.`;
-      const keywords = dynamicItem?.seoKeywords || `esim ${currentCountry.name.toLowerCase()}, esim di du lich ${currentCountry.name.toLowerCase()}, mua esim ${currentCountry.name.toLowerCase()}`;
+    if (countryName) {
+       const title = dynamicItem?.seoTitle || `eSIM ${countryName} Du Lịch Tốc Độ Cao - HICO`;
+       const description = dynamicItem?.seoDescription || `Mua eSIM ${countryName} nhận ngay mã QR qua email trong 3 phút. Mạng ${countryNetwork || '4G/5G'} tốc độ cao, hỗ trợ chia sẻ hotspot và chăm sóc khách hàng 24/7.`;
+       const keywords = dynamicItem?.seoKeywords || `esim ${countryName.toLowerCase()}, esim di du lich ${countryName.toLowerCase()}, mua esim ${countryName.toLowerCase()}`;
       
-      updateSeoTags({
-        title,
-        description,
-        keywords
-      });
+      void title;
+      void description;
+      void keywords;
     }
-  }, [resolvedId, dynamicItem, currentCountry?.id]);
+  }, [resolvedId, dynamicItem, currentCountryId, countryName, countryNetwork]);
 
 
   const incrementQuantity = () => setQuantity(prev => prev + 1);
@@ -533,10 +544,12 @@ const fallbackItem = COUNTRIES[fallbackKey] || FALLBACK_PACKAGES_MAP[fallbackKey
     for (let i = 0; i < quantity; i++) {
       addToCart({
         id: cartItemId,
+        variantId: hasVariants && activeVariant ? activeVariant.id : undefined,
         name: displayName,
         type: currentSimType === 'physical' ? 'physical' : 'esim',
         simType: currentSimType,
         price: selectedPkg.price,
+        currency: (activeVariant as (LegacyVariant & { currency?: 'VND' | 'USD' }) | undefined)?.currency ?? 'VND',
         duration: selectedPkg.duration,
         dataLimit: selectedPkg.dataLimit,
         image: currentCountry.image
@@ -820,7 +833,7 @@ const fallbackItem = COUNTRIES[fallbackKey] || FALLBACK_PACKAGES_MAP[fallbackKey
                   >
                     {uniqueDurations.map((dur) => {
                       const isAvailable = filteredVariants.some(
-                        (v: any) => v.dataLimit === selectedVariantData && v.duration === dur
+                        (v: LegacyVariant) => v.dataLimit === selectedVariantData && v.duration === dur
                       );
                       return (
                         <option 
@@ -840,7 +853,7 @@ const fallbackItem = COUNTRIES[fallbackKey] || FALLBACK_PACKAGES_MAP[fallbackKey
                   {hasVariants ? (
                     uniqueDurations.map((dur) => {
                       const isAvailable = filteredVariants.some(
-                        (v: any) => v.dataLimit === selectedVariantData && v.duration === dur
+                        (v: LegacyVariant) => v.dataLimit === selectedVariantData && v.duration === dur
                       );
                       return (
                         <div 
@@ -1160,13 +1173,13 @@ const fallbackItem = COUNTRIES[fallbackKey] || FALLBACK_PACKAGES_MAP[fallbackKey
                     <h4 className="popular-card-title">Gói phổ biến khác</h4>
                     <div className="popular-card-list">
                       {hasVariants ? (
-                        currentCountry.variants
-                          .filter((v: any) => v.id !== activeVariant?.id)
+                        currentVariants
+                          .filter((v: LegacyVariant) => v.id !== activeVariant?.id)
                           .slice(0, 5)
-                          .map((v: any, idx: number) => (
+                          .map((v: LegacyVariant, idx: number) => (
                             <div key={idx} className="popular-list-item" onClick={() => {
-                              setSelectedVariantData(v.dataLimit);
-                              setSelectedVariantDuration(v.duration);
+                               setSelectedVariantData(v.dataLimit ?? '');
+                               setSelectedVariantDuration(v.duration ?? '');
                             }}>
                               <span className="pop-desc">{v.dataLimit} · {v.duration}</span>
                               <span className="pop-price">{formatPrice(v.price)}</span>
@@ -1174,13 +1187,10 @@ const fallbackItem = COUNTRIES[fallbackKey] || FALLBACK_PACKAGES_MAP[fallbackKey
                           ))
                       ) : (
                         POPULAR_COMBINATIONS.filter(c => !(c.dataId === selectedDataId && c.duration === selectedDuration)).slice(0, 5).map((combo, idx) => {
-                          const dataOpt = DATA_OPTIONS.find(o => o.id === combo.dataId)!;
-                          let price = 0;
-                          if (dataOpt.type === 'daily') {
-                            price = Math.round(dataOpt.baseDailyPrice * combo.duration * baseFactor);
-                          } else {
-                            price = Math.round(((dataOpt.baseDailyPrice * combo.duration) + (dataOpt.flatFee || 0)) * baseFactor);
-                          }
+                           const dataOpt = DATA_OPTIONS.find(o => o.id === combo.dataId)!;
+                           const price = dataOpt.type === 'daily'
+                             ? Math.round(dataOpt.baseDailyPrice * combo.duration * baseFactor)
+                             : Math.round(((dataOpt.baseDailyPrice * combo.duration) + (dataOpt.flatFee || 0)) * baseFactor);
                           return (
                             <div key={idx} className="popular-list-item" onClick={() => {
                               setSelectedDataId(combo.dataId);
@@ -1234,7 +1244,7 @@ const fallbackItem = COUNTRIES[fallbackKey] || FALLBACK_PACKAGES_MAP[fallbackKey
                       <label style={{ fontSize: '13.5px', fontWeight: '600', marginRight: '8px', color: 'var(--hico-text-dark)' }}>Sắp xếp theo:</label>
                       <select 
                         value={sortOption} 
-                        onChange={(e) => setSortOption(e.target.value as any)}
+                         onChange={(e) => setSortOption(e.target.value as 'newest' | 'highest' | 'lowest')}
                         className="reviews-sort-select"
                       >
                         <option value="newest">Mới nhất</option>

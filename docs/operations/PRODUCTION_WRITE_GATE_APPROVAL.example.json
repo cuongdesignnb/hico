@@ -1,0 +1,15 @@
+{
+  "status": "approved",
+  "event": "production_write_gate_approval",
+  "approvedAt": "2026-08-02T00:00:00.000Z",
+  "actor": "Audited release actor",
+  "owner": "Technical owner",
+  "approver": "Operations approver",
+  "approvers": ["Technical approver", "Operations approver", "Security approver", "Business approver"],
+  "releaseVersion": "release-id",
+  "commitSha": "git-sha",
+  "imageDigest": "sha256:image-digest",
+  "catalogVersion": "canonical-version",
+  "migrationVersion": "migration-version",
+  "readinessSnapshotReference": "readiness-report-reference"
+}

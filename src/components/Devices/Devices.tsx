@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../context/useApp';
 import { ShoppingCart, Share2, PlusCircle, CheckCircle2, LockKeyhole, Leaf, Award, ChevronDown, ChevronUp } from 'lucide-react';
 import './Devices.css';
 

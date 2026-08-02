@@ -1,13 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { 
   LayoutDashboard, ShoppingCart, Radio, Library, Globe, Users, Gift, FileText, 
   HelpCircle, BarChart3, Wallet, Box, Users2, Settings, Mail, Phone,
   Search, Plus, Bell, ChevronDown, Calendar, Download, DollarSign, ShoppingBag, 
   CheckCircle2, AlertTriangle, Menu, Info, RotateCw, Lock, Inbox, Clock,
-  Image, Trash2, FolderOpen, Upload, Copy, ExternalLink, X, MessageSquare, Star, Cpu, Sparkles
+  Image, Trash2, FolderOpen, Upload, Copy, ExternalLink, X, MessageSquare, Star, Cpu, Sparkles,
+  PackageSearch
 } from 'lucide-react';
 import './AdminDashboard.css';
 import RichTextEditor from './RichTextEditor';
+import CatalogTab from './Catalog/CatalogTab';
+import ProviderCatalogTab from './Providers/ProviderCatalogTab';
+import { createLegacyVariantId } from '../../utils/ids';
+import { useAuth } from '../../auth/useAuth';
+import type {
+  AdminArticle,
+  AdminCatalogItem,
+  AdminCustomer,
+  AdminMediaFile,
+  AdminOrder,
+  AdminOrderItem,
+  AdminPromo,
+  AdminTicket,
+  AdminTicketMessage,
+  AdminUser,
+  LegacyVariant,
+  ManualQr,
+  ProductReview,
+} from '../../types/legacy';
 
 // Helper functions for price input formatting
 const formatNumberInput = (val: string | number) => {
@@ -23,7 +43,7 @@ const parseFormattedNumber = (val: string) => {
   return val.replace(/\D/g, '');
 };
 
-const getSimTypeBadge = (simType: string, leSIM?: boolean) => {
+const getSimTypeBadge = (simType?: string, leSIM?: boolean | null) => {
   const type = simType || (leSIM !== false ? 'leSIM' : 'eSIM');
   let bg = '#E0F2FE';
   let color = '#0369A1';
@@ -63,7 +83,7 @@ const getSimTypeBadge = (simType: string, leSIM?: boolean) => {
   );
 };
 
-const getOrderStatusTextAndClass = (status: string) => {
+const getOrderStatusTextAndClass = (status?: string) => {
   let text = 'Đang xử lý';
   let className = 'pending';
 
@@ -102,7 +122,16 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
+interface CatalogSourceStatus {
+  readSource: 'legacy' | 'canonical';
+  legacyWriteEnabled: boolean;
+  canonicalVersion: string | null;
+  canonicalChecksum: string | null;
+  rollbackAvailable: boolean;
+}
+
 export const AdminDashboard: React.FC = () => {
+  const { hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const ITEMS_PER_PAGE = 10;
@@ -119,41 +148,47 @@ export const AdminDashboard: React.FC = () => {
 
   // Reset all page numbers when search query or active tab changes
   useEffect(() => {
-    setCurrentPageOrders(1);
-    setCurrentPageDevices(1);
-    setCurrentPagePackages(1);
-    setCurrentPageCoverage(1);
-    setCurrentPageCustomers(1);
-    setCurrentPagePromos(1);
-    setCurrentPageArticles(1);
-    setCurrentPageReviews(1);
-    setCurrentPagePayments(1);
-    setCurrentPageWarehouse(1);
+    queueMicrotask(() => {
+      setCurrentPageOrders(1);
+      setCurrentPageDevices(1);
+      setCurrentPagePackages(1);
+      setCurrentPageCoverage(1);
+      setCurrentPageCustomers(1);
+      setCurrentPagePromos(1);
+      setCurrentPageArticles(1);
+      setCurrentPageReviews(1);
+      setCurrentPagePayments(1);
+      setCurrentPageWarehouse(1);
+    });
   }, [searchQuery, activeTab]);
 
   const [selectedLanguage, setSelectedLanguage] = useState<'vi' | 'en'>('vi');
 
-  const [orders, setOrders] = useState<any[]>([]);
-  const [devices, setDevices] = useState<any[]>([]);
-  const [packages, setPackages] = useState<any[]>([]);
-  const [destinations, setDestinations] = useState<any[]>([]);
-  const [articles, setArticles] = useState<any[]>([]);
-  const [tickets, setTickets] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [reviews, setReviews] = useState<any[]>([]);
+  const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [devices, setDevices] = useState<AdminCatalogItem[]>([]);
+  const [packages, setPackages] = useState<AdminCatalogItem[]>([]);
+  const [destinations, setDestinations] = useState<AdminCatalogItem[]>([]);
+  const [articles, setArticles] = useState<AdminArticle[]>([]);
+  const [tickets, setTickets] = useState<AdminTicket[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [customers, setCustomers] = useState<AdminCustomer[]>([]);
+  const [reviews, setReviews] = useState<ProductReview[]>([]);
+  const [catalogSourceStatus, setCatalogSourceStatus] =
+    useState<CatalogSourceStatus | null>(null);
+  const legacyCatalogReadOnly =
+    catalogSourceStatus?.legacyWriteEnabled === false;
 
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
   const [editingCustomerEmail, setEditingCustomerEmail] = useState<string | null>(null);
   const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', status: 'Hoạt động' });
 
-  const [promos, setPromos] = useState<any[]>([]);
+  const [promos, setPromos] = useState<AdminPromo[]>([]);
   const [isAddingPromo, setIsAddingPromo] = useState(false);
   const [editingPromoCode, setEditingPromoCode] = useState<string | null>(null);
   const [promoForm, setPromoForm] = useState({ code: '', discount: '', description: '', expiry: '', status: 'Hoạt động' });
 
   // Media Library state
-  const [mediaFiles, setMediaFiles] = useState<any[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<AdminMediaFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
@@ -229,8 +264,8 @@ export const AdminDashboard: React.FC = () => {
 
   // Variant Manager state
   const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
-  const [variantTarget, setVariantTarget] = useState<{ type: 'destination' | 'package'; item: any } | null>(null);
-  const [manualQrs, setManualQrs] = useState<any[]>([]);
+  const [variantTarget, setVariantTarget] = useState<{ type: 'destination' | 'package'; item: AdminCatalogItem } | null>(null);
+  const [manualQrs, setManualQrs] = useState<ManualQr[]>([]);
   const [newVariantForm, setNewVariantForm] = useState({
     sku: '',
     dataLimit: '',
@@ -274,7 +309,8 @@ export const AdminDashboard: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleOpenVariantManager = (type: 'destination' | 'package', item: any) => {
+  const handleOpenVariantManager = (type: 'destination' | 'package', item: AdminCatalogItem) => {
+    if (legacyCatalogReadOnly) return;
     setVariantTarget({ type, item });
     setNewVariantForm({
       sku: '',
@@ -291,13 +327,13 @@ export const AdminDashboard: React.FC = () => {
 
   const handleAddVariant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!variantTarget) return;
+    if (!variantTarget || legacyCatalogReadOnly) return;
 
     const { type, item } = variantTarget;
     const currentVariants = Array.isArray(item.variants) ? item.variants : [];
 
     const newVar = {
-      id: 'var-' + Date.now(),
+      id: createLegacyVariantId(),
       sku: newVariantForm.sku || `${type === 'destination' ? 'DEST' : 'PKG'}-${item.id.toUpperCase()}-${newVariantForm.duration.replace(/\s+/g, '')}-${newVariantForm.dataLimit.replace(/\s+/g, '')}`.toUpperCase(),
       dataLimit: newVariantForm.dataLimit,
       duration: newVariantForm.duration,
@@ -340,12 +376,12 @@ export const AdminDashboard: React.FC = () => {
   };
 
   const handleDeleteVariant = async (varId: string) => {
-    if (!variantTarget) return;
+    if (!variantTarget || legacyCatalogReadOnly) return;
     if (!confirm('Xoá biến thể này?')) return;
 
     const { type, item } = variantTarget;
     const currentVariants = Array.isArray(item.variants) ? item.variants : [];
-    const updatedVariants = currentVariants.filter((v: any) => v.id !== varId);
+    const updatedVariants = currentVariants.filter((v: LegacyVariant) => v.id !== varId);
 
     try {
       const endpoint = type === 'destination' ? `/api/admin/destinations/${item.id}` : `/api/admin/packages/${item.id}`;
@@ -367,7 +403,7 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  const fetchData = async (tab: string) => {
+  const fetchData = useCallback(async (tab: string) => {
     try {
       if (tab === 'orders' || tab === 'reports' || tab === 'payments') {
         const res = await fetch('/api/admin/orders');
@@ -400,8 +436,8 @@ export const AdminDashboard: React.FC = () => {
         if (res.ok) {
           const ticketsList = await res.json();
           setTickets(ticketsList);
-          if (ticketsList.length > 0 && !selectedTicketId) {
-            setSelectedTicketId(ticketsList[0].ticketCode);
+          if (ticketsList.length > 0) {
+            setSelectedTicketId((currentTicketId) => currentTicketId ?? ticketsList[0].ticketCode);
           }
         }
       } else if (tab === 'personnel') {
@@ -420,7 +456,7 @@ export const AdminDashboard: React.FC = () => {
     } catch (e) {
       console.warn('Failed to fetch admin tab data:', e);
     }
-  };
+  }, []);
 
   const handleStartBulkGeneration = async () => {
     const list = bulkKeywords.split('\n').map(k => k.trim()).filter(Boolean);
@@ -440,7 +476,7 @@ export const AdminDashboard: React.FC = () => {
     let countSuccess = 0;
     
     const intervalVal = parseInt(bulkInterval, 10) || 2;
-    let baseTime = new Date(bulkStartDate).getTime();
+    const baseTime = new Date(bulkStartDate).getTime();
     let intervalMs = 0;
     if (bulkIntervalUnit === 'minutes') intervalMs = intervalVal * 60 * 1000;
     else if (bulkIntervalUnit === 'hours') intervalMs = intervalVal * 60 * 60 * 1000;
@@ -465,7 +501,7 @@ export const AdminDashboard: React.FC = () => {
         const data = await res.json();
         addLog(`  -> Đã tạo nội dung & ảnh bìa thành công.`);
 
-        let targetStatus = bulkStatus;
+        const targetStatus = bulkStatus;
         let targetScheduledDate = '';
         let targetDate = 'Hôm nay';
 
@@ -503,8 +539,9 @@ export const AdminDashboard: React.FC = () => {
           throw new Error('Không thể lưu bài viết vào database.');
         }
 
-      } catch (err: any) {
-        addLog(`  [LỖI] Thất bại khi xử lý "${keyword}": ${err.message}`);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Lỗi không xác định';
+        addLog(`  [LỖI] Thất bại khi xử lý "${keyword}": ${errorMessage}`);
       }
 
       const prog = Math.round(((i + 1) / list.length) * 100);
@@ -518,10 +555,30 @@ export const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchData(activeTab);
-  }, [activeTab]);
+  }, [activeTab, fetchData]);
+
+  useEffect(() => {
+    let active = true;
+    const loadSourceStatus = async () => {
+      try {
+        const response = await fetch('/api/admin/catalog/source-status');
+        if (response.ok && active) {
+          setCatalogSourceStatus(await response.json());
+        }
+      } catch (error) {
+        console.warn('Failed to fetch catalog source status:', error);
+      }
+    };
+    loadSourceStatus();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const sidebarNavItems: NavItem[] = [
     { id: 'overview', name: 'Tổng quan', icon: <LayoutDashboard className="admin-nav-icon" /> },
+    { id: 'catalog', name: 'Sản phẩm', icon: <ShoppingBag className="admin-nav-icon" /> },
+    { id: 'providers', name: 'Nguồn hàng', icon: <PackageSearch className="admin-nav-icon" /> },
     { id: 'orders', name: 'Đơn hàng eSIM', icon: <ShoppingCart className="admin-nav-icon" /> },
     { id: 'devices', name: 'Thiết bị 4G/5G', icon: <Radio className="admin-nav-icon" /> },
     { id: 'packages', name: 'Gói cước', icon: <Library className="admin-nav-icon" /> },
@@ -539,6 +596,14 @@ export const AdminDashboard: React.FC = () => {
     { id: 'personnel', name: 'Nhân sự & phân quyền', icon: <Users2 className="admin-nav-icon" /> },
     { id: 'settings', name: 'Cài đặt', icon: <Settings className="admin-nav-icon" /> },
   ];
+  const tabPermissions: Record<string, string> = {
+    overview: 'admin.dashboard.read', catalog: 'catalog.product.read', providers: 'provider.read', orders: 'orders.read',
+    devices: 'catalog.product.read', packages: 'catalog.product.read', coverage: 'catalog.product.read', customers: 'orders.read',
+    promos: 'catalog.product.update', articles: 'articles.read', 'ai-bulk-writing': 'articles.manage', reviews: 'articles.manage',
+    media: 'media.upload', support: 'orders.update', reports: 'orders.read', payments: 'orders.read', warehouse: 'inventory.stock.read',
+    personnel: 'admin.users.read', settings: 'system.config.read_masked',
+  };
+  const visibleSidebarNavItems = sidebarNavItems.filter((item) => hasPermission(tabPermissions[item.id]));
 
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -801,7 +866,7 @@ export const AdminDashboard: React.FC = () => {
   );
 
   const warehouseItems = destinations.flatMap(d => 
-    (d.variants || []).map((v: any) => ({
+    (d.variants || []).map((v: LegacyVariant) => ({
       ...v,
       destinationName: d.name
     }))
@@ -833,7 +898,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         <nav className="admin-sidebar-nav">
-          {sidebarNavItems.map((item) => (
+          {visibleSidebarNavItems.map((item) => (
             <div
               key={item.id}
               className={`admin-nav-item ${activeTab === item.id ? 'active' : ''}`}
@@ -876,7 +941,7 @@ export const AdminDashboard: React.FC = () => {
         <header className="admin-header">
           <div className="admin-header-left">
             <h1 className="admin-header-title">
-              {sidebarNavItems.find(item => item.id === activeTab)?.name || 'Tổng quan'}
+              {visibleSidebarNavItems.find(item => item.id === activeTab)?.name || 'Tổng quan'}
             </h1>
             <span className="admin-header-subtitle">Bảng điều khiển quản trị</span>
           </div>
@@ -931,6 +996,13 @@ export const AdminDashboard: React.FC = () => {
 
         {/* Dashboard Content Container */}
         <div className="admin-container">
+          {activeTab === 'catalog' && (
+            <CatalogTab searchQuery={searchQuery} />
+          )}
+
+          {activeTab === 'providers' && (
+            <ProviderCatalogTab searchQuery={searchQuery} />
+          )}
           
           {activeTab === 'overview' && (
             <>
@@ -1931,7 +2003,7 @@ export const AdminDashboard: React.FC = () => {
                           )}
                           {o.items && o.items.length > 0 && (
                             <div style={{ fontSize: '11px', color: '#4B5563', marginTop: '6px', fontWeight: 'normal' }}>
-                              {o.items.map((item: any, i: number) => (
+                              {o.items.map((item: AdminOrderItem, i: number) => (
                                 <div key={i} style={{ backgroundColor: '#F0FDF4', padding: '6px', borderRadius: '6px', border: '1px solid #DCFCE7', marginBottom: '4px' }}>
                                   <strong>ICCID:</strong> {item.iccid}<br/>
                                   {item.redemptionCode && <span><strong>Mã kích hoạt:</strong> {item.redemptionCode}<br/></span>}
@@ -2126,7 +2198,7 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                     <div className="form-group">
                       <label>Phân loại</label>
-                      <select value={deviceForm.category} onChange={e => setDeviceForm({...deviceForm, category: e.target.value as any})}>
+                      <select value={deviceForm.category} onChange={e => setDeviceForm({...deviceForm, category: e.target.value})}>
                         <option value="pocket">Bộ phát di động</option>
                         <option value="home">WiFi gia đình</option>
                         <option value="office">Thiết bị văn phòng</option>
@@ -2236,9 +2308,9 @@ export const AdminDashboard: React.FC = () => {
                             {d.stock <= 0 ? 'Hết hàng' : `${d.stock} cái`}
                           </span>
                         </td>
-                        <td style={{ fontWeight: 'bold' }}>{parseInt(d.price).toLocaleString('vi-VN')}đ</td>
+                         <td style={{ fontWeight: 'bold' }}>{parseInt(String(d.price), 10).toLocaleString('vi-VN')}đ</td>
                         <td style={{ textDecoration: 'line-through', color: '#9CA3AF' }}>
-                          {d.compareAtPrice ? `${parseInt(d.compareAtPrice).toLocaleString('vi-VN')}đ` : '-'}
+                           {d.compareAtPrice ? `${parseInt(String(d.compareAtPrice), 10).toLocaleString('vi-VN')}đ` : '-'}
                         </td>
                         <td>{d.badge && <span className="status-badge active">{d.badge}</span>}</td>
                         <td>
@@ -2296,7 +2368,10 @@ export const AdminDashboard: React.FC = () => {
             <div className="admin-card">
               <div className="admin-card-header">
                 <h2 className="admin-card-title">Quản lý Gói cước eSIM</h2>
-                <button className="admin-create-btn" onClick={() => {
+                <button
+                  className="admin-create-btn"
+                  disabled={legacyCatalogReadOnly}
+                  onClick={() => {
                   if (isAddingPackage) {
                     setPackageForm({ 
                       sku: '', name: '', coverage: '', dataLimit: '', duration: '', price: '', 
@@ -2312,7 +2387,16 @@ export const AdminDashboard: React.FC = () => {
                 </button>
               </div>
 
-              {isAddingPackage && (
+              {legacyCatalogReadOnly && (
+                <div className="admin-canonical-readonly" role="status">
+                  <Lock size={16} />
+                  <span>
+                    Catalog đang dùng nguồn canonical. Chức năng chỉnh sửa cũ đã được khóa.
+                  </span>
+                </div>
+              )}
+
+              {isAddingPackage && !legacyCatalogReadOnly && (
                 <form className="admin-form-box" onSubmit={async (e) => {
                   e.preventDefault();
                   const url = editingPackageId ? `/api/admin/packages/${editingPackageId}` : '/api/admin/packages';
@@ -2372,7 +2456,7 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                     <div className="form-group">
                       <label>Loại Icon</label>
-                      <select value={packageForm.iconType} onChange={e => setPackageForm({...packageForm, iconType: e.target.value as any})}>
+                      <select value={packageForm.iconType} onChange={e => setPackageForm({...packageForm, iconType: e.target.value})}>
                         <option value="region">Bản đồ khu vực</option>
                         <option value="global">Quả địa cầu</option>
                       </select>
@@ -2461,9 +2545,9 @@ export const AdminDashboard: React.FC = () => {
                         <td>{p.coverage}</td>
                         <td>{p.dataLimit}</td>
                         <td>{p.duration}</td>
-                        <td style={{ color: 'var(--primary-orange)', fontWeight: 'bold' }}>{parseFloat(p.price).toLocaleString('vi-VN')}đ</td>
+                        <td style={{ color: 'var(--primary-orange)', fontWeight: 'bold' }}>{parseFloat(String(p.price)).toLocaleString('vi-VN')}đ</td>
                         <td style={{ textDecoration: 'line-through', color: '#9CA3AF' }}>
-                          {p.compareAtPrice ? `${parseFloat(p.compareAtPrice).toLocaleString('vi-VN')}đ` : '-'}
+                          {p.compareAtPrice ? `${parseFloat(String(p.compareAtPrice)).toLocaleString('vi-VN')}đ` : '-'}
                         </td>
                         <td>
                           <span className={`status-badge-mini ${p.featured ? 'active' : 'cancelled'}`}>
@@ -2474,6 +2558,7 @@ export const AdminDashboard: React.FC = () => {
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button 
                               className="admin-action-btn-mini primary"
+                              disabled={legacyCatalogReadOnly}
                               onClick={() => {
                                 setPackageForm({
                                   sku: p.sku || '',
@@ -2502,12 +2587,14 @@ export const AdminDashboard: React.FC = () => {
                             </button>
                             <button 
                               className="admin-action-btn-mini primary"
+                              disabled={legacyCatalogReadOnly}
                               onClick={() => handleOpenVariantManager('package', p)}
                             >
                               Biến thể ({p.variants?.length || 0})
                             </button>
                             <button 
                               className="admin-action-btn-mini danger"
+                              disabled={legacyCatalogReadOnly}
                               onClick={async () => {
                                 if (confirm('Xoá gói cước này?')) {
                                   await fetch(`/api/admin/packages/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
@@ -2533,7 +2620,10 @@ export const AdminDashboard: React.FC = () => {
             <div className="admin-card">
               <div className="admin-card-header">
                 <h2 className="admin-card-title">Quản lý Quốc gia & Vùng phủ eSIM</h2>
-                <button className="admin-create-btn" onClick={() => {
+                <button
+                  className="admin-create-btn"
+                  disabled={legacyCatalogReadOnly}
+                  onClick={() => {
                   if (isAddingDestination) {
                     setDestinationForm({ 
                       sku: '', name: '', flag: '', dataLimit: '', duration: '', price: '', 
@@ -2549,7 +2639,16 @@ export const AdminDashboard: React.FC = () => {
                 </button>
               </div>
 
-              {isAddingDestination && (
+              {legacyCatalogReadOnly && (
+                <div className="admin-canonical-readonly" role="status">
+                  <Lock size={16} />
+                  <span>
+                    Catalog đang dùng nguồn canonical. Chức năng chỉnh sửa cũ đã được khóa.
+                  </span>
+                </div>
+              )}
+
+              {isAddingDestination && !legacyCatalogReadOnly && (
                 <form className="admin-form-box" onSubmit={async (e) => {
                   e.preventDefault();
                   const url = editingDestinationId ? `/api/admin/destinations/${editingDestinationId}` : '/api/admin/destinations';
@@ -2713,9 +2812,9 @@ export const AdminDashboard: React.FC = () => {
                         <td style={{ fontSize: '11px', fontFamily: 'monospace' }}>{d.wmproductId}</td>
                         <td>{d.network}</td>
                         <td>{d.dataLimit} - {d.duration}</td>
-                        <td style={{ color: 'var(--primary-orange)', fontWeight: 'bold' }}>{parseFloat(d.price).toLocaleString('vi-VN')}đ</td>
+                        <td style={{ color: 'var(--primary-orange)', fontWeight: 'bold' }}>{parseFloat(String(d.price)).toLocaleString('vi-VN')}đ</td>
                         <td style={{ textDecoration: 'line-through', color: '#9CA3AF' }}>
-                          {d.compareAtPrice ? `${parseFloat(d.compareAtPrice).toLocaleString('vi-VN')}đ` : '-'}
+                          {d.compareAtPrice ? `${parseFloat(String(d.compareAtPrice)).toLocaleString('vi-VN')}đ` : '-'}
                         </td>
                         <td>
                           <span className={`status-badge-mini ${d.featured ? 'active' : 'cancelled'}`}>
@@ -2726,6 +2825,7 @@ export const AdminDashboard: React.FC = () => {
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button 
                               className="admin-action-btn-mini primary"
+                              disabled={legacyCatalogReadOnly}
                               onClick={() => {
                                 setDestinationForm({
                                   sku: d.sku || '',
@@ -2754,12 +2854,14 @@ export const AdminDashboard: React.FC = () => {
                             </button>
                             <button 
                               className="admin-action-btn-mini primary"
+                              disabled={legacyCatalogReadOnly}
                               onClick={() => handleOpenVariantManager('destination', d)}
                             >
                               Biến thể ({d.variants?.length || 0})
                             </button>
                             <button 
                               className="admin-action-btn-mini danger"
+                              disabled={legacyCatalogReadOnly}
                               onClick={async () => {
                                 if (confirm('Xoá quốc gia này?')) {
                                   await fetch(`/api/admin/destinations/${encodeURIComponent(d.id)}`, { method: 'DELETE' });
@@ -2908,10 +3010,10 @@ export const AdminDashboard: React.FC = () => {
                               className="admin-action-btn-mini primary"
                               onClick={() => {
                                 setCustomerForm({
-                                  name: c.name,
+                                   name: c.name || '',
                                   phone: c.phone || '',
                                   email: c.email,
-                                  status: c.status
+                                   status: c.status || 'Hoạt động'
                                 });
                                 setEditingCustomerEmail(c.email);
                                 setIsAddingCustomer(false);
@@ -3087,10 +3189,10 @@ export const AdminDashboard: React.FC = () => {
                               onClick={() => {
                                 setPromoForm({
                                   code: p.code,
-                                  discount: p.discount.toString(),
+                                   discount: p.discount?.toString() || '',
                                   description: p.description || '',
                                   expiry: p.expiry || '',
-                                  status: p.status
+                                   status: p.status || 'Hoạt động'
                                 });
                                 setEditingPromoCode(p.code);
                                 setIsAddingPromo(false);
@@ -3298,9 +3400,9 @@ export const AdminDashboard: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {paginatedWarehouseItems.map((v: any) => {
-                      const availQrCount = manualQrs.filter((q: any) => q.variantId === v.id && !q.assignedOrderId).length;
-                      let stockText = '-';
+                    {paginatedWarehouseItems.map((v: LegacyVariant & { destinationName?: string }) => {
+                      const availQrCount = manualQrs.filter((q: ManualQr) => q.variantId === v.id && !q.assignedOrderId).length;
+                      let stockText: string;
                       let statusBadge = <span className="status-badge active">Sẵn sàng</span>;
                       
                       if (v.simType === 'manual') {
@@ -3317,7 +3419,7 @@ export const AdminDashboard: React.FC = () => {
                       return (
                         <tr key={v.id}>
                           <td style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{v.sku}</td>
-                          <td>{destinations.find(d => d.variants?.some((varItem: any) => varItem.id === v.id))?.name || 'eSIM Vùng phủ'} ({v.dataLimit} - {v.duration})</td>
+                          <td>{destinations.find(d => d.variants?.some((varItem: LegacyVariant) => varItem.id === v.id))?.name || 'eSIM Vùng phủ'} ({v.dataLimit} - {v.duration})</td>
                           <td>{getSimTypeBadge(v.simType, v.leSIM)}</td>
                           <td style={{ fontFamily: 'monospace' }}>{v.wmproductId || '-'}</td>
                           <td style={{ fontWeight: '600' }}>{stockText}</td>
@@ -3327,7 +3429,7 @@ export const AdminDashboard: React.FC = () => {
                               <button 
                                 className="admin-action-btn-mini primary"
                                 onClick={() => {
-                                  const parentDest = destinations.find(d => d.variants?.some((varItem: any) => varItem.id === v.id));
+                                  const parentDest = destinations.find(d => d.variants?.some((varItem: LegacyVariant) => varItem.id === v.id));
                                   if (parentDest) {
                                     handleOpenVariantManager('destination', parentDest);
                                   }
@@ -3424,7 +3526,7 @@ export const AdminDashboard: React.FC = () => {
                                 const data = await res.json();
                                 alert(`Lỗi AI: ${data.error}`);
                               }
-                            } catch (err) {
+                            } catch {
                               alert('Lỗi kết nối máy chủ!');
                             } finally {
                               setIsGeneratingAi(false);
@@ -4012,7 +4114,7 @@ export const AdminDashboard: React.FC = () => {
 
                         {/* Chat Message Logs */}
                         <div className="chat-messages-log-box">
-                          {activeTicket.messages?.map((msg: any, idx: number) => (
+                          {activeTicket.messages?.map((msg: AdminTicketMessage, idx: number) => (
                             <div key={idx} className={`chat-bubble-container ${msg.sender === 'admin' ? 'admin' : 'customer'}`}>
                               <div className="chat-bubble-meta">
                                 <span>{msg.sender === 'admin' ? 'HICO Admin' : 'Khách hàng'}</span>
@@ -4464,7 +4566,7 @@ export const AdminDashboard: React.FC = () => {
           )}
 
           {/* Variant Manager Modal Pop-up */}
-          {isVariantModalOpen && variantTarget && (
+          {isVariantModalOpen && variantTarget && !legacyCatalogReadOnly && (
             <div className="media-selector-modal-overlay">
               <div className="media-selector-modal-content" style={{ maxWidth: '800px', width: '90%' }}>
                 <div className="modal-header">
@@ -4505,22 +4607,22 @@ export const AdminDashboard: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody>
-                          {variantTarget.item.variants.map((v: any) => (
+                          {variantTarget.item.variants.map((v: LegacyVariant) => (
                             <tr key={v.id}>
                               <td style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{v.sku}</td>
                               <td>{getSimTypeBadge(v.simType, v.leSIM)}</td>
                               <td>{v.dataLimit}</td>
                               <td>{v.duration}</td>
-                              <td style={{ color: 'var(--primary-orange)', fontWeight: 'bold' }}>{parseFloat(v.price).toLocaleString('vi-VN')}đ</td>
+                              <td style={{ color: 'var(--primary-orange)', fontWeight: 'bold' }}>{parseFloat(String(v.price)).toLocaleString('vi-VN')}đ</td>
                               <td style={{ textDecoration: 'line-through', color: '#9CA3AF' }}>
-                                {v.compareAtPrice ? `${parseFloat(v.compareAtPrice).toLocaleString('vi-VN')}đ` : '-'}
+                                {v.compareAtPrice ? `${parseFloat(String(v.compareAtPrice)).toLocaleString('vi-VN')}đ` : '-'}
                               </td>
                               <td style={{ fontFamily: 'monospace' }}>{v.wmproductId || '-'}</td>
                               <td>
                                 {v.simType === 'manual' ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
                                     <span style={{ fontWeight: '600', color: '#7E22CE' }}>
-                                      Sẵn có: {manualQrs.filter((q: any) => q.variantId === v.id && !q.assignedOrderId).length} mã
+                                      Sẵn có: {manualQrs.filter((q: ManualQr) => q.variantId === v.id && !q.assignedOrderId).length} mã
                                     </span>
                                     <label style={{
                                       display: 'inline-block',

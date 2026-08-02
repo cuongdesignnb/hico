@@ -1,6 +1,8 @@
 # Stage 1: Build Vite React App
 FROM node:20-alpine AS build
 WORKDIR /app
+ARG VITE_PUBLIC_SITE_URL
+ENV VITE_PUBLIC_SITE_URL=$VITE_PUBLIC_SITE_URL
 COPY package*.json ./
 RUN npm install
 COPY . .

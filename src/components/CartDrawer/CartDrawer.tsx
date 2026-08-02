@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../context/useApp';
 import { X, Trash2, Minus, Plus, CreditCard, ShoppingBag } from 'lucide-react';
+import { createCheckoutOrder, getCheckoutConfig, validateCheckout } from '../../services/checkoutApi';
 import './CartDrawer.css';
 
 export const CartDrawer: React.FC = () => {
@@ -53,7 +54,24 @@ export const CartDrawer: React.FC = () => {
     }
   };
 
-  const hasPhysicalItem = cart.some((item) => item.type === 'physical' || item.simType === 'physical');
+  const hasPhysicalItem = cart.some((item) => item.type === 'physical');
+  const currencyGroups = new Set(cart.map((item) => item.currency ?? 'VND'));
+  const hasMixedCurrency = currencyGroups.size > 1;
+
+  const finishCheckout = (physical: boolean) => {
+    if (physical) {
+      triggerNotification('Đặt hàng thành công! Đơn hàng SIM vật lý đang chờ chuẩn bị giao hàng.', 'success');
+    } else {
+      triggerNotification('Thanh toán thành công! Mã QR kích hoạt eSIM đã được gửi vào email của bạn.', 'success');
+    }
+    clearCart();
+    setIsCheckingOut(false);
+    setIsCartOpen(false);
+    setPromoCode('');
+    setPromoApplied(false);
+    setDiscount(0);
+    setShippingAddress({ address: '', city: '', district: '', ward: '' });
+  };
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -68,6 +86,31 @@ export const CartDrawer: React.FC = () => {
     setIsCheckingOut(true);
 
     try {
+      const checkoutConfig = await getCheckoutConfig();
+      if (checkoutConfig.engine === 'canonical') {
+        if (hasMixedCurrency) throw new Error('Giỏ hàng có nhiều loại tiền tệ. Vui lòng thanh toán riêng từng nhóm.');
+        if (cart.some((item) => !item.variantId)) throw new Error('Một sản phẩm trong giỏ chưa có biến thể canonical. Vui lòng xóa sản phẩm và chọn lại.');
+        const items = cart.map((item) => ({ variantId: item.variantId as string, quantity: item.quantity }));
+        const shipping = hasPhysicalItem ? {
+          recipientName: checkoutForm.name,
+          phone: checkoutForm.phone,
+          addressLine: shippingAddress.address,
+          ward: shippingAddress.ward,
+          district: shippingAddress.district,
+          province: shippingAddress.city,
+          country: 'VN',
+        } : null;
+        await validateCheckout({ items, shipping, topup: null });
+        await createCheckoutOrder({
+          idempotencyKey: window.crypto?.randomUUID?.() ?? `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          items,
+          customer: checkoutForm,
+          shipping,
+          topup: null,
+        });
+        finishCheckout(hasPhysicalItem);
+        return;
+      }
       const promises = cart.map(async (item) => {
         const baseProductId = item.id.includes('-pkg-') ? item.id.split('-pkg-')[0] : item.id;
         const response = await fetch('/api/payment/webhook', {
@@ -89,30 +132,14 @@ export const CartDrawer: React.FC = () => {
         });
         return response.ok;
       });
-      await Promise.all(promises);
+      const responses = await Promise.all(promises);
+      if (!responses.every(Boolean)) throw new Error('Legacy checkout không hoàn tất.');
+      finishCheckout(hasPhysicalItem);
     } catch (err) {
       console.warn('Payment webhook connection failed:', err);
-    }
-
-    setTimeout(() => {
-      if (hasPhysicalItem) {
-        triggerNotification('Đặt hàng thành công! Đơn hàng SIM vật lý đang chờ chuẩn bị giao hàng.', 'success');
-      } else {
-        triggerNotification('Thanh toán thành công! Mã QR kích hoạt eSIM đã được gửi vào email của bạn.', 'success');
-      }
-      clearCart();
+      triggerNotification(err instanceof Error ? err.message : 'Không thể hoàn tất thanh toán.', 'error');
       setIsCheckingOut(false);
-      setIsCartOpen(false);
-      setPromoCode('');
-      setPromoApplied(false);
-      setDiscount(0);
-      setShippingAddress({
-        address: '',
-        city: '',
-        district: '',
-        ward: '',
-      });
-    }, 1500);
+    }
   };
 
   return (
@@ -189,6 +216,11 @@ export const CartDrawer: React.FC = () => {
                 </div>
               ))}
             </div>
+            {hasMixedCurrency && (
+              <div className="checkout-currency-warning" role="alert">
+                Giỏ hàng có nhiều loại tiền tệ. Vui lòng thanh toán riêng từng nhóm.
+              </div>
+            )}
 
             {/* Discount Promo Code Form */}
             <div className="promo-section">

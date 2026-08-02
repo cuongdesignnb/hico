@@ -1,0 +1,20 @@
+{
+  "status": "verified",
+  "channel": "managed-production-alerts",
+  "owner": "Operations owner",
+  "approver": "Operations approver",
+  "onCall": "Primary on-call identifier",
+  "backupOnCall": "Backup on-call identifier",
+  "runbookBaseUrl": "https://ops.example.invalid/runbooks",
+  "acknowledgedAt": "2026-08-02T00:00:00.000Z",
+  "events": [
+    {
+      "name": "production_readiness_fail",
+      "generated": true,
+      "delivered": true,
+      "acknowledged": true,
+      "testedAt": "2026-08-02T00:00:00.000Z",
+      "reference": "incident-system-reference"
+    }
+  ]
+}

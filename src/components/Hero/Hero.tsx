@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useApp } from '../../context/AppContext';
+import React, { useCallback, useState, useEffect, useRef } from 'react';
+import { useApp } from '../../context/useApp';
 import { Globe, Shield, Zap, Headphones, Compass, MapPin } from 'lucide-react';
 import './Hero.css';
 
@@ -113,34 +113,19 @@ export const Hero: React.FC = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isFading, setIsFading] = useState(false);
   
-  const fadeTimeoutRef = useRef<any>(null);
-  const autoRotateIntervalRef = useRef<any>(null);
+  const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoRotateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const activeSlide = SLIDES[currentSlide];
 
-  // Auto-rotation of slides
-  useEffect(() => {
-    startAutoRotate();
-    return () => {
-      stopAutoRotate();
-      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
-    };
-  }, []);
-
-  const startAutoRotate = () => {
-    stopAutoRotate();
-    autoRotateIntervalRef.current = setInterval(() => {
-      triggerSlideChange((prev) => (prev + 1) % SLIDES.length);
-    }, 6000);
-  };
-
-  const stopAutoRotate = () => {
+  const stopAutoRotate = useCallback(() => {
     if (autoRotateIntervalRef.current) {
       clearInterval(autoRotateIntervalRef.current);
+      autoRotateIntervalRef.current = null;
     }
-  };
+  }, []);
 
-  const triggerSlideChange = (nextIndexOrFn: number | ((prev: number) => number)) => {
+  const triggerSlideChange = useCallback((nextIndexOrFn: number | ((prev: number) => number)) => {
     setIsFading(true);
     fadeTimeoutRef.current = setTimeout(() => {
       if (typeof nextIndexOrFn === 'function') {
@@ -150,7 +135,23 @@ export const Hero: React.FC = () => {
       }
       setIsFading(false);
     }, 300); // match CSS transition time
-  };
+  }, []);
+
+  const startAutoRotate = useCallback(() => {
+    stopAutoRotate();
+    autoRotateIntervalRef.current = setInterval(() => {
+      triggerSlideChange((prev) => (prev + 1) % SLIDES.length);
+    }, 6000);
+  }, [stopAutoRotate, triggerSlideChange]);
+
+  // Auto-rotation of slides
+  useEffect(() => {
+    startAutoRotate();
+    return () => {
+      stopAutoRotate();
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
+    };
+  }, [startAutoRotate, stopAutoRotate]);
 
   const handleIndicatorClick = (idx: number) => {
     stopAutoRotate();

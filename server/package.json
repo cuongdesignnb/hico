@@ -5,19 +5,54 @@
   "type": "module",
   "main": "hicoBackend.js",
   "scripts": {
+    "test": "node --test",
+    "catalog:migrate:validate": "node scripts/migrateLegacyCatalog.js --validate",
+    "catalog:migrate": "node scripts/migrateLegacyCatalog.js --write",
+    "catalog:smoke": "node scripts/smokeCanonicalCatalog.js",
+    "catalog:legacy-smoke": "node scripts/smokeLegacyAdapter.js",
+    "catalog:write-smoke": "node scripts/smokeCatalogWrite.js",
+    "catalog:backup": "node scripts/backupCatalogForCutover.js",
+    "catalog:backup:verify": "node scripts/verifyCatalogBackup.js",
+    "catalog:cutover:validate": "node scripts/validateCanonicalCutover.js",
+    "checkout:parity": "node scripts/compareCheckoutEngines.js",
+    "checkout:backup": "node scripts/backupCheckoutForCutover.js",
+    "checkout:backup:verify": "node scripts/verifyCheckoutBackup.js",
+    "checkout:cutover:validate": "node scripts/validateCanonicalCheckoutCutover.js",
     "start:wm": "node mockWorldmove.js",
     "start:hico": "node hicoBackend.js",
     "dev:wm": "nodemon mockWorldmove.js",
-    "dev:hico": "nodemon hicoBackend.js"
+    "dev:hico": "nodemon hicoBackend.js",
+    "db:migrate": "node scripts/migrateDatabase.js",
+    "db:migrate:status": "node scripts/migrateDatabase.js status",
+    "migration:status": "node scripts/migrateDatabase.js status",
+    "backup:create": "node scripts/backupProductionLike.js",
+    "backup:verify": "node scripts/verifyProductionBackup.js",
+    "backup:restore": "node scripts/restoreProductionLike.js",
+    "integrity:validate": "node scripts/validateProductionDataIntegrity.js",
+    "integrity:check": "node scripts/validateProductionDataIntegrity.js",
+    "production:validate": "node scripts/validateProductionEnvironment.js",
+    "production:launch:validate": "node scripts/validateProductionLaunch.js",
+    "production:domain:verify": "node scripts/verifyProductionDomain.js",
+    "production:secrets:verify": "node scripts/verifyProductionSecrets.js",
+    "production:alerts:verify": "node scripts/verifyProductionAlerts.js",
+    "production:backup:verify": "node scripts/verifyProductionBackup.js --launch",
+    "production:canary": "node scripts/runProductionCanaryChecks.js",
+    "production:report": "node scripts/generateProductionLaunchReport.js"
   },
   "dependencies": {
-    "axios": "^1.6.8",
+    "axios": "^1.19.0",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",
-    "express": "^4.19.2",
-    "nodemailer": "^8.0.10"
+    "express": "^4.22.2",
+    "nodemailer": "^9.0.3",
+    "pg": "^8.16.3",
+    "sanitize-html": "^2.17.6"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
+  },
+  "overrides": {
+    "body-parser": "1.20.6"
   }
 }

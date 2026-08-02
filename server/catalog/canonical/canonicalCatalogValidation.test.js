@@ -1,0 +1,103 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { validateCanonicalCatalog } from './canonicalCatalogValidation.js';
+
+const product = (overrides = {}) => ({
+  id: 'p1',
+  slug: 'san-pham',
+  name: 'Sản phẩm',
+  operation: 'new_subscription',
+  coverageType: 'country',
+  coverageIds: ['p1'],
+  featured: false,
+  status: 'active',
+  version: 1,
+  createdAt: '2026-07-30T00:00:00.000Z',
+  updatedAt: '2026-07-30T00:00:00.000Z',
+  ...overrides,
+});
+
+const variant = (overrides = {}) => ({
+  id: 'v1',
+  productId: 'p1',
+  sku: 'SKU-1',
+  price: 1000,
+  compareAtPrice: null,
+  currency: 'VND',
+  medium: 'esim',
+  supplier: 'other',
+  fulfillmentMethod: 'MANUAL_PROCESSING',
+  requiresExistingSim: false,
+  active: true,
+  needsReview: true,
+  version: 1,
+  createdAt: '2026-07-30T00:00:00.000Z',
+  updatedAt: '2026-07-30T00:00:00.000Z',
+  ...overrides,
+});
+
+test('validates canonical product and variant contracts', () => {
+  const result = validateCanonicalCatalog({
+    products: [product()],
+    variants: [variant()],
+  });
+  assert.equal(result.valid, true);
+});
+
+test('reports duplicate IDs, SKU and slug', () => {
+  const result = validateCanonicalCatalog({
+    products: [product(), product({ name: 'Duplicate' })],
+    variants: [variant(), variant({ productId: 'missing' })],
+  });
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.duplicateProductIds, ['p1']);
+  assert.deepEqual(result.duplicateVariantIds, ['v1']);
+  assert.deepEqual(result.duplicateSkus, ['SKU-1']);
+  assert.deepEqual(result.duplicateSlugs, ['san-pham']);
+  assert.deepEqual(result.orphanVariants, ['v1']);
+});
+
+test('reports invalid currency, price, stock and top-up mapping', () => {
+  const result = validateCanonicalCatalog({
+    products: [product({ operation: 'topup' })],
+    variants: [variant({
+      price: -1,
+      currency: 'TWD',
+      stock: 1.5,
+      fulfillmentMethod: 'WORLDMOVE_TOPUP',
+      supplier: 'worldmove',
+      providerOfferId: 'offer-1',
+      wmproductId: 'WM-1',
+      requiresExistingSim: false,
+    })],
+    providerOffers: [{
+      id: 'offer-1',
+      wmproductId: 'WM-1',
+      providerProductType: 2,
+      active: true,
+    }],
+  });
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(' '), /price/);
+  assert.match(result.errors.join(' '), /currency/);
+  assert.match(result.errors.join(' '), /stock/);
+  assert.match(result.errors.join(' '), /existing SIM/);
+});
+
+test('reports invalid provider mapping and orphan manual QR', () => {
+  const result = validateCanonicalCatalog({
+    products: [product()],
+    variants: [variant({
+      supplier: 'worldmove',
+      fulfillmentMethod: 'WORLDMOVE_ESIM_REDEEM',
+      providerOfferId: 'missing',
+      wmproductId: 'WM-1',
+      needsReview: false,
+    })],
+    providerOffers: [],
+    manualQrs: [{ id: 'qr-1', variantId: 'missing' }],
+  });
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.orphanManualQrs, ['qr-1']);
+  assert.match(result.errors.join(' '), /missing provider offer/);
+});

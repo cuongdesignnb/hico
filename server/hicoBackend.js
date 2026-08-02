@@ -1,11 +1,82 @@
 import express from 'express';
-import cors from 'cors';
 import CryptoJS from 'crypto-js';
 import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
 import { fileURLToPath } from 'url';
+import { createCatalogRouter } from './catalog/catalogRouter.js';
+import { createProviderRouter } from './providers/providerRouter.js';
+import { createReconciliationRouter } from './catalog/reconciliation/reconciliationRouter.js';
+import {
+  createCatalogMigrationRouter,
+} from './catalog/migration/catalogMigrationRouter.js';
+import {
+  createLegacyCatalogRouter,
+} from './catalog/legacy/legacyCatalogRouter.js';
+import {
+  createCatalogWriteRouter,
+} from './catalog/write/catalogWriteRouter.js';
+import { createCatalogBulkRouter } from './catalog/bulk/catalogBulkRouter.js';
+import { createCatalogQueueRouter } from './catalog/queues/catalogQueueRouter.js';
+import { createCatalogPublishRouter } from './catalog/publish/catalogPublishRouter.js';
+import { createCatalogBulkService } from './catalog/bulk/catalogBulkService.js';
+import { createCatalogQueueService } from './catalog/queues/catalogQueueService.js';
+import { createCatalogPublishService } from './catalog/publish/catalogPublishService.js';
+import { createCatalogCommandService } from './catalog/write/catalogCommandService.js';
+import { createCatalogVersionCommitService } from './catalog/write/catalogVersionCommitService.js';
+import { createCatalogWriteService } from './catalog/write/catalogWriteService.js';
+import {
+  createCanonicalCatalogGuard,
+  createCatalogHealthRouter,
+} from './catalog/health/catalogHealthRouter.js';
+import { createCatalogHealthService } from './catalog/health/catalogHealthService.js';
+import { createCanonicalCatalogReader } from './catalog/canonical/canonicalCatalogReader.js';
+import { createCanonicalCatalogRepository } from './catalog/canonical/canonicalCatalogRepository.js';
+import { createCheckoutRouter } from './checkout/checkoutRouter.js';
+import { createCheckoutService } from './checkout/checkoutService.js';
+import { createCheckoutIdempotencyRepository } from './checkout/checkoutIdempotencyRepository.js';
+import { createCheckoutHealthRouter } from './checkout/health/checkoutHealthRouter.js';
+import { createCheckoutHealthService } from './checkout/health/checkoutHealthService.js';
+import { createFulfillmentRouter } from './fulfillment/fulfillmentRouter.js';
+import { createFulfillmentService } from './fulfillment/fulfillmentService.js';
+import { createFulfillmentRepository } from './fulfillment/fulfillmentRepository.js';
+import { createFulfillmentIdempotencyRepository } from './fulfillment/fulfillmentIdempotencyRepository.js';
+import { createManualQrRepository } from './fulfillment/manualQrRepository.js';
+import { createInventoryRepository } from './fulfillment/inventoryRepository.js';
+import { createOrderRepository } from './orders/orderRepository.js';
+import { createOrderService } from './orders/orderService.js';
+import { createWorldmoveClient } from './providers/worldmove/worldmoveClient.js';
+import { createWorldmoveWebhookRouter } from './webhooks/worldmoveWebhookRouter.js';
+import { createWebhookReplayRepository, createWebhookEventRepository } from './webhooks/webhookReplayRepository.js';
+import { createSeoRouter } from './seo/seoRouter.js';
+import { createPublicRouteResolver } from './seo/publicRouteResolver.js';
+import { createAdminUserRepository } from './auth/users/adminUserRepository.js';
+import { createSessionStore, sessionStoreDriver } from './auth/session/sessionStore.js';
+import { createSessionCleanupService } from './auth/session/sessionCleanupService.js';
+import { createSessionHealthService } from './auth/session/sessionHealthService.js';
+import { createSessionService } from './auth/sessionService.js';
+import { createAuthService } from './auth/authService.js';
+import { createAuthCookies } from './auth/authCookies.js';
+import { createAuthRouter } from './auth/authRouter.js';
+import { createAdminSecurityRouter } from './auth/adminSecurityRouter.js';
+import { createRequestId } from './security/requestId.js';
+import { createAdminRequestAudit, createSecurityAudit } from './security/securityAudit.js';
+import { createCorsPolicy } from './security/corsPolicy.js';
+import { createSecurityHeaders } from './security/securityHeaders.js';
+import { createRateLimiter } from './security/rateLimits.js';
+import { createAuthenticate, createAdminAuthorization, createCsrfProtection } from './security/authenticate.js';
+import { parseImageUpload, safeUploadPath } from './security/uploadValidation.js';
+import { createPostgresPool } from './database/postgresPool.js';
+import { migrateDatabase } from './scripts/migrateDatabase.js';
+import { createProductionReadinessChecks } from './production/productionReadinessChecks.js';
+import { createProductionReadinessService } from './production/productionReadinessService.js';
+import { createProductionWriteGuard } from './production/productionWriteGuard.js';
+import { createProductionReadinessRouter } from './production/productionReadinessRouter.js';
+import { createLogger } from './logging/logger.js';
+import { createRequestContextLogger } from './logging/requestContext.js';
+import { createMetrics } from './monitoring/metrics.js';
+import { createAlertService } from './operations/alertService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,32 +84,103 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 5000;
+const checkoutBodyLimitMb = Number(process.env.CHECKOUT_BODY_LIMIT_MB ?? 10);
+const webhookBodyLimitKb = Number(process.env.WEBHOOK_BODY_LIMIT_KB ?? 256);
+const checkoutRateLimitPerMinute = Number(process.env.CHECKOUT_RATE_LIMIT_PER_MINUTE ?? 120);
+const catalogUploadsDirectory = path.join(__dirname, 'uploads');
+const catalogHealthService = createCatalogHealthService({
+  env: process.env,
+  uploadsDirectory: catalogUploadsDirectory,
+});
+const catalogGuard = createCanonicalCatalogGuard({ catalogHealthService });
+const catalogCommitService = createCatalogVersionCommitService({
+  uploadsDirectory: catalogUploadsDirectory,
+  onCommit: () => catalogHealthService.invalidate(),
+});
+const catalogCommandService = createCatalogCommandService({ env: process.env });
+const catalogWriteService = createCatalogWriteService({
+  env: process.env,
+  uploadsDirectory: catalogUploadsDirectory,
+  commandService: catalogCommandService,
+  commitService: catalogCommitService,
+});
+const catalogBulkService = createCatalogBulkService({
+  env: process.env,
+  uploadsDirectory: catalogUploadsDirectory,
+  commandService: catalogCommandService,
+  commitService: catalogCommitService,
+});
+const catalogQueueService = createCatalogQueueService({
+  uploadsDirectory: catalogUploadsDirectory,
+});
+const catalogPublishService = createCatalogPublishService({ catalogBulkService });
+const logger = createLogger();
+const metrics = createMetrics();
+const alerts = createAlertService({ env: process.env, logger });
+const securityAudit = createSecurityAudit({ logger, onEvent: (event) => {
+  metrics.increment(`security.${event.event ?? 'unknown'}`);
+  if (event.event === 'rate_limited') void alerts.raise({ type: 'rate_limit_hit', message: 'Rate limit threshold reached.', requestId: event.requestId });
+} });
+const authStoreDriver = sessionStoreDriver(process.env);
+const authPool = authStoreDriver === 'postgres' ? createPostgresPool({ env: process.env }) : null;
+if (authPool && process.env.AUTH_RUN_MIGRATIONS_ON_START === 'true') await migrateDatabase({ pool: authPool });
+const { repository: userRepository } = createAdminUserRepository({ env: process.env, uploadsDirectory: catalogUploadsDirectory, pool: authPool });
+const { repository: sessionRepository, driver: sessionDriver, shared: sessionShared } = createSessionStore({ env: process.env, uploadsDirectory: catalogUploadsDirectory, pool: authPool });
+const sessionCleanupService = createSessionCleanupService({ sessionRepository, env: process.env, logger });
+const sessionHealthService = createSessionHealthService({ sessionRepository, driver: sessionDriver, shared: sessionShared, cleanupService: sessionCleanupService });
+const sessionService = createSessionService({
+  sessionRepository,
+  sessionSecret: process.env.SESSION_SECRET ?? '',
+  csrfSecret: process.env.CSRF_SECRET ?? '',
+  env: process.env,
+});
+const authService = createAuthService({
+  userRepository,
+  sessionService,
+  env: process.env,
+  securityAudit,
+});
+await authService.ensureBootstrap();
+const authCookies = createAuthCookies({ env: process.env });
+let productionReadinessService;
+const readinessDelegate = {
+  evaluate: (...args) => productionReadinessService?.evaluate(...args) ?? Promise.resolve({ status: 'not_ready', adminWritesAllowed: false, writesEnabled: false, criticalChecksPassed: 0, criticalChecksTotal: 0, failedChecks: ['READINESS_INITIALIZING'], checkedAt: new Date().toISOString() }),
+  assertWriteReady: (...args) => productionReadinessService?.assertWriteReady(...args) ?? Promise.resolve(null),
+};
 
 // Dynamic config store
 const CONFIG_FILE = 'uploads/api_config.json';
 let apiConfig = {
-  merchantId: 'b000024',
-  deptId: '000039',
-  token: 'b50a245e4aab9aa9bf33ee3613dfca03',
-  apiUrl: 'https://tfmshippingsys.fastmove.com.tw',
-  smtpHost: '',
-  smtpPort: '587',
-  smtpUser: '',
-  smtpPass: '',
-  smtpFrom: 'HICO eSIM <noreply@hico-esim.com>',
-  openaiApiKey: '',
-  openaiModel: 'ChatGPT 5.4 mini',
-  openaiImageModel: 'chatGPT image 2',
-  openaiApiUrl: 'https://api.openai.com/v1'
+  merchantId: process.env.WORLDMOVE_MERCHANT_ID ?? '',
+  deptId: process.env.WORLDMOVE_DEPT_ID ?? '',
+  apiUrl: process.env.WORLDMOVE_API_URL ?? '',
+  smtpHost: process.env.SMTP_HOST ?? '',
+  smtpPort: process.env.SMTP_PORT ?? '587',
+  smtpUser: process.env.SMTP_USER ?? '',
+  smtpFrom: process.env.SMTP_FROM ?? 'HICO eSIM <noreply@hico-esim.com>',
 };
 
 if (fs.existsSync(CONFIG_FILE)) {
   try {
-    apiConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+    const savedConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+    apiConfig = {
+      ...apiConfig,
+      ...(savedConfig.apiUrl ? { apiUrl: savedConfig.apiUrl } : {}),
+      ...(savedConfig.smtpHost ? { smtpHost: savedConfig.smtpHost } : {}),
+      ...(savedConfig.smtpPort ? { smtpPort: savedConfig.smtpPort } : {}),
+      ...(savedConfig.smtpUser ? { smtpUser: savedConfig.smtpUser } : {}),
+      ...(savedConfig.smtpFrom ? { smtpFrom: savedConfig.smtpFrom } : {}),
+    };
   } catch (e) {
     console.error('Failed to load api_config.json, using defaults:', e.message);
   }
 }
+
+Object.defineProperties(apiConfig, {
+  token: { enumerable: false, get: () => process.env.WORLDMOVE_TOKEN ?? '' },
+  smtpPass: { enumerable: false, get: () => process.env.SMTP_PASSWORD ?? '' },
+  openaiApiKey: { enumerable: false, get: () => process.env.OPENAI_API_KEY ?? '' },
+});
 
 function saveConfig() {
   try {
@@ -48,10 +190,65 @@ function saveConfig() {
   }
 }
 
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use('/uploads', express.static('uploads'));
+app.use(createRequestId());
+app.use(createRequestContextLogger({ logger }));
+app.use(createSecurityHeaders({ env: process.env }));
+app.use(createCorsPolicy({ env: process.env }));
+app.use('/api/webhooks/worldmove', express.raw({ type: 'application/json', limit: `${webhookBodyLimitKb}kb` }));
+app.use('/api/webhooks/worldmove', (error, _req, res, next) => {
+  if (error?.type === 'entity.too.large') return res.status(413).json({ error: 'Webhook payload quá lớn.', code: 'WEBHOOK_BODY_TOO_LARGE' });
+  return next(error);
+});
+app.use(express.json({ limit: `${checkoutBodyLimitMb}mb` }));
+app.use(express.urlencoded({ limit: `${checkoutBodyLimitMb}mb`, extended: true }));
+const publicUploadExtensions = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+app.use('/uploads', (req, res, next) => {
+  if (!publicUploadExtensions.has(path.extname(req.path).toLowerCase())) return res.status(404).end();
+  return next();
+});
+app.use('/uploads', express.static(catalogUploadsDirectory, { dotfiles: 'deny', index: false, fallthrough: false }));
+app.use('/api/auth', createAuthRouter({ authService, sessionService, authCookies, env: process.env, securityAudit }));
+app.get('/api/health/session-store', async (_req, res) => {
+  const health = await sessionHealthService.getHealth();
+  return res.status(health.status === 'healthy' ? 200 : 503).json(health);
+});
+app.get('/api/health/metrics', (_req, res) => res.json({ status: 'healthy', counters: metrics.snapshot() }));
+app.get('/api/health/security', async (_req, res) => {
+  const readiness = await readinessDelegate.evaluate();
+  const ready = process.env.NODE_ENV !== 'production' || readiness.status === 'ready';
+  return res.status(ready ? 200 : 503).json({
+    status: ready ? 'healthy' : 'not_ready',
+    secureCookies: process.env.NODE_ENV === 'production',
+    csrfConfigured: Boolean(process.env.CSRF_SECRET || process.env.NODE_ENV !== 'production'),
+    corsAllowlistConfigured: Boolean(process.env.CORS_ALLOWED_ORIGINS || process.env.NODE_ENV !== 'production'),
+    webhookSecretConfigured: Boolean(process.env.WORLDMOVE_WEBHOOK_SECRET || process.env.NODE_ENV !== 'production'),
+    providerCredentialConfigured: Boolean(process.env.WORLDMOVE_TOKEN || process.env.NODE_ENV !== 'production'),
+    dependencyGate: readiness.failedChecks?.includes('DEPENDENCY_GATE_PASS') ? 'fail' : 'pass',
+  });
+});
+app.use('/api/admin',
+  createAuthenticate({ authService, sessionService, securityAudit }),
+  createCsrfProtection({ sessionService, securityAudit }),
+  createRateLimiter({
+    windowMs: Number.parseInt(process.env.RATE_LIMIT_ADMIN_WRITE_WINDOW_MS, 10) || 60_000,
+    max: Number.parseInt(process.env.RATE_LIMIT_ADMIN_WRITE_MAX, 10) || 120,
+    key: (req) => `${req.auth?.user.id ?? 'unknown'}:${req.ip || 'unknown'}`,
+    audit: securityAudit,
+  }),
+  createAdminAuthorization({ securityReady: () => true, securityAudit }),
+  createProductionWriteGuard({ readinessService: readinessDelegate, env: process.env }),
+  createAdminRequestAudit({ securityAudit }),
+);
+app.use('/api/admin/auth', createAdminSecurityRouter({ sessionService, securityAudit }));
+app.use('/api', createCatalogHealthRouter({ catalogHealthService }));
+app.use('/api', createCatalogRouter({ catalogGuard }));
+app.use('/api', createProviderRouter());
+app.use('/api', createReconciliationRouter());
+app.use('/api', createCatalogMigrationRouter());
+app.use('/api', createCatalogWriteRouter({ catalogWriteService, catalogGuard }));
+app.use('/api', createCatalogBulkRouter({ catalogBulkService, catalogGuard }));
+app.use('/api', createCatalogQueueRouter({ catalogQueueService, catalogGuard }));
+app.use('/api', createCatalogPublishRouter({ catalogPublishService, catalogGuard }));
 
 // Ensure uploads folder exists
 if (!fs.existsSync('uploads')) {
@@ -215,6 +412,88 @@ const ordersDb = createPersistentMap('orders.json', (m) => {
     items: [{ iccid: '898520400001234999', productName: 'eSIM Châu Âu 10GB - 15 Ngày', redemptionCode: 'RC_EU_MOCK' }]
   });
 });
+
+const canonicalOrderRepository = createOrderRepository({
+  filePath: path.join(__dirname, 'uploads', 'orders.json'),
+});
+const canonicalFulfillmentRepository = createFulfillmentRepository();
+const canonicalFulfillmentIdempotencyRepository = createFulfillmentIdempotencyRepository();
+const canonicalQrRepository = createManualQrRepository();
+const canonicalInventoryRepository = createInventoryRepository();
+const canonicalWebhookEventRepository = createWebhookEventRepository();
+const canonicalCatalogReader = createCanonicalCatalogReader({ env: process.env });
+const canonicalFulfillmentService = createFulfillmentService({
+  repository: canonicalFulfillmentRepository,
+  idempotencyRepository: canonicalFulfillmentIdempotencyRepository,
+  orderRepository: canonicalOrderRepository,
+  qrRepository: canonicalQrRepository,
+  inventoryRepository: canonicalInventoryRepository,
+  eventRepository: canonicalWebhookEventRepository,
+  providerClient: createWorldmoveClient({
+    merchantId: process.env.WORLDMOVE_MERCHANT_ID || apiConfig.merchantId,
+    deptId: process.env.WORLDMOVE_DEPT_ID || apiConfig.deptId,
+    token: process.env.WORLDMOVE_TOKEN || apiConfig.token,
+    apiUrl: process.env.WORLDMOVE_API_URL || apiConfig.apiUrl,
+    timeoutMs: Number(process.env.PROVIDER_REQUEST_TIMEOUT_MS ?? 15000),
+  }),
+});
+const canonicalOrderService = createOrderService({
+  repository: canonicalOrderRepository,
+  fulfillmentService: canonicalFulfillmentService,
+});
+const canonicalCheckoutService = createCheckoutService({
+  env: process.env,
+  catalogReader: canonicalCatalogReader,
+  orderService: canonicalOrderService,
+  idempotencyRepository: createCheckoutIdempotencyRepository(),
+});
+const canonicalCheckoutHealthService = createCheckoutHealthService({
+  env: process.env,
+  validatorDependencies: {
+    catalogHealthService,
+    catalogReader: canonicalCatalogReader,
+    registry: canonicalFulfillmentService.registry,
+    orderRepository: canonicalOrderRepository,
+    fulfillmentRepository: canonicalFulfillmentRepository,
+    checkoutIdempotencyRepository: createCheckoutIdempotencyRepository(),
+    fulfillmentIdempotencyRepository: canonicalFulfillmentIdempotencyRepository,
+    webhookReplayRepository: createWebhookReplayRepository(),
+    webhookEventRepository: canonicalWebhookEventRepository,
+    manualQrRepository: canonicalQrRepository,
+    inventoryRepository: canonicalInventoryRepository,
+    providerOffersFile: path.join(catalogUploadsDirectory, 'provider_offers.json'),
+    bodyLimitConfigured: checkoutBodyLimitMb > 0 && webhookBodyLimitKb > 0,
+    rateLimitConfigured: checkoutRateLimitPerMinute > 0,
+  },
+});
+productionReadinessService = createProductionReadinessService({
+  checks: createProductionReadinessChecks({
+    env: process.env,
+    sessionHealthService,
+    userRepository,
+    catalogHealthService,
+    checkoutHealthService: canonicalCheckoutHealthService,
+    pool: authPool,
+  }),
+});
+app.use('/api', createProductionReadinessRouter({ readinessService: productionReadinessService }));
+app.use('/api/webhooks/worldmove', createWorldmoveWebhookRouter({
+  fulfillmentService: canonicalFulfillmentService,
+  replayRepository: createWebhookReplayRepository(),
+  env: process.env,
+  rateLimitPerMinute: checkoutRateLimitPerMinute,
+}));
+app.use('/api', createCheckoutHealthRouter({ checkoutHealthService: canonicalCheckoutHealthService }));
+app.use('/api', createCheckoutRouter({
+  checkoutService: canonicalCheckoutService,
+  fulfillmentService: canonicalFulfillmentService,
+  orderRepository: canonicalOrderRepository,
+  catalogHealthService,
+  canonicalRepository: createCanonicalCatalogRepository({ uploadsDirectory: catalogUploadsDirectory }),
+  checkoutHealthService: canonicalCheckoutHealthService,
+  env: process.env,
+}));
+app.use('/api', createFulfillmentRouter({ orderRepository: canonicalOrderRepository }));
 
 const devicesDb = createPersistentMap('devices.json', (m) => {
   m.set('device-wifi-mini', {
@@ -621,117 +900,12 @@ app.delete('/api/admin/devices/:id', (req, res) => {
   res.json({ success: true });
 });
 
-// 3. Packages
-app.get('/api/admin/packages', (req, res) => {
-  res.json(Array.from(packagesDb.values()));
-});
-
-app.post('/api/admin/packages', (req, res) => {
-  const { sku, name, coverage, dataLimit, duration, price, compareAtPrice, wmproductId, network, description, featured, iconType, variants, leSIM, seoTitle, seoDescription, seoKeywords } = req.body;
-  const id = 'pkg-' + Date.now();
-  const pkg = {
-    id,
-    sku: sku || 'PKG-' + id.toUpperCase(),
-    name,
-    coverage,
-    dataLimit,
-    duration,
-    price: parseFloat(price),
-    compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
-    wmproductId: wmproductId || '',
-    network: network || '',
-    description: description || '',
-    featured: !!featured,
-    iconType: iconType || 'region',
-    leSIM: leSIM !== undefined ? !!leSIM : true,
-    variants: Array.isArray(variants) ? variants.map(v => ({ ...v, leSIM: v.leSIM !== undefined ? !!v.leSIM : true, simType: v.simType || 'eSIM' })) : [],
-    seoTitle: seoTitle || '',
-    seoDescription: seoDescription || '',
-    seoKeywords: seoKeywords || ''
-  };
-  packagesDb.set(id, pkg);
-  res.json(pkg);
-});
-
-app.put('/api/admin/packages/:id', (req, res) => {
-  const { id } = req.params;
-  const pkg = packagesDb.get(id);
-  if (pkg) {
-    const updated = { 
-      ...pkg, 
-      ...req.body, 
-      price: req.body.price ? parseFloat(req.body.price) : pkg.price,
-      compareAtPrice: req.body.compareAtPrice !== undefined ? (req.body.compareAtPrice ? parseFloat(req.body.compareAtPrice) : null) : pkg.compareAtPrice,
-      featured: req.body.featured !== undefined ? !!req.body.featured : pkg.featured,
-      leSIM: req.body.leSIM !== undefined ? !!req.body.leSIM : pkg.leSIM,
-      variants: req.body.variants !== undefined ? req.body.variants.map(v => ({ ...v, leSIM: v.leSIM !== undefined ? !!v.leSIM : true, simType: v.simType || 'eSIM' })) : pkg.variants
-    };
-    packagesDb.set(id, updated);
-    return res.json(updated);
-  }
-  res.status(404).json({ error: 'Package not found' });
-});
-
-app.delete('/api/admin/packages/:id', (req, res) => {
-  packagesDb.delete(req.params.id);
-  res.json({ success: true });
-});
-
-// 4. Destinations (Coverage)
-app.get('/api/admin/destinations', (req, res) => {
-  res.json(Array.from(destinationsDb.values()));
-});
-
-app.post('/api/admin/destinations', (req, res) => {
-  const { sku, name, flag, dataLimit, duration, price, compareAtPrice, wmproductId, image, network, featured, guide, variants, leSIM, seoTitle, seoDescription, seoKeywords } = req.body;
-  const id = 'dest-' + Date.now();
-  const dest = {
-    id,
-    sku: sku || 'DEST-' + id.toUpperCase(),
-    name,
-    flag,
-    dataLimit,
-    duration,
-    price: parseFloat(price),
-    compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
-    wmproductId: wmproductId || '',
-    image: image || 'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?q=80&w=400&auto=format&fit=crop',
-    network,
-    featured: !!featured,
-    guide: guide || '',
-    leSIM: leSIM !== undefined ? !!leSIM : true,
-    variants: Array.isArray(variants) ? variants.map(v => ({ ...v, leSIM: v.leSIM !== undefined ? !!v.leSIM : true, simType: v.simType || 'eSIM' })) : [],
-    seoTitle: seoTitle || '',
-    seoDescription: seoDescription || '',
-    seoKeywords: seoKeywords || ''
-  };
-  destinationsDb.set(id, dest);
-  res.json(dest);
-});
-
-app.put('/api/admin/destinations/:id', (req, res) => {
-  const { id } = req.params;
-  const dest = destinationsDb.get(id);
-  if (dest) {
-    const updated = { 
-      ...dest, 
-      ...req.body, 
-      price: req.body.price ? parseFloat(req.body.price) : dest.price,
-      compareAtPrice: req.body.compareAtPrice !== undefined ? (req.body.compareAtPrice ? parseFloat(req.body.compareAtPrice) : null) : dest.compareAtPrice,
-      featured: req.body.featured !== undefined ? !!req.body.featured : dest.featured,
-      leSIM: req.body.leSIM !== undefined ? !!req.body.leSIM : dest.leSIM,
-      variants: req.body.variants !== undefined ? req.body.variants.map(v => ({ ...v, leSIM: v.leSIM !== undefined ? !!v.leSIM : true, simType: v.simType || 'eSIM' })) : dest.variants
-    };
-    destinationsDb.set(id, updated);
-    return res.json(updated);
-  }
-  res.status(404).json({ error: 'Destination not found' });
-});
-
-app.delete('/api/admin/destinations/:id', (req, res) => {
-  destinationsDb.delete(req.params.id);
-  res.json({ success: true });
-});
+// 3-4. Legacy packages and destinations compatibility adapter
+app.use('/api', createLegacyCatalogRouter({
+  destinationsStore: destinationsDb,
+  packagesStore: packagesDb,
+  catalogGuard,
+}));
 
 // 5. Articles
 // Public endpoint for articles (filtered by status & scheduled date)
@@ -1065,42 +1239,53 @@ app.get('/api/promos/validate/:code', (req, res) => {
 });
 
 // 8. API Configuration Settings
+const MASKED_SECRET = '********';
+const getSafeApiConfig = () => ({
+  ...apiConfig,
+  worldmoveConfigured: Boolean(process.env.WORLDMOVE_MERCHANT_ID && process.env.WORLDMOVE_DEPT_ID && process.env.WORLDMOVE_TOKEN),
+  smtpConfigured: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD),
+  token: process.env.WORLDMOVE_TOKEN ? MASKED_SECRET : '',
+  smtpPass: process.env.SMTP_PASSWORD ? MASKED_SECRET : '',
+});
+const publicRouteResolver = createPublicRouteResolver({
+  env: process.env,
+  articleProvider: async () => Array.from(articlesDb.values()),
+});
+const seoRouter = createSeoRouter({ resolver: publicRouteResolver, env: process.env });
+app.use('/api', seoRouter);
+app.use('/', seoRouter);
+
 app.get('/api/admin/config', (req, res) => {
-  res.json(apiConfig);
+  res.json(getSafeApiConfig());
 });
 
 app.put('/api/admin/config', (req, res) => {
-  const { merchantId, deptId, token, apiUrl, smtpHost, smtpPort, smtpUser, smtpPass, smtpFrom } = req.body;
-  if (merchantId !== undefined) apiConfig.merchantId = merchantId;
-  if (deptId !== undefined) apiConfig.deptId = deptId;
-  if (token !== undefined) apiConfig.token = token;
+  const { apiUrl, smtpHost, smtpPort, smtpUser, smtpFrom } = req.body;
   if (apiUrl !== undefined) apiConfig.apiUrl = apiUrl;
   if (smtpHost !== undefined) apiConfig.smtpHost = smtpHost;
   if (smtpPort !== undefined) apiConfig.smtpPort = smtpPort;
   if (smtpUser !== undefined) apiConfig.smtpUser = smtpUser;
-  if (smtpPass !== undefined) apiConfig.smtpPass = smtpPass;
   if (smtpFrom !== undefined) apiConfig.smtpFrom = smtpFrom;
   
   saveConfig();
-  console.log('[HICO] API configuration updated dynamically:', apiConfig);
-  res.json({ success: true, config: apiConfig });
+  console.log('[HICO] API configuration updated dynamically.');
+  res.json({ success: true, config: getSafeApiConfig() });
 });
 
 // === EMAIL AND MANUAL QR SERVICES ===
 
 async function sendEmailHelper(to, subject, htmlContent) {
-  console.log(`[EMAIL SERVICE] Attempting to send email to: ${to}, Subject: ${subject}`);
+  console.log('[EMAIL SERVICE] Delivery requested.');
   
-  // Log details to local file uploads/emails_sent_log.txt first as fallback
-  const logEntry = `[${new Date().toISOString()}] To: ${to}\nSubject: ${subject}\nContent:\n${htmlContent}\n=========================================\n`;
+  const logEntry = `[${new Date().toISOString()}] Email delivery requested; content is not persisted.\n`;
   try {
     fs.appendFileSync('uploads/emails_sent_log.txt', logEntry, 'utf-8');
   } catch (e) {
     console.error('Failed to write to emails_sent_log.txt:', e.message);
   }
 
-  if (!apiConfig.smtpHost || !apiConfig.smtpUser || !apiConfig.smtpPass) {
-    console.log('[EMAIL SERVICE] SMTP not fully configured. Email was logged to uploads/emails_sent_log.txt');
+  if (!apiConfig.smtpHost || !apiConfig.smtpUser || !process.env.SMTP_PASSWORD) {
+    console.log('[EMAIL SERVICE] SMTP not fully configured. Delivery request was recorded without content.');
     return { success: true, logged: true };
   }
 
@@ -1111,7 +1296,7 @@ async function sendEmailHelper(to, subject, htmlContent) {
       secure: parseInt(apiConfig.smtpPort) === 465,
       auth: {
         user: apiConfig.smtpUser,
-        pass: apiConfig.smtpPass
+        pass: process.env.SMTP_PASSWORD
       }
     });
 
@@ -1188,23 +1373,14 @@ app.get('/api/admin/manual-qrs', (req, res) => {
 
 app.post('/api/admin/manual-qrs/upload', (req, res) => {
   try {
-    const { variantId, base64Data, filename } = req.body;
-    if (!variantId || !base64Data || !filename) {
-      return res.status(400).json({ error: 'Missing variantId, base64Data, or filename' });
+    const { variantId, base64Data } = req.body;
+    if (!variantId || !base64Data) {
+      return res.status(400).json({ error: 'Missing variantId or image data', code: 'UPLOAD_INVALID' });
     }
-    
-    const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) {
-      return res.status(400).json({ error: 'Invalid base64 payload format' });
-    }
-    const dataBuffer = Buffer.from(matches[2], 'base64');
-    
-    const ext = path.extname(filename) || '.png';
-    const base = path.basename(filename, ext).replace(/[^a-zA-Z0-9.-]/g, '_');
-    const uniqueName = `qr_pool_${variantId}_${Date.now()}_${base}${ext}`;
-    const destPath = path.join('uploads', uniqueName);
-    
-    fs.writeFileSync(destPath, dataBuffer);
+    const upload = parseImageUpload({ base64Data, maxBytes: Number(process.env.UPLOAD_MAX_BYTES ?? 5 * 1024 * 1024) });
+    const uniqueName = `qr_${upload.filename}`;
+    const destPath = safeUploadPath(path.join(__dirname, 'uploads'), uniqueName);
+    fs.writeFileSync(destPath, upload.buffer, { flag: 'wx', mode: 0o640 });
     const url = `/uploads/${uniqueName}`;
     
     const id = 'qr-' + Date.now();
@@ -1219,8 +1395,8 @@ app.post('/api/admin/manual-qrs/upload', (req, res) => {
     console.log(`[HICO MANUAL QR] QR code loaded to pool for variant ${variantId}: ${uniqueName}`);
     res.json(newQr);
   } catch (e) {
-    console.error('QR Upload failed:', e);
-    res.status(500).json({ error: e.message });
+    console.error('[upload] Manual QR rejected');
+    res.status(e.code?.startsWith('UPLOAD_') ? 400 : 500).json({ error: 'Unable to upload image.', code: e.code ?? 'UPLOAD_FAILED' });
   }
 });
 
@@ -1951,29 +2127,18 @@ app.get('/api/admin/media', (req, res) => {
 // 2. Upload Image (Base64 Decoder)
 app.post('/api/admin/media/upload', (req, res) => {
   try {
-    const { filename, base64Data } = req.body;
-    if (!filename || !base64Data) {
-      return res.status(400).json({ error: 'Missing filename or base64Data' });
+    const { base64Data } = req.body;
+    if (!base64Data) {
+      return res.status(400).json({ error: 'Missing image data', code: 'UPLOAD_INVALID' });
     }
-    
-    // Extract mimetype and base64 parts
-    const matches = base64Data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) {
-      return res.status(400).json({ error: 'Invalid base64 payload format' });
-    }
-    const dataBuffer = Buffer.from(matches[2], 'base64');
-    
-    const ext = path.extname(filename) || '.png';
-    const base = path.basename(filename, ext).replace(/[^a-zA-Z0-9.-]/g, '_');
-    const uniqueName = `${Date.now()}_${base}${ext}`;
-    const destPath = path.join('uploads', uniqueName);
-    
-    fs.writeFileSync(destPath, dataBuffer);
-    console.log(`[HICO MEDIA] File saved: ${uniqueName}`);
+    const upload = parseImageUpload({ base64Data, maxBytes: Number(process.env.UPLOAD_MAX_BYTES ?? 5 * 1024 * 1024) });
+    const uniqueName = upload.filename;
+    const destPath = safeUploadPath(path.join(__dirname, 'uploads'), uniqueName);
+    fs.writeFileSync(destPath, upload.buffer, { flag: 'wx', mode: 0o640 });
     res.json({ success: true, url: `/uploads/${uniqueName}`, filename: uniqueName });
   } catch (e) {
-    console.error('Upload failed:', e);
-    res.status(500).json({ error: e.message });
+    console.error('[upload] Media rejected');
+    res.status(e.code?.startsWith('UPLOAD_') ? 400 : 500).json({ error: 'Unable to upload image.', code: e.code ?? 'UPLOAD_FAILED' });
   }
 });
 
@@ -2083,6 +2248,18 @@ app.delete('/api/admin/reviews/:id', (req, res) => {
   }
   res.status(404).json({ error: 'Review not found' });
 });
+
+if (catalogHealthService.shouldValidateAtStartup) {
+  void catalogHealthService.validate({ force: true });
+}
+if (canonicalCheckoutHealthService.shouldValidateAtStartup) {
+  void canonicalCheckoutHealthService.validate({ force: true });
+}
+if (sessionDriver === 'postgres') {
+  void sessionCleanupService.run({ force: true });
+  const cleanupTimer = setInterval(() => { void sessionCleanupService.run(); }, Number.parseInt(process.env.SESSION_CLEANUP_INTERVAL_MS, 10) || 3_600_000);
+  cleanupTimer.unref();
+}
 
 app.listen(PORT, () => {
   console.log(`HICO Backend Server running on http://localhost:${PORT}`);

@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
@@ -24,6 +27,31 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Runtime canonical catalog snapshots and reports
+server/uploads/catalog_current.json
+server/uploads/catalog_products.json
+server/uploads/catalog_variants.json
+server/uploads/catalog_versions/
+server/uploads/migration_reports/
+server/uploads/catalog_idempotency.json
+server/uploads/catalog_audit.json
+server/uploads/catalog_slug_history.json
+server/uploads/catalog_bulk_previews.json
+server/uploads/cutover_reports/
+server/backups/
+server/uploads/checkout_idempotency.json
+server/uploads/fulfillments.json
+server/uploads/fulfillment_idempotency.json
+server/uploads/webhook_events.json
+server/uploads/webhook_replay.json
+server/uploads/admin_users.json
+server/uploads/admin_sessions.json
+artifacts/
+server/backups/
+server/restore-output/
+server/uploads/inventory_movements.json
+server/uploads/inventory.json
 
 # Exclude legacy archives and old folders
 old/

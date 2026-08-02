@@ -5,14 +5,20 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run prerender",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prerender": "node scripts/prerender-public-routes.mjs",
+    "security:audit": "npm audit --omit=dev && npm --prefix server audit --omit=dev",
+    "security:gate": "node scripts/security-gate.mjs",
+    "production:launch:validate": "npm --prefix server run production:launch:validate",
+    "production:report": "npm --prefix server run production:report"
   },
   "dependencies": {
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
