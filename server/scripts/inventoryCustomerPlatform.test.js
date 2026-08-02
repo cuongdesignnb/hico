@@ -50,6 +50,12 @@ test('customer inventory is aggregate-only and classifies ownership without emai
       'src/components/UserDashboard/UserDashboard.tsx': 'qrcodeContent Math.max(2, cartItemCount)',
       'src/context/AppContext.tsx': "localStorage.getItem('hico_cart')",
       'src/routing/AppRouter.tsx': 'path="tai-khoan"',
+      'src/pages/account/AccountLayout.tsx': 'CustomerProtectedRoute',
+      'src/pages/account/AccountOverviewPage.tsx': '/api/customer/dashboard/summary',
+      'src/pages/account/AccountOrdersPage.tsx': '/api/customer/orders',
+      'src/pages/account/AccountOrderDetailPage.tsx': '/api/customer/orders',
+      'src/services/customerDashboardApi.ts': '/api/customer/dashboard/summary',
+      'src/services/customerOrdersApi.ts': '/api/customer/orders',
     },
   });
 
@@ -86,4 +92,10 @@ test('customer inventory is aggregate-only and classifies ownership without emai
     assert.equal(serialized.includes(secret), false);
   }
   assert.equal(report.sensitiveDataPolicy.rawValuesIncluded, false);
+  assert.deepEqual(report.productionSurface, {
+    userDashboardRouteCount: 0,
+    accountApiUserReferenceCount: 0,
+    hardCodedSensitiveDataCount: 0,
+    legacyMockFiles: 1,
+  });
 });

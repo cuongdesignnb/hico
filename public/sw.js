@@ -41,7 +41,7 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
-  // Exclude API requests from service worker caching
+  // Private customer data must always come from the network and never enter the SW cache.
   if (url.pathname.startsWith('/api/')) return;
 
   // 1. Network-First Strategy for HTML/Page Navigations (prevents old index.html cache lock)

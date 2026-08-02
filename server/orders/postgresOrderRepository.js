@@ -20,17 +20,41 @@ const map = (row) => row ? {
 export const createPostgresOrderRepository = ({ pool } = {}) => {
   if (!pool) throw new Error('PostgreSQL pool is required for canonical orders.');
   const getWith = async (executor, where, values) => map((await executor.query(`SELECT * FROM orders ${where}`, values)).rows[0]);
+  const customerFilter = (customerId, { status, operation, from, to } = {}) => {
+    const values = [customerId];
+    const clauses = ['customer_id = $1'];
+    if (status) { values.push(status); clauses.push(`status = $${values.length}`); }
+    if (operation) { values.push(operation); clauses.push(`EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(snapshot->'items', '[]'::jsonb)) item WHERE item->>'operation' = $${values.length})`); }
+    if (from) { values.push(from); clauses.push(`created_at >= $${values.length}`); }
+    if (to) { values.push(to); clauses.push(`created_at <= $${values.length}`); }
+    return { values, where: clauses.join(' AND ') };
+  };
   return {
     get(orderId) { return getWith(pool, 'WHERE order_id = $1', [orderId]); },
     async list() { return (await pool.query('SELECT * FROM orders ORDER BY created_at DESC')).rows.map(map); },
-    async listForCustomer(customerId, { status, page = 1, pageSize = 20 } = {}) {
-      const values = [customerId];
-      const filter = status ? ` AND status = $${values.push(status)}` : '';
+    async listForCustomer(customerId, { status, operation, from, to, page = 1, pageSize = 20, sort = 'newest' } = {}) {
+      const filter = customerFilter(customerId, { status, operation, from, to });
       const limit = Math.min(100, Math.max(1, Number(pageSize) || 20));
       const offset = Math.max(0, (Number(page) || 1) - 1) * limit;
-      values.push(limit, offset);
-      const result = await pool.query(`SELECT * FROM orders WHERE customer_id = $1${filter} ORDER BY created_at DESC LIMIT $${values.length - 1} OFFSET $${values.length}`, values);
+      filter.values.push(limit, offset);
+      const direction = sort === 'oldest' ? 'ASC' : 'DESC';
+      const result = await pool.query(`SELECT * FROM orders WHERE ${filter.where} ORDER BY created_at ${direction}, order_id ASC LIMIT $${filter.values.length - 1} OFFSET $${filter.values.length}`, filter.values);
       return result.rows.map(map);
+    },
+    async countForCustomer(customerId, query = {}) {
+      const filter = customerFilter(customerId, query);
+      const result = await pool.query(`SELECT COUNT(*)::int AS count FROM orders WHERE ${filter.where}`, filter.values);
+      return result.rows[0]?.count ?? 0;
+    },
+    async summaryForCustomer(customerId) {
+      const result = await pool.query(`
+        WITH owned AS (SELECT * FROM orders WHERE customer_id = $1),
+        totals AS (SELECT COALESCE(jsonb_object_agg(currency, amount), '{}'::jsonb) AS totals_by_currency FROM (SELECT currency, SUM(subtotal) AS amount FROM owned GROUP BY currency) grouped),
+        counts AS (SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status IN ('PENDING', 'PROCESSING'))::int AS pending, COUNT(*) FILTER (WHERE status IN ('PROVISIONED', 'SHIPPED', 'COMPLETED'))::int AS completed, COUNT(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled, COALESCE(SUM((SELECT COALESCE(SUM(COALESCE((item->>'quantity')::int, 1)), 0) FROM jsonb_array_elements(COALESCE(snapshot->'items', '[]'::jsonb)) item)), 0)::int AS item_count FROM owned WHERE status IN ('PENDING', 'PROCESSING'))
+        SELECT counts.*, totals.totals_by_currency FROM counts CROSS JOIN totals
+      `, [customerId]);
+      const row = result.rows[0] ?? {};
+      return { total: row.total ?? 0, pending: row.pending ?? 0, completed: row.completed ?? 0, cancelled: row.cancelled ?? 0, pendingItems: row.item_count ?? 0, totalsByCurrency: row.totals_by_currency ?? {} };
     },
     getForCustomer(orderId, customerId) { return getWith(pool, 'WHERE order_id = $1 AND customer_id = $2', [orderId, customerId]); },
     async create(order) {

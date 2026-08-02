@@ -24,7 +24,15 @@ const sourceFiles = [
   'src/components/UserDashboard/UserDashboard.tsx',
   'src/context/AppContext.tsx',
   'src/routing/AppRouter.tsx',
+  'src/pages/account/AccountLayout.tsx',
+  'src/pages/account/AccountOverviewPage.tsx',
+  'src/pages/account/AccountOrdersPage.tsx',
+  'src/pages/account/AccountOrderDetailPage.tsx',
+  'src/services/customerDashboardApi.ts',
+  'src/services/customerOrdersApi.ts',
 ];
+
+const accountProductionFiles = sourceFiles.filter((relativePath) => relativePath.startsWith('src/pages/account/') || relativePath.startsWith('src/services/customer'));
 
 const endpointFacts = [
   {
@@ -95,12 +103,6 @@ const demoFacts = [
     source: 'server/hicoBackend.js',
     marker: 'RC_JAPAN_MOCK',
     finding: 'Legacy server seed contains a mock eSIM fixture.',
-  },
-  {
-    code: 'UNPROTECTED_ACCOUNT_ROUTE',
-    source: 'src/routing/AppRouter.tsx',
-    marker: 'path="tai-khoan"',
-    finding: 'Account route exists without customer authentication middleware.',
   },
 ];
 
@@ -208,13 +210,15 @@ export const inventoryCustomerPlatform = async ({
   const datasets = Object.fromEntries(Object.entries(datasetsWithRecords).map(
     ([name, { count, state }]) => [name, { count, state }],
   ));
+  const accountSource = accountProductionFiles.map((relativePath) => sources[relativePath] ?? '').join('\n');
+  const appRouterSource = sources['src/routing/AppRouter.tsx'] ?? '';
 
   return {
     reportType: 'customer-platform-inventory',
     generatedAt: now().toISOString(),
     datasets,
     persistence: {
-      canonicalOrders: 'legacy_json_adapter',
+      canonicalOrders: 'postgres_canonical',
       customerProfiles: 'legacy_json_demo',
       fulfillmentProjection: datasets.fulfillments.state === 'missing' ? 'not_persisted' : 'present',
       inventoryProjection: datasets.inventory.state === 'missing' ? 'not_persisted' : 'present',
@@ -222,6 +226,12 @@ export const inventoryCustomerPlatform = async ({
     ownership,
     unscopedEndpoints: detectFacts(endpointFacts, sources),
     demoFindings: detectFacts(demoFacts, sources),
+    productionSurface: {
+      userDashboardRouteCount: appRouterSource.includes('UserDashboard') ? 1 : 0,
+      accountApiUserReferenceCount: (accountSource.match(/\/api\/user/g) ?? []).length,
+      hardCodedSensitiveDataCount: (accountSource.match(/qrcodeContent|redemptionCode|pin1|pin2|puk1|puk2|iccid/g) ?? []).length,
+      legacyMockFiles: sources['src/components/UserDashboard/UserDashboard.tsx'] ? 1 : 0,
+    },
     browserStorage: {
       keys: sources['src/context/AppContext.tsx']?.includes('hico_cart') ? ['hico_cart'] : [],
       authenticationKeys: [],

@@ -69,6 +69,9 @@ import { createCustomerAuthReadiness } from './customer/customerAuthReadiness.js
 import { createCustomerAuthRouter } from './customer/customerAuthRouter.js';
 import { createCustomerOrderRouter } from './customer/customerOrderRouter.js';
 import { createCustomerOrderService } from './customer/customerOrderService.js';
+import { createCustomerDashboardRepository } from './customer/customerDashboardRepository.js';
+import { createCustomerDashboardService } from './customer/customerDashboardService.js';
+import { createCustomerDashboardRouter } from './customer/customerDashboardRouter.js';
 import { createCustomerTokenDelivery } from './customer/customerTokenDelivery.js';
 import { createRequestId } from './security/requestId.js';
 import { createAdminRequestAudit, createSecurityAudit } from './security/securityAudit.js';
@@ -194,6 +197,11 @@ const customerOrderService = customerOrderRepository && customerAuthService ? cr
   tokenDelivery: customerTokenDelivery,
   env: process.env,
 }) : null;
+const customerDashboardRepository = customerOrderRepository ? createCustomerDashboardRepository({ orderRepository: customerOrderRepository }) : null;
+const customerDashboardService = customerDashboardRepository && customerAuthService ? createCustomerDashboardService({
+  repository: customerDashboardRepository,
+  env: process.env,
+}) : null;
 let productionReadinessService;
 const readinessDelegate = {
   evaluate: (...args) => productionReadinessService?.evaluate(...args) ?? Promise.resolve({ status: 'not_ready', adminWritesAllowed: false, writesEnabled: false, criticalChecksPassed: 0, criticalChecksTotal: 0, failedChecks: ['READINESS_INITIALIZING'], checkedAt: new Date().toISOString() }),
@@ -268,6 +276,11 @@ app.use('/api/customer', createCustomerAuthRouter({
   env: process.env,
   securityAudit,
 }));
+if (customerDashboardService) app.use('/api/customer', createCustomerDashboardRouter({
+  customerAuthService,
+  readiness: customerAuthReadiness,
+  customerDashboardService,
+}));
 if (customerOrderService) app.use('/api/customer', createCustomerOrderRouter({
   customerAuthService,
   sessionService: customerSessionService,
@@ -287,6 +300,12 @@ app.get('/api/health/customer-orders', async (_req, res) => {
   const orders = customerOrderRepository ? await customerOrderRepository.health() : { status: 'unavailable', persistence: 'none' };
   const healthy = auth.status === 'healthy' && orders.status === 'healthy';
   return res.status(healthy ? 200 : 503).json({ status: healthy ? 'healthy' : 'not_ready', auth: auth.status, orders });
+});
+app.get('/api/health/customer-dashboard', async (_req, res) => {
+  const auth = await customerAuthReadiness.evaluate();
+  const dashboard = customerDashboardService ? await customerDashboardService.health() : { status: 'unavailable', persistence: 'none' };
+  const healthy = auth.status === 'healthy' && dashboard.status === 'healthy';
+  return res.status(healthy ? 200 : 503).json({ status: healthy ? 'healthy' : 'not_ready', auth: auth.status, dashboard });
 });
 app.get('/api/health/metrics', (_req, res) => res.json({ status: 'healthy', counters: metrics.snapshot() }));
 app.get('/api/health/security', async (_req, res) => {

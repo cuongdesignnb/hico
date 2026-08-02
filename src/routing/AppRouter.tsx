@@ -16,12 +16,16 @@ import { ProtectedRoute } from '../auth/ProtectedRoute';
 import { ForbiddenPage, LoginPage } from '../pages/LoginPage';
 import { CustomerProtectedRoute } from '../auth/customer/CustomerProtectedRoute';
 import { CustomerGuestRoute } from '../auth/customer/CustomerGuestRoute';
-import { useCustomerAuth } from '../auth/customer/useCustomerAuth';
 import { CustomerLoginPage } from '../pages/customerAuth/CustomerLoginPage';
 import { CustomerRegisterPage } from '../pages/customerAuth/CustomerRegisterPage';
 import { CustomerForgotPasswordPage } from '../pages/customerAuth/CustomerForgotPasswordPage';
 import { CustomerResetPasswordPage } from '../pages/customerAuth/CustomerResetPasswordPage';
 import { CustomerVerifyEmailPage } from '../pages/customerAuth/CustomerVerifyEmailPage';
+import { AccountLayout } from '../pages/account/AccountLayout';
+import { AccountOverviewPage } from '../pages/account/AccountOverviewPage';
+import { AccountOrdersPage } from '../pages/account/AccountOrdersPage';
+import { AccountOrderDetailPage } from '../pages/account/AccountOrderDetailPage';
+import { AccountComingSoonPage } from '../pages/account/AccountComingSoonPage';
 import '../App.css';
 
 const PublicLayout = () => {
@@ -36,10 +40,6 @@ const PublicLayout = () => {
   </div>;
 };
 
-const PrivateAccount = () => {
-  const { customer, logout } = useCustomerAuth();
-  return <><SeoHead path="/tai-khoan" metadata={{ ...defaultMetadata(), title: 'Account | HICO eSIM', indexable: false }} noindex /><main className="route-state" id="main-content"><h1>Tai khoan cua ban</h1><p>{customer?.displayName || customer?.email}</p><p>Tai khoan cua ban da duoc tao. Du lieu don hang se duoc ket noi o buoc tiep theo.</p><button type="button" onClick={() => void logout()}>Dang xuat</button></main></>;
-};
 const PrivateAdmin = () => <><SeoHead path="/quan-tri" metadata={{ ...defaultMetadata(), title: 'Admin | HICO eSIM', indexable: false }} noindex /><AdminDashboard /></>;
 
 export const AppRouter: React.FC = () => <RouteErrorBoundary><ScrollRestoration /><Routes>
@@ -61,7 +61,15 @@ export const AppRouter: React.FC = () => <RouteErrorBoundary><ScrollRestoration 
     <Route path="404" element={<NotFound />} />
     <Route path="*" element={<NotFound />} />
   </Route>
-  <Route path="tai-khoan/*" element={<CustomerProtectedRoute><PrivateAccount /></CustomerProtectedRoute>} />
+  <Route path="tai-khoan" element={<CustomerProtectedRoute><AccountLayout /></CustomerProtectedRoute>}>
+    <Route index element={<AccountOverviewPage />} />
+    <Route path="don-hang" element={<AccountOrdersPage />} />
+    <Route path="don-hang/:orderId" element={<AccountOrderDetailPage />} />
+    <Route path="thong-tin" element={<AccountComingSoonPage />} />
+    <Route path="esim" element={<AccountComingSoonPage />} />
+    <Route path="diem-thuong" element={<AccountComingSoonPage />} />
+    <Route path="ho-tro" element={<AccountComingSoonPage />} />
+  </Route>
   <Route path="quan-tri" element={<ProtectedRoute><PrivateAdmin /></ProtectedRoute>} />
   <Route path="quan-tri/dang-nhap" element={<LoginPage />} />
   <Route path="dang-nhap" element={<CustomerGuestRoute><CustomerLoginPage /></CustomerGuestRoute>} />

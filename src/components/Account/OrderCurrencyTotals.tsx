@@ -1,0 +1,1 @@
+export const OrderCurrencyTotals = ({ totals }: { totals: Record<string, number> }) => <div className="order-currency-totals">{Object.entries(totals).map(([currency, amount]) => <span key={currency}>{amount.toLocaleString('vi-VN')} {currency}</span>)}</div>;

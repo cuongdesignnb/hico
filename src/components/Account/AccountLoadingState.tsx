@@ -1,0 +1,1 @@
+export const AccountLoadingState = ({ label = 'Dang tai du lieu...' }: { label?: string }) => <div className="account-state" role="status" aria-live="polite"><span className="account-spinner" />{label}</div>;
