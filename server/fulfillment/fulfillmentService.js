@@ -12,6 +12,7 @@ import { createHicoPhysicalStockStrategy } from './strategies/hicoPhysicalStock.
 import { createWorldmoveTopupStrategy } from './strategies/worldmoveTopup.js';
 import { createManualProcessingStrategy } from './strategies/manualProcessing.js';
 import { stableItemId } from './strategyUtils.js';
+import { validateProvisioningEntitlement } from '../catalog/fulfillment/fulfillmentValidation.js';
 
 const RETRYABLE_CODES = new Set(['PROVIDER_TIMEOUT', 'PROVIDER_REQUEST_FAILED', 'MANUAL_QR_UNAVAILABLE', 'PHYSICAL_STOCK_UNAVAILABLE']);
 
@@ -59,6 +60,7 @@ export const createFulfillmentService = ({
       : record;
     if (processing !== record) await repository.update(record.id, processing);
     try {
+      if (event) validateProvisioningEntitlement({ item, event });
       const response = event && strategy.callback
         ? await strategy.callback({ order, item, itemId: record.orderItemId, event, providerClient, record })
         : await strategy.execute({ order, item, itemId: record.orderItemId, providerClient, record });

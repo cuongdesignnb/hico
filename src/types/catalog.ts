@@ -58,6 +58,10 @@ export interface CatalogProduct {
   coverageType: CoverageType;
   coverageIds: string[];
   image?: string;
+  primaryMediaId?: string | null;
+  images?: Array<{ id: string; url: string; alt?: string; title?: string; sortOrder?: number }>;
+  gallery?: Array<{ id: string; url: string; alt?: string; title?: string; sortOrder?: number }>;
+  galleryMediaIds?: string[];
   description?: string;
   guide?: string;
   featured: boolean;
@@ -65,6 +69,25 @@ export interface CatalogProduct {
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string;
+  deviceSpecifications?: CatalogDeviceSpecs;
+  deviceSpecs?: CatalogDeviceSpecs;
+  networkLabel?: string;
+  publicNote?: string;
+  coverageLabel?: string;
+  speedLabel?: string;
+  hotspotSupport?: string;
+  activationPolicy?: string;
+  installationGuide?: string;
+  compatibilityContent?: string;
+  apnGuidance?: string;
+  instantDeliveryLabel?: string;
+  instructions?: string;
+  eligibilityNote?: string;
+  packageContents?: string;
+  deliveryNote?: string;
+  simSize?: string;
+  faqItems?: Array<{ question: string; answer: string; sortOrder?: number }>;
+  publishedAt?: string;
   legacySource?: 'destination' | 'package' | 'mysql';
   legacyId?: string | number;
   version?: number;
@@ -90,6 +113,23 @@ export interface CatalogVariant {
   leSIM?: boolean | null;
   providerProductType?: 0 | 1 | 2 | null;
   requiresExistingSim: boolean;
+  shippingRequired?: boolean;
+  networkLabel?: string;
+  coverageLabel?: string;
+  speedLabel?: string;
+  hotspotSupport?: string;
+  activationPolicy?: string;
+  installationGuide?: string;
+  compatibilityContent?: string;
+  apnGuidance?: string;
+  instantDeliveryLabel?: string;
+  instructions?: string;
+  eligibilityNote?: string;
+  packageContents?: string;
+  deliveryNote?: string;
+  simSize?: string;
+  deviceSpecifications?: CatalogDeviceSpecs;
+  deviceSpecs?: CatalogDeviceSpecs;
   stock?: number | null;
   active: boolean;
   needsReview?: boolean;
@@ -104,6 +144,24 @@ export interface CatalogVariant {
   version?: number;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface CatalogDeviceSpecs {
+  brand?: string;
+  model?: string;
+  networkGeneration?: string;
+  formFactor?: string;
+  supportedBands?: string[];
+  wifiStandard?: string;
+  maxConnectedDevices?: number;
+  batteryCapacity?: string;
+  ethernetPorts?: number;
+  usbPorts?: number;
+  simCompatibility?: string;
+  dimensions?: string;
+  weight?: string;
+  color?: string;
+  warrantyMonths?: number;
 }
 
 export interface CatalogProductRecord extends CatalogProduct {

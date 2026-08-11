@@ -10,7 +10,7 @@ const safeReport = async (filePath) => {
   try { return JSON.parse(await fs.readFile(filePath, 'utf8')); } catch { return null; }
 };
 
-export const createProductionReadinessChecks = ({ env = process.env, sessionHealthService, userRepository, catalogHealthService, checkoutHealthService, customerAuthReadiness, customerProfileHealthService, supportHealthService, loyaltyHealthService, referralHealthService, notificationHealthService, pool, now = () => new Date() } = {}) => async () => {
+export const createProductionReadinessChecks = ({ env = process.env, sessionHealthService, userRepository, catalogHealthService, checkoutHealthService, customerAuthReadiness, customerProfileHealthService, supportHealthService, loyaltyHealthService, referralHealthService, notificationHealthService, customerPlatformHealthService, pool, now = () => new Date() } = {}) => async () => {
   if (env.NODE_ENV !== 'production') return { production: false, checks: [], failedChecks: [] };
   const checks = [];
   const add = (name, passed) => checks.push({ name, passed: Boolean(passed) });
@@ -56,6 +56,15 @@ export const createProductionReadinessChecks = ({ env = process.env, sessionHeal
   add('SUPPORT_ATTACHMENTS_PRIVATE', customerSupport.publicAttachmentRoute === false);
   add('CUSTOMER_SUPPORT_IDOR_SAFE', customerSupport.ownerScoped === true);
   add('SUPPORT_ATTACHMENT_ALLOWLIST', (customerSupport.uploadAllowlist ?? []).length >= 4);
+  if (customerPlatformHealthService) {
+    const customerPlatform = await customerPlatformHealthService.health();
+    add('CUSTOMER_PLATFORM_REAL_MODE', customerPlatform.mode === 'real');
+    add('CUSTOMER_PLATFORM_MIGRATIONS_CURRENT', customerPlatform.migrationsCurrent === true);
+    add('CUSTOMER_PLATFORM_MOCK_FALLBACK_DISABLED', customerPlatform.mockFallbackEnabled === false);
+    add('CUSTOMER_PLATFORM_LEGACY_API_DISABLED', customerPlatform.legacyUserApiEnabled === false);
+    add('CUSTOMER_PLATFORM_QUARANTINE_HEALTHY', customerPlatform.quarantineHealthy === true);
+    add('CUSTOMER_PLATFORM_HEALTHY', customerPlatform.status === 'healthy');
+  }
   const backup = await safeReport(env.BACKUP_VERIFICATION_PATH);
   add('BACKUP_VERIFIED', Boolean(backup?.status === 'verified' && withinHours(backup.verifiedAt, Number.parseInt(env.BACKUP_MAX_AGE_HOURS, 10) || 24, now())));
   const dependency = await safeReport(env.DEPENDENCY_GATE_REPORT_PATH);

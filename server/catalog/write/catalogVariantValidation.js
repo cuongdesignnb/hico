@@ -3,6 +3,11 @@ import {
   requireNonEmptyString,
   requireObject,
 } from './catalogWriteValidation.js';
+import {
+  normalizeDeviceSpecifications,
+  normalizePublicContent,
+  PUBLIC_CONTENT_FIELDS,
+} from './catalogContractFields.js';
 
 const CURRENCIES = new Set(['VND', 'USD']);
 const MEDIUMS = new Set(['esim', 'physical_sim', null]);
@@ -35,9 +40,12 @@ const VARIANT_FIELDS = new Set([
   'providerProductType',
   'leSIM',
   'requiresExistingSim',
+  'shippingRequired',
+  'deviceSpecifications',
   'stock',
   'active',
   'needsReview',
+  ...PUBLIC_CONTENT_FIELDS,
 ]);
 
 const optionalString = (value, fieldName) => {
@@ -142,6 +150,14 @@ export const normalizeVariantInput = (input, { partial = false } = {}) => {
       result[field] = input[field];
     }
   }
+  if (input.shippingRequired !== undefined) {
+    if (typeof input.shippingRequired !== 'boolean') throw new CatalogWriteError('shippingRequired phải là boolean.');
+    result.shippingRequired = input.shippingRequired;
+  }
+  Object.assign(result, normalizePublicContent(input, 'variant'));
+  if (input.deviceSpecifications !== undefined) {
+    result.deviceSpecifications = normalizeDeviceSpecifications(input.deviceSpecifications, 'variant.deviceSpecifications');
+  }
   if (input.stock !== undefined) {
     if (
       input.stock !== null
@@ -218,6 +234,9 @@ export const validateVariantRecord = ({
       providerProductType: variant.providerProductType,
       leSIM: variant.leSIM,
       requiresExistingSim: variant.requiresExistingSim,
+      shippingRequired: variant.shippingRequired,
+      deviceSpecifications: variant.deviceSpecifications ?? variant.deviceSpecs,
+      ...Object.fromEntries(PUBLIC_CONTENT_FIELDS.map((field) => [field, variant[field]])),
       stock: variant.stock,
       active: variant.active,
       needsReview: variant.needsReview,

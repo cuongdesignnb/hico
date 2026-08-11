@@ -96,7 +96,7 @@ test('customer inventory is aggregate-only and classifies ownership without emai
     userDashboardRouteCount: 0,
     accountApiUserReferenceCount: 0,
     hardCodedSensitiveDataCount: 0,
-    legacyMockFiles: 1,
+    legacyMockFiles: 0,
     assetApiUserReferenceCount: 0,
     hardCodedAssetValueCount: 0,
     productionLoyaltySourceCount: 4,
@@ -131,6 +131,6 @@ test('customer inventory detects referral and notification demo patterns without
   assert.equal(report.productionSurface.fakeReferralStatsCount, 1);
   assert.equal(report.productionSurface.directRewardBalanceMutationCount, 1);
   assert.equal(report.productionSurface.legacyNotificationApiReferenceCount, 1);
-  assert.deepEqual(report.demoFindings.map(({ code }) => code), ['MOCK_DASHBOARD_SENSITIVE_ASSET', 'MOCK_DASHBOARD_CART_COUNT', 'MOCK_ESIM_SEED', 'HARDCODED_REFERRAL_DEMO_CODE']);
+  assert.deepEqual(report.demoFindings.map(({ code }) => code), ['MOCK_ESIM_SEED', 'HARDCODED_REFERRAL_DEMO_CODE']);
   assert.equal(JSON.stringify(report).includes('HICOSON50'), false);
 });

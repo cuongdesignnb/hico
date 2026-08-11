@@ -4,6 +4,13 @@ import {
   requireNonEmptyString,
   requireObject,
 } from './catalogWriteValidation.js';
+import {
+  normalizeDeviceSpecifications,
+  normalizeFaqItems,
+  normalizeMedia,
+  normalizePublicContent,
+  PUBLIC_CONTENT_FIELDS,
+} from './catalogContractFields.js';
 
 const OPERATIONS = new Set(['new_subscription', 'topup', 'device_sale']);
 const COVERAGE_TYPES = new Set([
@@ -16,6 +23,7 @@ const STATUSES = new Set(['active', 'draft', 'archived']);
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
 const LOCAL_IMAGE_PATTERN = /^\/(?:images|uploads)\/(?!.*(?:^|\/)\.\.(?:\/|$))[a-zA-Z0-9._/-]+$/;
+const MEDIA_ID_PATTERN = /^media_[a-zA-Z0-9_-]+$/;
 
 const PRODUCT_FIELDS = new Set([
   'id',
@@ -25,12 +33,19 @@ const PRODUCT_FIELDS = new Set([
   'coverageType',
   'coverageIds',
   'image',
+  'primaryMediaId',
+  'gallery',
+  'images',
+  'galleryMediaIds',
   'description',
   'guide',
   'featured',
   'seoTitle',
   'seoDescription',
   'seoKeywords',
+  'deviceSpecifications',
+  'faqItems',
+  ...PUBLIC_CONTENT_FIELDS,
 ]);
 
 const HTML_OPTIONS = {
@@ -72,6 +87,18 @@ const optionalString = (value, fieldName, maxLength) => {
     throw new CatalogWriteError(`${fieldName} quá dài.`);
   }
   return normalized;
+};
+
+const normalizeMediaIds = (value, fieldName, { allowNull = false, maxItems = 50 } = {}) => {
+  if (value === undefined || value === null || value === '') return allowNull ? null : undefined;
+  if (!Array.isArray(value) && typeof value !== 'string') throw new CatalogWriteError(`${fieldName} khÃ´ng há»£p lá»‡.`);
+  const values = Array.isArray(value) ? value : [value];
+  if (values.length > maxItems || values.some((id) => typeof id !== 'string' || !MEDIA_ID_PATTERN.test(id))) {
+    throw new CatalogWriteError(`${fieldName} chá»‰ nháº­n Media ID há»£p lá»‡.`);
+  }
+  const unique = [...new Set(values)];
+  if (unique.length !== values.length) throw new CatalogWriteError(`${fieldName} khÃ´ng Ä‘Æ°á»£c trÃ¹ng Media ID.`);
+  return Array.isArray(value) ? unique : unique[0];
 };
 
 const validateCoverage = (coverageType, coverageIds) => {
@@ -158,6 +185,13 @@ export const normalizeProductInput = (input, { partial = false } = {}) => {
     }
     result.image = image;
   }
+  if (input.primaryMediaId !== undefined) result.primaryMediaId = normalizeMediaIds(input.primaryMediaId, 'product.primaryMediaId', { allowNull: true });
+  if (input.galleryMediaIds !== undefined) result.galleryMediaIds = normalizeMediaIds(input.galleryMediaIds, 'product.galleryMediaIds');
+  if (input.gallery !== undefined || input.images !== undefined) {
+    const media = normalizeMedia(input.gallery ?? input.images, 'product.gallery');
+    result.gallery = media;
+    result.images = media;
+  }
   for (const field of ['description', 'guide']) {
     if (input[field] !== undefined) {
       if (typeof input[field] !== 'string') {
@@ -177,6 +211,11 @@ export const normalizeProductInput = (input, { partial = false } = {}) => {
       result[field] = optionalString(input[field], `product.${field}`, 500);
     }
   }
+  Object.assign(result, normalizePublicContent(input, 'product'));
+  if (input.deviceSpecifications !== undefined) {
+    result.deviceSpecifications = normalizeDeviceSpecifications(input.deviceSpecifications, 'product.deviceSpecifications');
+  }
+  if (input.faqItems !== undefined) result.faqItems = normalizeFaqItems(input.faqItems);
   return result;
 };
 
@@ -191,12 +230,18 @@ export const validateProductRecord = (product) => {
       coverageType: product.coverageType,
       coverageIds: product.coverageIds,
       image: product.image,
+      primaryMediaId: product.primaryMediaId,
+      gallery: product.gallery ?? product.images,
+      galleryMediaIds: product.galleryMediaIds,
       description: product.description,
       guide: product.guide,
       featured: product.featured,
       seoTitle: product.seoTitle,
       seoDescription: product.seoDescription,
       seoKeywords: product.seoKeywords,
+      deviceSpecifications: product.deviceSpecifications ?? product.deviceSpecs,
+      faqItems: product.faqItems,
+      ...Object.fromEntries(PUBLIC_CONTENT_FIELDS.map((field) => [field, product[field]])),
     });
   } catch (error) {
     errors.push({

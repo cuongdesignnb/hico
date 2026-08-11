@@ -4,7 +4,7 @@ export const createWorldmoveTopupStrategy = () => ({
   async execute({ order, item, itemId, providerClient }) {
     const response = await providerClient.topup({
       email: order.email,
-      wmproductId: item.wmproductId,
+      wmproductId: item.providerWmproductId ?? item.wmproductId,
       simNum: order.topup.simNum,
       day: order.topup.day,
       idempotencyKey: `${order.orderId}:${itemId}:TOPUP`,

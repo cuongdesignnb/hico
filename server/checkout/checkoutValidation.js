@@ -1,5 +1,6 @@
 import { CheckoutError } from './checkoutError.js';
 import { assertFulfillmentSupported } from '../fulfillment/fulfillmentValidation.js';
+import { PROVIDER_RESOLUTION_CODES, resolveProviderOffer } from '../catalog/fulfillment/providerOfferResolver.js';
 
 export const CHECKOUT_ENGINES = new Set(['legacy', 'canonical']);
 export const CURRENCIES = new Set(['VND', 'USD']);
@@ -121,7 +122,7 @@ const validateProviderMapping = (variant, offers) => {
   return offer;
 };
 
-export const validateCanonicalCart = ({ catalog, providerOffers = [], request, requireCustomer = true }) => {
+export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBindings = [], providerProfiles = [], providerResolver = resolveProviderOffer, request, requireCustomer = true }) => {
   const requestedItems = validateItems(request?.items);
   const productsById = new Map((catalog?.products ?? []).map((product) => [product.id, product]));
   const variantsById = new Map((catalog?.variants ?? []).map((variant) => [variant.id, variant]));
@@ -148,15 +149,53 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], request, r
         throw new CheckoutError('Giá của một số sản phẩm đã thay đổi. Vui lòng kiểm tra lại đơn hàng.', 'PRICE_CHANGED', 409);
       }
     }
-    assertFulfillmentSupported({ ...variant, operation: variant.operation ?? product.operation });
-    const providerOffer = validateProviderMapping(variant, providerOffers);
-    const requiresShipping = variant.medium === 'physical_sim';
-    const requiresTopup = variant.fulfillmentMethod === 'WORLDMOVE_TOPUP';
+    const activeBinding = providerBindings.find((binding) => (
+      binding.variantId === variant.id
+      && binding.provider === 'WORLDMOVE'
+      && binding.status === 'ACTIVE'
+    )) ?? null;
+    const activeProfile = providerProfiles.find((profile) => (
+      profile.variantId === variant.id
+      && profile.provider === 'WORLDMOVE'
+      && profile.status === 'ACTIVE'
+    )) ?? null;
+    const usesProviderResolver = Boolean(activeProfile || variant.durationDays || variant.familyKey || activeBinding);
+    let providerResolution = null;
+    let providerOffer;
+    if (usesProviderResolver) {
+      providerResolution = providerResolver({ variant, offers: providerOffers, activeBinding, fulfillmentProfile: activeProfile, requireFulfillmentProfile: Boolean(activeProfile) });
+      if (!providerResolution.ok) {
+        throw new CheckoutError(
+          providerResolution.reason,
+          providerResolution.code,
+          providerResolution.code === PROVIDER_RESOLUTION_CODES.AMBIGUOUS ? 409 : 422,
+        );
+      }
+      providerOffer = providerOffers.find((offer) => offer.id === providerResolution.providerOfferId) ?? null;
+    } else {
+      providerOffer = validateProviderMapping(variant, providerOffers);
+    }
+    const fulfillmentVariant = providerResolution?.fulfillmentMethod
+      ? {
+        ...variant,
+        supplier: 'worldmove',
+        fulfillmentMethod: providerResolution.fulfillmentMethod,
+        wmproductId: providerResolution.providerWmproductId,
+        providerOfferId: providerResolution.providerOfferId,
+        providerProductType: providerOffer?.providerProductType,
+        leSIM: providerOffer?.leSIM,
+        operation: variant.operation ?? product.operation,
+      }
+      : { ...variant, operation: variant.operation ?? product.operation };
+    assertFulfillmentSupported(fulfillmentVariant);
+    const requiresShipping = variant.medium === 'physical_sim' || product.operation === 'device_sale';
+    const requiresTopup = fulfillmentVariant.fulfillmentMethod === 'WORLDMOVE_TOPUP';
     resolved.push({
       requested,
       product,
       variant,
       providerOffer,
+      providerResolution,
       requiresShipping,
       requiresTopup,
     });

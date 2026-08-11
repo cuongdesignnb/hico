@@ -2,6 +2,7 @@ import express from 'express';
 import { createPublicRouteResolver } from './publicRouteResolver.js';
 import { createSitemapXml } from './sitemapService.js';
 import { createRobotsTxt } from './robotsService.js';
+import { toPublicProduct } from '../catalog/publicCatalogProjection.js';
 
 const notFound = (res) => res.status(404).json({ error: 'Content not found.', code: 'NOT_FOUND' });
 const invalidSlug = (res) => res.status(400).json({ error: 'Invalid path.', code: 'INVALID_SLUG' });
@@ -22,7 +23,7 @@ export const createSeoRouter = ({ resolver = createPublicRouteResolver(), env = 
       if (result.invalid) return invalidSlug(res);
       if (result.redirect) return res.json({ redirect: result.redirect, permanent: true });
       if (!result.product) return notFound(res);
-      return res.json(result.product);
+      return res.json(toPublicProduct(result.product, result.product.variants ?? []));
     } catch {
       return res.status(500).json({ error: 'Unable to resolve product.', code: 'SEO_RESOLVE_FAILED' });
     }
@@ -31,7 +32,11 @@ export const createSeoRouter = ({ resolver = createPublicRouteResolver(), env = 
     try {
       const result = await resolver.resolveCoverageSlug(req.params.slug);
       if (result.invalid) return invalidSlug(res);
-      return result.coverage ? res.json(result.coverage) : notFound(res);
+      if (!result.coverage) return notFound(res);
+      return res.json({
+        ...result.coverage,
+        products: result.coverage.products.map((product) => toPublicProduct(product, product.variants ?? [])),
+      });
     } catch {
       return res.status(500).json({ error: 'Unable to resolve coverage.', code: 'SEO_RESOLVE_FAILED' });
     }

@@ -17,7 +17,7 @@ export const assertFulfillmentSupported = (item) => {
   }
   const valid = {
     WORLDMOVE_ESIM_REDEEM: item.medium === 'esim' && item.supplier === 'worldmove' && item.providerProductType === 0 && item.leSIM === true,
-    WORLDMOVE_ESIM_ORDER_THEN_REDEEM: item.medium === 'esim' && item.supplier === 'local_carrier' && item.providerProductType === 0 && item.leSIM === false,
+    WORLDMOVE_ESIM_ORDER_THEN_REDEEM: item.medium === 'esim' && ['worldmove', 'local_carrier'].includes(item.supplier) && item.providerProductType === 0 && item.leSIM === false,
     HICO_MANUAL_QR: item.medium === 'esim' && item.supplier === 'hico',
     WORLDMOVE_PHYSICAL_ORDER: item.medium === 'physical_sim' && item.supplier === 'worldmove' && item.providerProductType === 1,
     HICO_PHYSICAL_STOCK: item.medium === 'physical_sim' && item.supplier === 'hico',

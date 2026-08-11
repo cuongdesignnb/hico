@@ -55,16 +55,25 @@ const coverageEntries = (products) => {
   const bySlug = new Map();
   for (const product of products) {
     if (!['country', 'region', 'global'].includes(product.coverageType)) continue;
-    const slug = slugify(product.name);
-    if (!slug) continue;
-    const current = bySlug.get(slug) ?? {
-      slug,
-      name: product.name,
-      type: product.coverageType === 'country' ? 'country' : 'region',
-      products: [],
-    };
-    current.products.push(product);
-    bySlug.set(slug, current);
+    const slugs = new Set([slugify(product.name), product.slug]);
+    for (const coverageId of product.coverageIds ?? []) {
+      const legacyDestinationSlug = String(coverageId).match(/^dest-(?:esim|sim)-du-lich-(.+)$/i)?.[1];
+      if (legacyDestinationSlug) slugs.add(slugify(legacyDestinationSlug));
+    }
+    for (const slug of slugs) {
+      if (!slug) continue;
+      const displayName = slug === slugify(product.name)
+        ? product.name
+        : slug.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+      const current = bySlug.get(slug) ?? {
+        slug,
+        name: displayName,
+        type: product.coverageType === 'country' ? 'country' : 'region',
+        products: [],
+      };
+      if (!current.products.some((candidate) => candidate.id === product.id)) current.products.push(product);
+      bySlug.set(slug, current);
+    }
   }
   return [...bySlug.values()].filter((entry) => entry.products.length > 0);
 };

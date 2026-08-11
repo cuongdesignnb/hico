@@ -4,7 +4,7 @@ export const createWorldmovePhysicalOrderStrategy = () => ({
   async execute({ order, item, itemId, providerClient }) {
     const response = await providerClient.createPhysicalOrder({
       email: order.email,
-      wmproductId: item.wmproductId,
+      wmproductId: item.providerWmproductId ?? item.wmproductId,
       quantity: item.quantity,
       shipping: order.shippingAddress,
       idempotencyKey: `${order.orderId}:${itemId}:CREATE_PHYSICAL`,

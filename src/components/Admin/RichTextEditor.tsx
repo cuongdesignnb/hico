@@ -66,11 +66,6 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         }
         executeCommand('insertImage', url);
       });
-    } else {
-      const url = prompt('Nhập địa chỉ hình ảnh (URL):', 'https://');
-      if (url) {
-        executeCommand('insertImage', url);
-      }
     }
   };
 
@@ -172,7 +167,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           <button type="button" className="rte-btn" onClick={handleInsertLink} title="Chèn liên kết">
             <Link size={15} />
           </button>
-          <button type="button" className="rte-btn" onClick={handleInsertImage} title="Chèn hình ảnh">
+          <button type="button" className="rte-btn" onClick={handleInsertImage} disabled={!onInsertImageClick} title="Chèn hình ảnh từ Media Library">
             <Image size={15} />
           </button>
           <button type="button" className="rte-btn" onClick={() => executeCommand('removeFormat')} title="Xoá định dạng">

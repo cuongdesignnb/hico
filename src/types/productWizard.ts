@@ -1,4 +1,5 @@
 import type {
+  CatalogDeviceSpecs,
   CatalogProduct,
   CatalogProductRecord,
   CatalogVariant,
@@ -32,12 +33,27 @@ export interface ProductDraft {
   coverageType: CoverageType;
   coverageIds: string[];
   image: string;
+  primaryMediaId: string | null;
+  gallery: NonNullable<CatalogProduct['gallery']>;
+  galleryMediaIds: string[];
   description: string;
   guide: string;
   featured: boolean;
   seoTitle: string;
   seoDescription: string;
   seoKeywords: string;
+  deviceSpecifications?: CatalogDeviceSpecs;
+  networkLabel: string;
+  coverageLabel: string;
+  speedLabel: string;
+  installationGuide: string;
+  compatibilityContent: string;
+  instructions: string;
+  eligibilityNote: string;
+  packageContents: string;
+  deliveryNote: string;
+  simSize: string;
+  faqItems: NonNullable<CatalogProduct['faqItems']>;
 }
 
 export interface VariantDraft {
@@ -60,6 +76,18 @@ export interface VariantDraft {
   supplier?: 'worldmove' | 'local_carrier' | 'hico' | 'other';
   fulfillmentMethod?: CatalogVariant['fulfillmentMethod'];
   requiresExistingSim: boolean;
+  shippingRequired?: boolean;
+  networkLabel?: string;
+  coverageLabel?: string;
+  speedLabel?: string;
+  installationGuide?: string;
+  compatibilityContent?: string;
+  instructions?: string;
+  eligibilityNote?: string;
+  packageContents?: string;
+  deliveryNote?: string;
+  simSize?: string;
+  deviceSpecifications?: CatalogDeviceSpecs;
   stock: string;
   active: boolean;
   needsReview: boolean;

@@ -6,5 +6,5 @@ import { AccountAssetListPage } from './AccountAssetListPage';
 export const AccountTopupsPage = () => {
   const loader = useCallback((signal?: AbortSignal) => listTopups(signal), []);
   const query = useCustomerAssetQuery(loader);
-  return <AccountAssetListPage title="Lich su nap them" lead="Theo doi cac lan nap them da duoc xac nhan." {...query} />;
+  return <AccountAssetListPage title="Lịch sử nạp thêm" lead="Theo dõi các lần nạp thêm đã được xác nhận." {...query} />;
 };

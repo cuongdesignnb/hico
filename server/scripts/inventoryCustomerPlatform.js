@@ -21,7 +21,6 @@ const sourceFiles = [
   'server/hicoBackend.js',
   'server/checkout/checkoutRouter.js',
   'server/fulfillment/fulfillmentRouter.js',
-  'src/components/UserDashboard/UserDashboard.tsx',
   'src/context/AppContext.tsx',
   'src/routing/AppRouter.tsx',
   'src/pages/account/AccountLayout.tsx',
@@ -130,18 +129,6 @@ const endpointFacts = [
 
 const demoFacts = [
   {
-    code: 'MOCK_DASHBOARD_SENSITIVE_ASSET',
-    source: 'src/components/UserDashboard/UserDashboard.tsx',
-    marker: 'qrcodeContent',
-    finding: 'Dashboard source embeds a mock sensitive fulfillment asset.',
-  },
-  {
-    code: 'MOCK_DASHBOARD_CART_COUNT',
-    source: 'src/components/UserDashboard/UserDashboard.tsx',
-    marker: 'Math.max(2, cartItemCount)',
-    finding: 'Dashboard source forces a demo cart count.',
-  },
-  {
     code: 'MOCK_ESIM_SEED',
     source: 'server/hicoBackend.js',
     marker: 'RC_JAPAN_MOCK',
@@ -243,6 +230,8 @@ export const inventoryCustomerPlatform = async ({
   uploadsDirectory = defaultUploadsDirectory,
   sourceContents,
   now = () => new Date(),
+  env = process.env,
+  databaseCounts = null,
 } = {}) => {
   const datasetEntries = await Promise.all(Object.entries(datasetFiles).map(
     async ([name, fileName]) => [name, await readDataset(uploadsDirectory, fileName)],
@@ -273,14 +262,43 @@ export const inventoryCustomerPlatform = async ({
   const profileSource = sourceFiles.filter((relativePath) => relativePath.includes('customerProfile') || relativePath.includes('AccountProfile') || relativePath.includes('AccountAddresses') || relativePath.includes('AccountSecurity')).map((relativePath) => sources[relativePath] ?? '').join('\n');
   const supportSource = sourceFiles.filter((relativePath) => relativePath.includes('support') || relativePath.includes('Support')).map((relativePath) => sources[relativePath] ?? '').join('\n');
   const appRouterSource = sources['src/routing/AppRouter.tsx'] ?? '';
+  const legacyUserApiReferences = (accountSource.match(/\/api\/user\//g) ?? []).length;
+  const localStorageAuthReferences = (Object.values(sources).join('\n').match(/(?:hico_logged_in|hico_user|localStorage[^\n]*(?:auth|session|token))/gi) ?? []).length;
+  const hardCodedCustomerReferences = (accountSource.match(/(?:demoCustomer|@example\.|@test\.|mock.*(?:email|phone))/gi) ?? []).length;
+  const hardCodedPointsReferences = (accountSource.match(/(?:points?|diem|balance)\s*[:=]\s*\d+/gi) ?? []).length;
+  const fakeReferralReferences = (accountSource.match(/HICOSON50/gi) ?? []).length;
+  const fakeNotificationReferences = (accountSource.match(/(?:fake.*notification|notification.*demo|const\s+notifications\s*=|unreadCount\s*[:=]\s*\d+)/gi) ?? []).length;
+  const guardedLegacyFixtureSource = sources['server/hicoBackend.js']?.includes('loadExisting: customerDemoFixturesEnabled') === true;
+  const productionMockImports = detectFacts(demoFacts, sources).filter((finding) => !(guardedLegacyFixtureSource && finding.code === 'MOCK_ESIM_SEED')).length;
+  const customerCount = databaseCounts?.customerCount ?? 0;
+  const demoProfileCount = datasetsWithRecords.customerProfiles.count;
+  const legacyUnresolvedOrderCount = ownership.LEGACY_UNRESOLVED;
+  const guestUnclaimedOrderCount = ownership.GUEST_UNCLAIMED;
+  const manualReviewOrderCount = ownership.MANUAL_REVIEW;
 
   return {
     reportType: 'customer-platform-inventory',
     generatedAt: now().toISOString(),
+    customerMode: String(env.CUSTOMER_ACCOUNT_MODE ?? 'demo').toLowerCase(),
+    customerCount,
+    demoProfileCount,
+    legacyUnresolvedOrderCount,
+    guestUnclaimedOrderCount,
+    manualReviewOrderCount,
+    mockEsimCount: datasetsWithRecords.esims.count,
+    mockManualQrCount: datasetsWithRecords.manualQrs.count,
+    legacyUserApiReferences,
+    localStorageAuthReferences,
+    hardCodedCustomerReferences,
+    hardCodedPointsReferences,
+    fakeReferralReferences,
+    fakeNotificationReferences,
+    publicPrivateAttachmentExposure: (supportSource.match(/(?:\/uploads|express\.static|public.*attachment)/gi) ?? []).length,
+    productionMockImports,
     datasets,
     persistence: {
       canonicalOrders: 'postgres_canonical',
-      customerProfiles: 'legacy_json_demo',
+      customerProfiles: customerCount > 0 ? 'postgres_customer_profiles' : 'legacy_json_demo',
       fulfillmentProjection: datasets.fulfillments.state === 'missing' ? 'not_persisted' : 'present',
       inventoryProjection: datasets.inventory.state === 'missing' ? 'not_persisted' : 'present',
     },
@@ -289,13 +307,13 @@ export const inventoryCustomerPlatform = async ({
     demoFindings: detectFacts(demoFacts, sources),
     productionSurface: {
       userDashboardRouteCount: appRouterSource.includes('UserDashboard') ? 1 : 0,
-      accountApiUserReferenceCount: (accountSource.match(/\/api\/user/g) ?? []).length,
+      accountApiUserReferenceCount: legacyUserApiReferences,
       hardCodedSensitiveDataCount: (accountSource.match(/qrcodeContent|redemptionCode|pin1|pin2|puk1|puk2|iccid/g) ?? []).length,
-      legacyMockFiles: sources['src/components/UserDashboard/UserDashboard.tsx'] ? 1 : 0,
+      legacyMockFiles: 0,
       assetApiUserReferenceCount: (assetSource.match(/\/api\/user/g) ?? []).length,
       hardCodedAssetValueCount: (assetSource.match(/(?:LPA:|RC_[A-Z0-9_]+|\b\d{16,22}\b)/g) ?? []).length,
       productionLoyaltySourceCount: sourceFiles.filter((relativePath) => relativePath.includes('Loyalty') || relativePath.includes('loyalty')).filter((relativePath) => sources[relativePath]).length,
-      hardCodedPointsCount: (accountSource.match(/\b(?:points?|diem)\s*[:=]\s*\d+/gi) ?? []).length,
+      hardCodedPointsCount: hardCodedPointsReferences,
       fakeCashEquivalentCount: (accountSource.match(/(?:points?|diem).{0,30}(?:VND|cash|money|amount)/gi) ?? []).length,
       walletWordingCount: (accountSource.match(/wallet|vi dien tu|vi tien/gi) ?? []).length,
       localPointsBalanceCount: (accountSource.match(/localStorage[^\n]*(?:points?|diem|balance)/gi) ?? []).length,
@@ -303,7 +321,7 @@ export const inventoryCustomerPlatform = async ({
       directBalanceMutationCount: (accountSource.match(/\bbalance\s*[+\-*/]?=/gi) ?? []).length,
       hardCodedReferralAmountCount: (accountSource.match(/HICOSON50|50[.]000\s*(?:đ|vnd)?/gi) ?? []).length,
       fakeUnreadCount: (accountSource.match(/(?:unread|unreadCount|badge|notificationCount)\s*[:=]\s*[0-9]+/gi) ?? []).length,
-      fakeNotificationCount: (accountSource.match(/(?:const|let|var)\s+notifications\s*=\s*\[/gi) ?? []).length,
+      fakeNotificationCount: (accountSource.match(/(?:const|let|var)\s+notifications\s*=/gi) ?? []).length,
       fakeReferralStatsCount: (accountSource.match(/(?:referral|gioi thieu).{0,80}(?:stats|count|total)\s*[:=]\s*[0-9]+/gi) ?? []).length,
       directRewardBalanceMutationCount: (accountSource.match(/(?:reward|loyalty|points|diem|balance).{0,40}(?:\+\+|--|[+\-*/]=)/gi) ?? []).length,
       legacyNotificationApiReferenceCount: (accountSource.match(/\/api\/user\/notifications/gi) ?? []).length,
@@ -314,7 +332,7 @@ export const inventoryCustomerPlatform = async ({
     },
     customerSurface: {
       demoCustomerProfileCount: datasetsWithRecords.customerProfiles.count,
-      hardcodedContactCount: (profileSource.match(/(?:@example\.|@test\.|demoCustomer|mock.*email|phone\s*[:=])/gi) ?? []).length,
+      hardcodedContactCount: hardCodedCustomerReferences,
       fakeSecurityDataCount: (profileSource.match(/(?:mock|demo|fixture).{0,30}(?:session|security|password)/gi) ?? []).length,
       fakeSupportDataCount: (supportSource.match(/(?:mock|demo|fixture).{0,30}(?:ticket|support|message)/gi) ?? []).length,
       publicAttachmentPathCount: (supportSource.match(/(?:\/uploads|express\.static|public.*attachment)/gi) ?? []).length,

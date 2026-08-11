@@ -7,10 +7,10 @@ test('customer order projection allowlists safe fields and removes fulfillment s
   const order = projectCustomerOrder({
     orderId: '#SAFE-1', status: 'PROVISIONED', currency: 'VND', subtotal: 100000, createdAt: '2026-08-01T00:00:00.000Z',
     shipping: { recipientName: 'A Customer', phone: '0912345678', address: 'full address', city: 'Ha Noi' },
-    items: [{ productName: 'Japan eSIM', productId: 'p1', variantId: 'v1', quantity: 1, unitPrice: 100000, currency: 'VND', iccid: '8985', redemptionCode: 'SECRET', qrcode: 'QR', qrcodeContent: 'LPA', pin1: '1234', puk1: '5678' }],
+    items: [{ productName: 'Japan eSIM', productId: 'p1', variantId: 'v1', quantity: 1, unitPrice: 100000, currency: 'VND', soldDurationDays: 1, providerDurationDays: 2, upgradeDays: 1, iccid: '8985', redemptionCode: 'SECRET', qrcode: 'QR', qrcodeContent: 'LPA', pin1: '1234', puk1: '5678' }],
     providerResponse: { token: 'SECRET' }, audit: { actor: 'admin' },
   });
-  assert.deepEqual(order.items[0], { productName: 'Japan eSIM', productId: 'p1', variantId: 'v1', sku: null, operation: null, quantity: 1, unitPrice: 100000, currency: 'VND' });
+  assert.deepEqual(order.items[0], { productName: 'Japan eSIM', productId: 'p1', variantId: 'v1', sku: null, operation: null, quantity: 1, unitPrice: 100000, currency: 'VND', soldDurationDays: 1, providerDurationDays: 2, upgradeDays: 1 });
   assert.equal(order.shipping.phone, '********78');
   assert.equal('providerResponse' in order, false);
   assert.equal(JSON.stringify(order).includes('SECRET'), false);

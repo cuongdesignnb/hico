@@ -1,6 +1,4 @@
-import type { CatalogProduct } from '../types/catalog';
-
-export const getCanonicalProductPath = (product: Pick<CatalogProduct, 'operation' | 'slug'>): string => {
+export const getCanonicalProductPath = (product: { operation: string; slug: string }): string => {
   if (product.operation === 'topup') return `/nap-them/${product.slug}`;
   if (product.operation === 'device_sale') return `/thiet-bi/${product.slug}`;
   return `/san-pham/${product.slug}`;

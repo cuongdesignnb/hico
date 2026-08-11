@@ -23,6 +23,13 @@ const requireFiniteNumber = (value, fieldName) => {
   return value;
 };
 
+const optionalPublicText = (value, fieldName) => {
+  if (value === undefined || value === null) return;
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new ProviderOfferValidationError(`Provider offer has invalid ${fieldName}`);
+  }
+};
+
 export const validateProviderOffer = (offer) => {
   if (!offer || typeof offer !== 'object' || Array.isArray(offer)) {
     throw new ProviderOfferValidationError('Provider offer must be an object');
@@ -65,6 +72,9 @@ export const validateProviderOffer = (offer) => {
   if (typeof offer.active !== 'boolean') {
     throw new ProviderOfferValidationError('Provider offer has invalid active state');
   }
+
+  optionalPublicText(offer.apnHint, 'apnHint');
+  optionalPublicText(offer.networkLabel, 'networkLabel');
 
   if (
     typeof offer.syncedAt !== 'string'

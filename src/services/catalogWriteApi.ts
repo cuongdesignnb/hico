@@ -40,7 +40,11 @@ export const requestJson = async <T>(url: string, init: RequestInit = {}): Promi
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 15000);
   try {
-    const response = await fetch(url, { ...init, signal: init.signal ?? controller.signal });
+    const response = await fetch(url, {
+      ...init,
+      credentials: 'include',
+      signal: init.signal ?? controller.signal,
+    });
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const meta = getErrorMeta(payload);

@@ -29,7 +29,7 @@ export const createCustomerAuthReadiness = ({
       ]);
       if (database.status !== 'healthy') blockers.push('CUSTOMER_DATABASE_UNHEALTHY');
       if (sessions.status !== 'healthy') blockers.push('CUSTOMER_SESSION_STORE_UNHEALTHY');
-      if (schema.status !== 'current' || !schema.applied?.includes('006_customer_identity.sql')) blockers.push('CUSTOMER_MIGRATIONS_NOT_CURRENT');
+      if (schema.status !== 'current' || !schema.applied?.includes('006_customer_identity.sql') || !schema.applied?.includes('012_customer_platform_cutover.sql')) blockers.push('CUSTOMER_MIGRATIONS_NOT_CURRENT');
       if (!sessionService?.keyRotation?.().active) blockers.push('CUSTOMER_KEY_RING_INVALID');
       if (env.NODE_ENV === 'production' && !tokenDelivery?.getHealth?.().configured) blockers.push('CUSTOMER_EMAIL_DELIVERY_REQUIRED');
     }

@@ -16,6 +16,8 @@ import type {
 } from '../../../types/provider';
 import ProviderOfferDetails from './ProviderOfferDetails';
 import ReconciliationQueue from './ReconciliationQueue';
+import FulfillmentMappingTable from './FulfillmentMappingTable';
+import FulfillmentFamilyProfile from './FulfillmentFamilyProfile';
 import WorldmoveOfferTable from './WorldmoveOfferTable';
 import WorldmoveSyncButton from './WorldmoveSyncButton';
 import { formatProviderDate } from './providerLabels';
@@ -64,7 +66,7 @@ const ProviderCatalogTab = ({
   const [typeFilter, setTypeFilter] = useState<OfferTypeFilter>('all');
   const [statusFilter, setStatusFilter] = useState<OfferStatusFilter>('all');
   const [page, setPage] = useState(1);
-  const [activeTab, setActiveTab] = useState<'worldmove' | 'reconciliation'>(
+  const [activeTab, setActiveTab] = useState<'worldmove' | 'reconciliation' | 'fulfillment'>(
     'worldmove',
   );
 
@@ -153,12 +155,12 @@ const ProviderCatalogTab = ({
           <h2>
             {activeTab === 'worldmove'
               ? 'Danh mục Worldmove'
-              : 'Reconciliation Catalog'}
+              : activeTab === 'reconciliation' ? 'Reconciliation Catalog' : 'Fulfillment bindings'}
           </h2>
           <p>
             {activeTab === 'worldmove'
               ? `${filteredOffers.length.toLocaleString('vi-VN')} offer phù hợp`
-              : 'Exact-match theo wmproductId, chưa tác động checkout'}
+              : activeTab === 'reconciliation' ? 'Exact-match theo wmproductId, chưa tác động checkout' : 'Exact, mapped fallback and next-longer resolution'}
           </p>
         </div>
         {activeTab === 'worldmove' && (
@@ -184,6 +186,15 @@ const ProviderCatalogTab = ({
           onClick={() => setActiveTab('reconciliation')}
         >
           Cần xác nhận
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'fulfillment'}
+          className={activeTab === 'fulfillment' ? 'provider-tab-active' : undefined}
+          onClick={() => setActiveTab('fulfillment')}
+        >
+          Fulfillment
         </button>
       </div>
 
@@ -313,8 +324,13 @@ const ProviderCatalogTab = ({
             />
           )}
         </>
-      ) : (
+      ) : activeTab === 'reconciliation' ? (
         <ReconciliationQueue />
+      ) : (
+        <>
+          <FulfillmentFamilyProfile searchQuery={searchQuery} />
+          <FulfillmentMappingTable searchQuery={searchQuery} />
+        </>
       )}
     </section>
   );

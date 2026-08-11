@@ -1,10 +1,11 @@
-import type { CatalogProductRecord } from '../types/catalog';
+import type { PublicProduct } from '../types/publicCatalog';
+import { getPublicProductBySlug as getCanonicalProductBySlug, getPublicProducts as getCanonicalProducts } from './publicCatalogApi';
 
 export interface CoveragePage {
   slug: string;
   name: string;
   type: 'country' | 'region';
-  products: CatalogProductRecord[];
+  products: PublicProduct[];
 }
 
 export interface PublicArticle {
@@ -33,8 +34,8 @@ const request = async <T>(url: string, signal?: AbortSignal): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
-export const getPublicProducts = (signal?: AbortSignal) => request<CatalogProductRecord[]>('/api/catalog/products', signal);
-export const getProductBySlug = (slug: string, signal?: AbortSignal) => request<CatalogProductRecord | { redirect: string; permanent: true }>(`/api/catalog/products/by-slug/${encodeURIComponent(slug)}`, signal);
+export const getPublicProducts = (signal?: AbortSignal) => getCanonicalProducts({}, signal);
+export const getProductBySlug = (slug: string, signal?: AbortSignal) => getCanonicalProductBySlug(slug, signal);
 export const getCoverageBySlug = (slug: string, signal?: AbortSignal) => request<CoveragePage>(`/api/catalog/coverage/by-slug/${encodeURIComponent(slug)}`, signal);
 export const getPublicArticles = (signal?: AbortSignal) => request<PublicArticle[]>('/api/articles', signal);
 export const getArticleBySlug = (slug: string, signal?: AbortSignal) => request<PublicArticle>(`/api/articles/by-slug/${encodeURIComponent(slug)}`, signal);

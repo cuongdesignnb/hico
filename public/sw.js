@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hico-esim-v5'; // BrowserRouter and pre-rendered pages require a fresh shell.
+const CACHE_NAME = 'hico-esim-v15.8.2.1'; // Product Detail parity needs a fresh shell after the canonical UI restore.
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

@@ -7,7 +7,15 @@ import { createPostgresPool } from '../database/postgresPool.js';
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const uploadsRoot = path.join(serverRoot, 'uploads');
-const tables = ['schema_migrations', 'admin_users', 'admin_roles', 'admin_permissions', 'admin_role_permissions', 'admin_user_roles', 'admin_sessions'];
+const tables = [
+  'schema_migrations', 'admin_users', 'admin_roles', 'admin_permissions', 'admin_role_permissions', 'admin_user_roles', 'admin_sessions',
+  'customers', 'customer_profiles', 'customer_sessions', 'customer_email_verifications', 'customer_password_resets', 'customer_security_events', 'customer_addresses', 'customer_contact_changes',
+  'orders', 'order_items', 'guest_order_claims', 'order_ownership_events',
+  'catalog_variant_fulfillment_bindings', 'catalog_variant_fulfillment_binding_events',
+  'loyalty_accounts', 'loyalty_rules', 'loyalty_ledger',
+  'referral_codes', 'referral_relationships', 'referral_events', 'referral_rewards',
+  'customer_notifications', 'support_tickets', 'support_ticket_messages', 'support_attachments', 'customer_data_quarantine',
+];
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const keyFor = (value) => scryptSync(value, 'hico-backup-v1', 32);
 

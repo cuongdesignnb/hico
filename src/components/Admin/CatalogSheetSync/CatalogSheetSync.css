@@ -1,0 +1,13 @@
+.sheet-sync-page { display: grid; gap: 16px; }
+.sheet-sync-header, .sheet-sync-actions, .sheet-sync-controls, .sheet-sync-summary { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sheet-sync-header { justify-content: space-between; }
+.sheet-sync-header h2 { margin: 0; font-size: 22px; }
+.sheet-sync-header p, .sheet-sync-message { margin: 4px 0 0; color: #56616f; }
+.sheet-sync-message { color: #b42318; }
+.sheet-sync-summary { padding: 12px; border: 1px solid #d9dee7; background: #f8fafc; }
+.sheet-sync-controls label { font-size: 13px; white-space: nowrap; }
+.sheet-sync-table-wrap { overflow-x: auto; border: 1px solid #d9dee7; }
+.sheet-sync-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sheet-sync-table th, .sheet-sync-table td { padding: 10px; border-bottom: 1px solid #e8ecf1; text-align: left; vertical-align: top; }
+.sheet-sync-table th { background: #f8fafc; }
+.sheet-sync-actions { justify-content: flex-end; }
