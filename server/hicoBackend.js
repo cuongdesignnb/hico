@@ -52,6 +52,7 @@ import { createCatalogHealthService } from './catalog/health/catalogHealthServic
 import { createCanonicalCatalogReader } from './catalog/canonical/canonicalCatalogReader.js';
 import { createCanonicalCatalogRepository } from './catalog/canonical/canonicalCatalogRepository.js';
 import { createCheckoutRouter } from './checkout/checkoutRouter.js';
+import { createCheckoutReadinessService } from './checkout/checkoutReadiness.js';
 import { createCheckoutService } from './checkout/checkoutService.js';
 import { createCheckoutIdempotencyRepository } from './checkout/checkoutIdempotencyRepository.js';
 import { createCheckoutHealthRouter } from './checkout/health/checkoutHealthRouter.js';
@@ -811,6 +812,16 @@ const canonicalCheckoutService = createCheckoutService({
   fulfillmentBindingRepository,
   fulfillmentProfileRepository,
 });
+const canonicalCheckoutReadinessService = createCheckoutReadinessService({
+  env: process.env,
+  catalogReader: canonicalCatalogReader,
+  fulfillmentBindingRepository,
+  fulfillmentProfileRepository,
+  inventoryRepository: canonicalInventoryRepository,
+  manualQrRepository: canonicalQrRepository,
+  providerOffersFile: path.join(catalogUploadsDirectory, 'provider_offers.json'),
+  logger,
+});
 const canonicalCheckoutHealthService = createCheckoutHealthService({
   env: process.env,
   validatorDependencies: {
@@ -862,6 +873,7 @@ app.use('/api', createCheckoutRouter({
   catalogHealthService,
   canonicalRepository: createCanonicalCatalogRepository({ uploadsDirectory: catalogUploadsDirectory }),
   checkoutHealthService: canonicalCheckoutHealthService,
+  checkoutReadinessService: canonicalCheckoutReadinessService,
   customerAuthService,
   env: process.env,
 }));

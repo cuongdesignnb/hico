@@ -10,18 +10,27 @@ export const createCheckoutRouter = ({
   catalogHealthService,
   canonicalRepository,
   checkoutHealthService,
+  checkoutReadinessService = null,
   customerAuthService,
   env = process.env,
+  logger = console,
 } = {}) => {
   const router = express.Router();
   const engine = readCheckoutEngine(env);
   const requireReadyCanonical = (handler) => async (req, res) => {
     if (engine !== 'canonical') return res.status(409).json({ error: 'Canonical checkout is disabled.', code: 'CHECKOUT_ENGINE_DISABLED' });
-    if (checkoutHealthService) {
-      const health = await checkoutHealthService.getHealth();
-      if (health.status !== 'healthy') return res.status(503).json({ error: 'Canonical checkout validation failed.', code: 'CHECKOUT_NOT_READY' });
+    try {
+      if (checkoutReadinessService) {
+        await checkoutReadinessService.assertReady(req.body);
+      } else if (checkoutHealthService) {
+        const health = await checkoutHealthService.getHealth();
+        if (health.status !== 'healthy') return res.status(503).json({ error: 'Canonical checkout validation failed.', code: 'CHECKOUT_NOT_READY' });
+      }
+      return res.json(await handler(req));
+    } catch (error) {
+      if (error?.code === 'CHECKOUT_NOT_READY') logger.warn?.(JSON.stringify({ event: 'checkout_request_blocked', cartKinds: error.details?.cartKinds ?? [], requiredCapabilities: error.details?.requiredCapabilities ?? [], blockingReasons: error.details?.blockingReasons ?? [] }));
+      return sendCheckoutError(res, error);
     }
-    try { return res.json(await handler(req)); } catch (error) { return sendCheckoutError(res, error); }
   };
   const handleExistingOrder = (handler) => async (req, res) => {
     try { return res.json(await handler(req)); } catch (error) { return sendCheckoutError(res, error); }
