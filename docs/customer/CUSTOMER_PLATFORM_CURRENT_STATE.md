@@ -94,3 +94,21 @@ PR15.7 does not import the two legacy demo profiles, resolve any of the five
 legacy orders, expose mock assets, or implement the full export/delete workflow.
 Legal retention, anonymization execution, and final production migration remain
 explicit blockers for later work.
+
+## PR15.8 cutover state
+
+The reviewed real-mode path is fail-closed by configuration. It does not load
+legacy customer, order, ticket, eSIM, or manual QR demo maps for customer
+runtime. Demo profiles and mock assets remain source inventory findings and are
+quarantined; they are never treated as customer-owned data.
+
+The current aggregate baseline is five `LEGACY_UNRESOLVED` orders, two demo
+profiles, one mock eSIM, two mock manual QR records, and no email auto-links.
+The isolated cutover inserted ten quarantine rows. The exact values must be
+refreshed with `npm run customer:inventory` before every migration window.
+
+`GET /api/health/customer-platform` is the authoritative cutover health check.
+Real mode requires migration head `012_customer_platform_cutover.sql`, healthy
+customer dependencies, no demo fallback, no legacy customer API, and a healthy
+quarantine table. Loyalty and referral remain available only as disabled
+surfaces; neither is enabled by PR15.8.

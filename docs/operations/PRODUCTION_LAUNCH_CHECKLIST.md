@@ -30,6 +30,8 @@ not satisfy a production row. Allowed statuses are `NOT_STARTED`, `IN_PROGRESS`,
 | SMK-01 | Smoke | Public, admin, checkout and operations smoke on production | Critical | BLOCKED | Launch report | Release owner | - | - | Not run |
 | OPS-01 | Hypercare | Dashboard, staffing, incident template and 24-72h window agreed | High | BLOCKED | `PRODUCTION_HYPERCARE_RUNBOOK.md` | Operations owner | - | - | Duration must be agreed, not hard-coded |
 | QLT-01 | Quality | Lint, build, prerender, backend tests, audits, security gate and Docker config | High | PASS | CI/local gate results | Release owner | - | 2026-08-01 | Docker daemon currently off by policy |
+| CUS-04 | Customer cutover | Real mode, migration 012, quarantine, no demo fallback, legacy API 410, and customer platform health | Critical | BLOCKED | PR15.8 isolated QA only; production evidence and PR14 approval required | Customer Platform owner | - | - | Five legacy orders remain `LEGACY_UNRESOLVED`; loyalty/referral stay disabled |
+| MED-01 | Admin media | Media Library-only Admin image inputs, reference integrity, private-file boundary and orphan review | Critical | BLOCKED | PR15.8.2.3 reports and QA; production owner review required | Catalog/Platform owner | - | - | Legacy local references remain read-compatible; no auto-delete; production remains NO-GO |
 
 ## Current decision
 
