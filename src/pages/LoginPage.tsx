@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/useAuth';
+import './LoginPage.css';
 
 export const LoginPage = () => {
   const { login, status } = useAuth();
@@ -18,11 +19,11 @@ export const LoginPage = () => {
       await login(email, password);
       navigate((location.state as { from?: string } | null)?.from || '/quan-tri', { replace: true });
     } catch {
-      setError('Email or password is incorrect.');
+      setError('Email hoặc mật khẩu không chính xác.');
     } finally { setSubmitting(false); }
   };
   if (status === 'authenticated') return null;
-  return <main className="route-state auth-page"><form className="auth-form" onSubmit={submit}><h1>Admin sign in</h1><label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p role="alert">{error}</p>}<button type="submit" disabled={submitting}>{submitting ? 'Signing in...' : 'Sign in'}</button></form></main>;
+  return <main className="admin-auth-page"><form className="admin-auth-form" onSubmit={submit}><div className="admin-auth-eyebrow">HICO ADMIN</div><h1>Đăng nhập quản trị</h1><label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label>Mật khẩu<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p role="alert">{error}</p>}<button type="submit" disabled={submitting}>{submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}</button></form></main>;
 };
 
 export const ForbiddenPage = () => <main className="route-state"><h1>Permission denied</h1><p>Your account does not have access to this area.</p></main>;
