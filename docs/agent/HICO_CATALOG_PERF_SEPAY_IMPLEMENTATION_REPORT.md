@@ -128,5 +128,6 @@ Branch đã push: `https://github.com/cuongdesignnb/hico/tree/codex/hc-catalog-p
 - `711b32c` `perf(catalog): cache and paginate catalog reads`
 - `bae97b6` `feat(payments): add guarded SePay admin integration`
 - `da94512` `docs(agent): record catalog and SePay QA evidence`
+- `93ef2d0` `docs(agent): record release commit evidence`
 
-Remote HEAD tại thời điểm report: `da94512`.
+Branch push đã được xác nhận tới `93ef2d0`.
