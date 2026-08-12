@@ -135,7 +135,23 @@ const summarizeVariants = (variants, options) => {
     const current = selected.get(key);
     if (!current || variant.price < current.price) selected.set(key, variant);
   }
-  return { rows: [...selected.values()], count: rows.length };
+  const priceGroups = new Map();
+  for (const row of rows) {
+    const key = `${row.currency}:${row.medium ?? ''}`;
+    const current = priceGroups.get(key);
+    if (!current || row.price < current.minPrice) priceGroups.set(key, { currency: row.currency, ...(row.medium ? { medium: row.medium } : {}), minPrice: row.price });
+  }
+  const generations = [...new Set(rows
+    .map((row) => row.deviceSpecifications?.networkGeneration)
+    .filter(Boolean))];
+  return {
+    rows: [...selected.values()],
+    allRows: rows,
+    count: rows.length,
+    priceSummary: [...priceGroups.values()],
+    availability: { hasAvailableVariant: rows.some((row) => row.availability.inStock) },
+    deviceGeneration: generations,
+  };
 };
 
 export const toPublicProduct = (product, variants = [], { includeVariants = true, mediaAssets = [], providerOffers = [] } = {}) => {
@@ -179,6 +195,9 @@ export const toPublicProduct = (product, variants = [], { includeVariants = true
     ...(product.updatedAt ? { updatedAt: product.updatedAt } : {}),
     ...(product.publishedAt ? { publishedAt: product.publishedAt } : {}),
     variantCount: publicVariantRows.count,
+    priceSummary: publicVariantRows.priceSummary,
+    availability: publicVariantRows.availability,
+    deviceGeneration: publicVariantRows.deviceGeneration,
     variants: includeVariants ? variants.map((variant) => toPublicVariant(variant, { providerOffers })).filter(Boolean) : publicVariantRows.rows,
   };
 };

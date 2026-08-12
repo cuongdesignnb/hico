@@ -1,4 +1,14 @@
-import type { CatalogProductRecord } from '../types/catalog';
+import type { AdminCatalogListResponse, CatalogProductRecord } from '../types/catalog';
+
+export interface AdminCatalogFilters {
+  search?: string;
+  operation?: string;
+  coverage?: string;
+  medium?: string;
+  supplier?: string;
+  page?: number;
+  pageSize?: number;
+}
 
 const getErrorMessage = (payload: unknown) => {
   if (
@@ -24,9 +34,13 @@ const requestJson = async <T>(url: string, signal?: AbortSignal): Promise<T> => 
   return payload as T;
 };
 
-export const getAdminCatalogProducts = (signal?: AbortSignal) => (
-  requestJson<CatalogProductRecord[]>('/api/admin/catalog/products', signal)
-);
+export const getAdminCatalogProducts = (filters: AdminCatalogFilters = {}, signal?: AbortSignal) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') params.set(key, String(value));
+  }
+  return requestJson<AdminCatalogListResponse>(`/api/admin/catalog/products${params.toString() ? `?${params.toString()}` : ''}`, signal);
+};
 
 export const getCatalogProducts = (signal?: AbortSignal) => (
   requestJson<CatalogProductRecord[]>('/api/catalog/products', signal)

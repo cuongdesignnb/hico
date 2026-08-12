@@ -18,10 +18,10 @@ export const createCanonicalCatalogReader = ({
     }
 
     try {
-      const { products, variants } = await canonicalRepository.readCatalog({
+      const { products, variants, manifest } = await canonicalRepository.readCatalog({
         required: true,
       });
-      return { products, variants };
+      return { products, variants, manifest };
     } catch (error) {
       if (env.CATALOG_CANONICAL_FALLBACK !== 'true') throw error;
       logger.warn(

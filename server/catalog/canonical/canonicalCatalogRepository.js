@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { assertCanonicalCatalog } from './canonicalCatalogValidation.js';
 import { checksumRecords } from './canonicalCatalogChecksum.js';
+import { createCatalogReadCache, invalidateCatalogReadCache } from '../read/catalogReadCache.js';
 
 const defaultUploadsDirectory = fileURLToPath(
   new URL('../../uploads/', import.meta.url),
@@ -64,11 +65,10 @@ export const createCanonicalCatalogRepository = ({
     }
   };
 
-  return {
-    readCurrentManifest,
-
-    async readCatalog({ required = false } = {}) {
-      const manifest = await readCurrentManifest();
+  const readCache = createCatalogReadCache({
+    key: uploadsDirectory,
+    readManifest: readCurrentManifest,
+    loadCatalog: async ({ manifest, required }) => {
       if (!manifest) {
         if (required) throw new Error('Canonical catalog has not been migrated.');
         return { products: [], variants: [], manifest: null };
@@ -94,6 +94,15 @@ export const createCanonicalCatalogRepository = ({
       }
       assertCanonicalCatalog({ products, variants });
       return { products, variants, manifest };
+    },
+  });
+
+  return {
+    readCurrentManifest,
+    invalidateReadCache: () => readCache.invalidate(),
+
+    async readCatalog({ required = false } = {}) {
+      return readCache.read({ required });
     },
 
     async writeVersion({
@@ -160,6 +169,7 @@ export const createCanonicalCatalogRepository = ({
           atomicWrite(productsMirrorFile, productsContent),
           atomicWrite(variantsMirrorFile, variantsContent),
         ]);
+        invalidateCatalogReadCache(uploadsDirectory);
         return manifest;
       } catch (error) {
         await rm(stageDirectory, { recursive: true, force: true })

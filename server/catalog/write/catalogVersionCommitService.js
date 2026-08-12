@@ -20,6 +20,7 @@ import {
   serializeJson,
 } from './catalogWritePersistence.js';
 import { CatalogWriteError } from './catalogWriteValidation.js';
+import { invalidateCatalogReadCache } from '../read/catalogReadCache.js';
 
 const VERSION_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
 
@@ -214,6 +215,7 @@ export const createCatalogVersionCommitService = ({
         await beforePointer();
         await failureInjector('pointer');
         await atomicWriteJson(currentFile, manifest);
+        invalidateCatalogReadCache(uploadsDirectory);
         try {
           await onCommit({ manifest });
         } catch {

@@ -167,3 +167,43 @@ export interface CatalogDeviceSpecs {
 export interface CatalogProductRecord extends CatalogProduct {
   variants: CatalogVariant[];
 }
+
+export interface CatalogAdminVariantSummary {
+  id: string;
+  productId: string;
+  sku: string;
+  wmproductId?: string | null;
+  price: number;
+  compareAtPrice?: number | null;
+  currency: 'VND' | 'USD';
+  medium: SimMedium;
+  supplier: Supplier;
+  fulfillmentMethod: FulfillmentMethod;
+  active: boolean;
+  needsReview: boolean;
+  archived: boolean;
+  stock?: number | null;
+}
+
+export interface CatalogAdminProductSummary extends Omit<CatalogProduct, 'variants'> {
+  variantCount: number;
+  needsReviewCount: number;
+  variantIds: string[];
+  variants: CatalogAdminVariantSummary[];
+}
+
+export interface AdminCatalogListResponse {
+  items: CatalogAdminProductSummary[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  summary: {
+    products: number;
+    variants: number;
+    needsReview: number;
+  };
+  catalogVersionId: string | null;
+}

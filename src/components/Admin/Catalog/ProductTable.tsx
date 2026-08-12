@@ -1,6 +1,6 @@
 import { AlertTriangle, Pencil } from 'lucide-react';
 import type {
-  CatalogProductRecord,
+  CatalogAdminProductSummary,
   CatalogStatus,
   CoverageType,
   ProductOperation,
@@ -9,7 +9,7 @@ import type {
 import type { BulkEntityType } from '../../../types/catalogBulk';
 
 interface ProductTableProps {
-  products: CatalogProductRecord[];
+  products: CatalogAdminProductSummary[];
   onEdit: (productId: string) => void;
   entityType: BulkEntityType;
   selectedIds: string[];
@@ -42,7 +42,7 @@ const statusLabels: Record<CatalogStatus, string> = {
   archived: 'Lưu trữ',
 };
 
-const formatPrice = (product: CatalogProductRecord) => {
+const formatPrice = (product: CatalogAdminProductSummary) => {
   const activeVariants = product.variants.filter((variant) => variant.active);
   const variants = activeVariants.length > 0 ? activeVariants : product.variants;
 
@@ -61,7 +61,7 @@ const formatPrice = (product: CatalogProductRecord) => {
   }).format(lowestVariant.price);
 };
 
-const getSupplierSummary = (product: CatalogProductRecord) => {
+const getSupplierSummary = (product: CatalogAdminProductSummary) => {
   const suppliers = [...new Set(product.variants.map((variant) => variant.supplier))];
 
   if (suppliers.length === 0) {
@@ -76,7 +76,7 @@ const getSupplierSummary = (product: CatalogProductRecord) => {
 };
 
 const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage }: ProductTableProps) => {
-  const pageIds = products.flatMap((product) => entityType === 'product' ? [product.id] : product.variants.map((variant) => variant.id));
+  const pageIds = products.flatMap((product) => entityType === 'product' ? [product.id] : product.variantIds);
   const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
 
   return (
@@ -97,7 +97,7 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage 
       </thead>
       <tbody>
         {products.map((product) => {
-          const reviewCount = product.variants.filter((variant) => variant.needsReview).length;
+          const reviewCount = product.needsReviewCount;
 
           return (
             <tr key={product.id}>
@@ -105,10 +105,10 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage 
                 <input
                   type="checkbox"
                   checked={(() => {
-                    const ids = entityType === 'product' ? [product.id] : product.variants.map((variant) => variant.id);
+                    const ids = entityType === 'product' ? [product.id] : product.variantIds;
                     return ids.length > 0 && ids.every((id) => selectedIds.includes(id));
                   })()}
-                  onChange={() => onTogglePage(entityType === 'product' ? [product.id] : product.variants.map((variant) => variant.id))}
+                  onChange={() => onTogglePage(entityType === 'product' ? [product.id] : product.variantIds)}
                   aria-label={`Chọn ${product.name}`}
                 />
               </td>
@@ -135,7 +135,7 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage 
               </td>
               <td>{operationLabels[product.operation]}</td>
               <td>{coverageLabels[product.coverageType]}</td>
-              <td>{product.variants.length.toLocaleString('vi-VN')}</td>
+              <td>{product.variantCount.toLocaleString('vi-VN')}</td>
               <td className="catalog-price-cell">{formatPrice(product)}</td>
               <td>{getSupplierSummary(product)}</td>
               <td>

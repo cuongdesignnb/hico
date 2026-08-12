@@ -24,9 +24,18 @@ export const createCatalogRouter = ({
     return isCatalogPath ? catalogGuard(req, res, next) : next();
   });
 
-  router.get('/admin/catalog/products', async (_req, res) => {
+  router.get('/admin/catalog/products', async (req, res) => {
     try {
-      res.json(await catalogService.listAdminProducts());
+      const filters = {
+        search: typeof req.query.search === 'string' ? req.query.search : undefined,
+        operation: typeof req.query.operation === 'string' ? req.query.operation : undefined,
+        coverage: typeof req.query.coverage === 'string' ? req.query.coverage : undefined,
+        medium: typeof req.query.medium === 'string' ? req.query.medium : undefined,
+        supplier: typeof req.query.supplier === 'string' ? req.query.supplier : undefined,
+        page: typeof req.query.page === 'string' ? req.query.page : undefined,
+        pageSize: typeof req.query.pageSize === 'string' ? req.query.pageSize : undefined,
+      };
+      res.json(await catalogService.listAdminProducts({ filters, paginate: true }));
     } catch (error) {
       sendError(res, error);
     }

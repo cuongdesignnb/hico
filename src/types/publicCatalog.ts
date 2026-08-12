@@ -77,6 +77,16 @@ export interface PublicVariant {
   deviceSpecs?: PublicDeviceSpecs;
 }
 
+export interface PublicPriceSummaryItem {
+  currency: string;
+  medium?: PublicMedium;
+  minPrice: number;
+}
+
+export interface PublicProductAvailability {
+  hasAvailableVariant: boolean;
+}
+
 export interface PublicProductSeo {
   title?: string;
   description?: string;
@@ -121,6 +131,9 @@ export interface PublicProduct {
   deviceSpecs?: PublicDeviceSpecs;
   deviceSpecifications?: PublicDeviceSpecs;
   variantCount: number;
+  priceSummary: PublicPriceSummaryItem[];
+  availability: PublicProductAvailability;
+  deviceGeneration: string[];
   variants: PublicVariant[];
 }
 
