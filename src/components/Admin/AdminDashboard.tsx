@@ -15,6 +15,7 @@ import ProviderCatalogTab from './Providers/ProviderCatalogTab';
 import { CatalogSheetSync } from './CatalogSheetSync/CatalogSheetSync';
 import { SheetVariantReconciliation } from './Catalog/SheetVariantReconciliation';
 import { GoogleSheetSettings } from './Settings/Integrations/GoogleSheetSettings';
+import SePaySettingsPanel from './Payments/SePaySettingsPanel';
 import { createLegacyVariantId } from '../../utils/ids';
 import { useAuth } from '../../auth/useAuth';
 import type {
@@ -147,7 +148,6 @@ export const AdminDashboard: React.FC = () => {
   const [currentPagePromos, setCurrentPagePromos] = useState(1);
   const [currentPageArticles, setCurrentPageArticles] = useState(1);
   const [currentPageReviews, setCurrentPageReviews] = useState(1);
-  const [currentPagePayments, setCurrentPagePayments] = useState(1);
   const [currentPageWarehouse, setCurrentPageWarehouse] = useState(1);
 
   // Reset all page numbers when search query or active tab changes
@@ -161,7 +161,6 @@ export const AdminDashboard: React.FC = () => {
       setCurrentPagePromos(1);
       setCurrentPageArticles(1);
       setCurrentPageReviews(1);
-      setCurrentPagePayments(1);
       setCurrentPageWarehouse(1);
     });
   }, [searchQuery, activeTab]);
@@ -607,7 +606,7 @@ export const AdminDashboard: React.FC = () => {
     overview: 'admin.dashboard.read', catalog: 'catalog.product.read', providers: 'provider.read', orders: 'orders.read',
     devices: 'catalog.product.read', packages: 'catalog.product.read', coverage: 'catalog.product.read', customers: 'orders.read',
     promos: 'catalog.product.update', articles: 'articles.read', 'ai-bulk-writing': 'articles.manage', reviews: 'articles.manage',
-    media: 'media.upload', support: 'orders.update', reports: 'orders.read', payments: 'orders.read', warehouse: 'inventory.stock.read',
+    media: 'media.upload', support: 'orders.update', reports: 'orders.read', payments: ['payments.settings.read', 'payments.transactions.read'], warehouse: 'inventory.stock.read',
     personnel: 'admin.users.read', settings: ['system.config.read_masked', 'catalog.sheet.settings.read'], 'catalog-sheet-sync': 'catalog.sheet_sync', 'catalog-sheet-reconciliation': 'catalog.sheet.reconcile.read',
   };
   const visibleSidebarNavItems = sidebarNavItems.filter((item) => {
@@ -866,15 +865,6 @@ export const AdminDashboard: React.FC = () => {
     currentPageReviews * ITEMS_PER_PAGE
   );
 
-  const filteredPayments = orders.filter(o => 
-    o.orderId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    o.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-  const paginatedPayments = filteredPayments.slice(
-    (currentPagePayments - 1) * ITEMS_PER_PAGE,
-    currentPagePayments * ITEMS_PER_PAGE
-  );
-
   const warehouseItems = destinations.flatMap(d => 
     (d.variants || []).map((v: LegacyVariant) => ({
       ...v,
@@ -1015,6 +1005,7 @@ export const AdminDashboard: React.FC = () => {
           )}
           {activeTab === 'catalog-sheet-sync' && <CatalogSheetSync />}
           {activeTab === 'catalog-sheet-reconciliation' && <SheetVariantReconciliation />}
+          {activeTab === 'payments' && <SePaySettingsPanel />}
           
           {activeTab === 'overview' && (
             <>
@@ -3290,64 +3281,6 @@ export const AdminDashboard: React.FC = () => {
                     ))}
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tab: payments (Thanh toán) */}
-          {activeTab === 'payments' && (
-            <div className="admin-card animate-fade-in">
-              <div className="admin-card-header" style={{ marginBottom: '16px' }}>
-                <h2 className="admin-card-title">Nhật ký Giao dịch & Thanh toán</h2>
-              </div>
-              <div className="admin-table-wrapper">
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>Mã Giao Dịch</th>
-                      <th>Khách Hàng</th>
-                      <th>Số Tiền</th>
-                      <th>Phương Thức</th>
-                      <th>Thời Gian</th>
-                      <th>Trạng Thái</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedPayments.map((o, idx) => {
-                      const methods = ['Visa/Mastercard', 'MoMo', 'ZaloPay', 'Chuyển khoản'];
-                      const chosenMethod = methods[(o.orderId.charCodeAt(2) || idx) % methods.length];
-                      return (
-                        <tr key={o.orderId}>
-                          <td style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>TXN-{o.orderId.replace('#HICO-', '')}</td>
-                          <td>{o.email}</td>
-                          <td style={{ fontWeight: '600', color: o.status === 'CANCELLED' ? '#9CA3AF' : 'var(--primary-orange)' }}>
-                            {((o.qty || 1) * 350000).toLocaleString('vi-VN')}đ
-                          </td>
-                          <td>
-                            <span className="payment-method-badge" style={{ 
-                              fontSize: '11px', 
-                              padding: '2px 6px', 
-                              borderRadius: '4px', 
-                              backgroundColor: chosenMethod.includes('MoMo') ? '#FFF0F5' : (chosenMethod.includes('Visa') ? '#EEF2FF' : '#ECFDF5'),
-                              color: chosenMethod.includes('MoMo') ? '#D53F8C' : (chosenMethod.includes('Visa') ? '#4F46E5' : '#047857'),
-                              fontWeight: '600',
-                              border: '1px solid currentColor'
-                            }}>
-                              {chosenMethod}
-                            </span>
-                          </td>
-                          <td style={{ color: '#6B7280' }}>{o.createdAt}</td>
-                          <td>
-                            <span className={`status-badge ${o.status === 'CANCELLED' ? 'cancelled' : 'active'}`}>
-                              {o.status === 'CANCELLED' ? 'Thất bại' : 'Thành công'}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                  {renderPagination(filteredPayments.length, currentPagePayments, setCurrentPagePayments)}
               </div>
             </div>
           )}

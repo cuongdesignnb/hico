@@ -12,6 +12,8 @@ export const permissionForAdminRequest = (req) => {
     if (path.endsWith('/preview')) return 'catalog.sheet.sync.preview';
     return isWrite(method) ? 'catalog.sheet.settings.write' : 'catalog.sheet.settings.read';
   }
+  if (path.startsWith('/payments/settings')) return isWrite(method) ? 'payments.settings.write' : 'payments.settings.read';
+  if (path.startsWith('/payments/transactions')) return isWrite(method) ? 'payments.settings.write' : 'payments.transactions.read';
   if (path.startsWith('/providers/')) return method === 'POST' ? 'provider.sync' : 'provider.read';
   if (path.includes('/reconciliation/')) return isWrite(method) ? 'reconciliation.resolve' : 'reconciliation.read';
   if (path.includes('/catalog/bulk/')) return method === 'POST' && path.endsWith('/execute') ? 'catalog.bulk.execute' : 'catalog.product.read';

@@ -143,6 +143,12 @@ import { createLogger } from './logging/logger.js';
 import { createRequestContextLogger } from './logging/requestContext.js';
 import { createMetrics } from './monitoring/metrics.js';
 import { createAlertService } from './operations/alertService.js';
+import { createSePaySettingsRepository, createUnavailableSePaySettingsRepository } from './payments/sepay/sepaySettingsRepository.js';
+import { createSePayCredentialService } from './payments/sepay/sepayCredentialService.js';
+import { createSePaySettingsService } from './payments/sepay/sepaySettingsService.js';
+import { createSePayPaymentRepository } from './payments/sepay/sepayPaymentRepository.js';
+import { createSePayWebhookService } from './payments/sepay/sepayWebhookService.js';
+import { createSePayAdminRouter, createSePayWebhookRouter } from './payments/sepay/sepayRouter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -211,6 +217,11 @@ const authStoreDriver = sessionStoreDriver(process.env);
 const authPool = authStoreDriver === 'postgres' ? createPostgresPool({ env: process.env }) : null;
 if (authPool && process.env.AUTH_RUN_MIGRATIONS_ON_START === 'true') await migrateDatabase({ pool: authPool });
 const googleSheetSettingsRepository = authPool ? createGoogleSheetSettingsRepository({ pool: authPool }) : createUnavailableGoogleSheetSettingsRepository();
+const sepaySettingsRepository = authPool ? createSePaySettingsRepository({ pool: authPool }) : createUnavailableSePaySettingsRepository();
+const sepayCredentialService = createSePayCredentialService({ env: process.env });
+const sepayPaymentRepository = createSePayPaymentRepository({ pool: authPool });
+const sepaySettingsService = createSePaySettingsService({ settingsRepository: sepaySettingsRepository, credentialService: sepayCredentialService, env: process.env, audit: securityAudit });
+const sepayWebhookService = createSePayWebhookService({ settingsRepository: sepaySettingsRepository, credentialService: sepayCredentialService, paymentRepository: sepayPaymentRepository, env: process.env, logger });
 const googleSheetCredentialRepository = createGoogleSheetCredentialRepository({ settingsRepository: googleSheetSettingsRepository, env: process.env });
 const googleSheetConnectionService = createGoogleSheetConnectionService({
   settingsRepository: googleSheetSettingsRepository,
@@ -394,12 +405,14 @@ app.use(createRequestContextLogger({ logger }));
 app.use(createSecurityHeaders({ env: process.env }));
 app.use(createCorsPolicy({ env: process.env }));
 app.use('/api/webhooks/worldmove', express.raw({ type: 'application/json', limit: `${webhookBodyLimitKb}kb` }));
+app.use('/api/webhooks/sepay', express.raw({ type: 'application/json', limit: `${webhookBodyLimitKb}kb` }));
 app.use('/api/webhooks/worldmove', (error, _req, res, next) => {
   if (error?.type === 'entity.too.large') return res.status(413).json({ error: 'Webhook payload quá lớn.', code: 'WEBHOOK_BODY_TOO_LARGE' });
   return next(error);
 });
 app.use(express.json({ limit: `${checkoutBodyLimitMb}mb` }));
 app.use(express.urlencoded({ limit: `${checkoutBodyLimitMb}mb`, extended: true }));
+app.use('/api/webhooks/sepay', createSePayWebhookRouter({ webhookService: sepayWebhookService }));
 const publicUploadExtensions = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
 app.use('/uploads', (req, res, next) => {
   if (!publicUploadExtensions.has(path.extname(req.path).toLowerCase())) return res.status(404).end();
@@ -524,6 +537,7 @@ app.use('/api/admin',
 );
 app.use('/api/admin/auth', createAdminSecurityRouter({ sessionService, securityAudit }));
 app.use('/api/admin', createGoogleSheetSettingsRouter({ settingsService: googleSheetConnectionService, sheetSyncService, securityAudit }));
+app.use('/api/admin', createSePayAdminRouter({ settingsService: sepaySettingsService, paymentRepository: sepayPaymentRepository }));
 app.use('/api/admin', createVariantAliasRouter({ service: variantAliasService }));
 app.use('/api/admin', createFulfillmentProfileRouter({ service: fulfillmentProfileService }));
 app.use('/api/admin', createFulfillmentBindingRouter({ service: fulfillmentBindingService }));
