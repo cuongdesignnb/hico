@@ -226,7 +226,7 @@ export const AdminDashboard: React.FC = () => {
 
   const [isAddingArticle, setIsAddingArticle] = useState(false);
   const [articleForm, setArticleForm] = useState({ 
-    title: '', image: '', imageMediaId: null as string | null, date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '',
+    title: '', category: '', image: '', imageMediaId: null as string | null, date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '',
     status: 'published', scheduledDate: ''
   });
 
@@ -3369,7 +3369,7 @@ export const AdminDashboard: React.FC = () => {
                 <h2 className="admin-card-title">Quản lý Bài viết Cẩm nang</h2>
                 <button className="admin-create-btn" onClick={() => {
                   if (isAddingArticle) {
-                    setArticleForm({ title: '', image: '', imageMediaId: null, date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '', status: 'published', scheduledDate: '' });
+                    setArticleForm({ title: '', category: '', image: '', imageMediaId: null, date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '', status: 'published', scheduledDate: '' });
                     setEditingArticleId(null);
                   }
                   setIsAddingArticle(!isAddingArticle);
@@ -3392,7 +3392,7 @@ export const AdminDashboard: React.FC = () => {
                   if (res.ok) {
                     setIsAddingArticle(false);
                     setEditingArticleId(null);
-                    setArticleForm({ title: '', image: '', imageMediaId: null, date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '', status: 'published', scheduledDate: '' });
+                    setArticleForm({ title: '', category: '', image: '', imageMediaId: null, date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '', status: 'published', scheduledDate: '' });
                     fetchData('articles');
                   }
                 }}>
@@ -3450,6 +3450,10 @@ export const AdminDashboard: React.FC = () => {
                           <span>{isGeneratingAi ? 'Đang viết...' : 'Viết bằng AI'}</span>
                         </button>
                       </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Danh mục bài viết</label>
+                      <input type="text" value={articleForm.category} onChange={e => setArticleForm({...articleForm, category: e.target.value})} placeholder="Ví dụ: Hướng dẫn eSIM" />
                     </div>
                     <div className="form-group">
                       <MediaAssetField value={articleForm.imageMediaId} legacyUrl={articleForm.image} label="Ảnh bìa bài viết" required onChange={(imageMediaId) => setArticleForm((prev) => ({ ...prev, imageMediaId }))} />
@@ -3558,6 +3562,7 @@ export const AdminDashboard: React.FC = () => {
                               onClick={() => {
                                 setArticleForm({
                                   title: art.title || '',
+                                  category: art.category || '',
                                   image: art.image || '',
                                   imageMediaId: art.imageMediaId || null,
                                   date: art.date || '',

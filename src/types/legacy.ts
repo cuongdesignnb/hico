@@ -122,6 +122,7 @@ export interface AdminCatalogItem extends LegacyProduct {
 export interface AdminArticle {
   id: string;
   title?: string;
+  category?: string;
   image?: string;
   imageMediaId?: string | null;
   date?: string;

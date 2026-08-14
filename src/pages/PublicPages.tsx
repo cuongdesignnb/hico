@@ -1,22 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useApp } from '../context/useApp';
-import { getArticlePath, getCanonicalProductPath, slugify } from '../routing/canonicalRoute';
-import { getArticleBySlug, getCoverageBySlug, getPublicArticles, getPublicProducts, type PublicArticle } from '../services/publicSeoApi';
+import { getCanonicalProductPath, slugify } from '../routing/canonicalRoute';
+import { getCoverageBySlug, getPublicProducts } from '../services/publicSeoApi';
 import type { PublicProduct } from '../types/publicCatalog';
 import { ProductDetailPage } from './ProductDetailPage';
 import { SeoHead } from '../seo/SeoHead';
-import { articleMetadata, defaultMetadata } from '../seo/buildMetadata';
+import { defaultMetadata } from '../seo/buildMetadata';
 import { buildCanonicalUrl } from '../seo/buildCanonicalUrl';
 import { seoConfig } from '../seo/seoConfig';
 import './publicPages.css';
 
+export { ArticleListPage, ArticlePage } from '../components/Articles/ArticlePages';
+
 const breadcrumbSchema = (items: { name: string; path: string }[]) => ({ '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: items.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.name, item: buildCanonicalUrl(item.path) })) });
-const toImageUrl = (image: string | undefined) => {
-  const value = image || seoConfig.defaultImage;
-  return /^https?:\/\//i.test(value) ? value : buildCanonicalUrl(value);
-};
-const articleSchema = (article: PublicArticle, path: string) => ({ '@context': 'https://schema.org', '@type': 'Article', headline: article.title, description: article.seoDescription || article.content?.replace(/<[^>]*>/g, ' ').slice(0, 180) || article.title, image: toImageUrl(article.image), ...(article.createdAt ? { datePublished: article.createdAt } : {}), ...(article.updatedAt ? { dateModified: article.updatedAt } : {}), publisher: { '@type': 'Organization', name: seoConfig.siteName }, mainEntityOfPage: buildCanonicalUrl(path) });
 
 const Loading = () => <main id="main-content" tabIndex={-1} className="route-state" role="status">Loading content...</main>;
 const NotFound = () => <main id="main-content" tabIndex={-1} className="route-state"><SeoHead path="/404" metadata={{ ...defaultMetadata(), title: 'Page not found | HICO eSIM', indexable: false }} noindex /><h1>Page not found</h1><p>The requested public content is unavailable.</p><Link to="/">Return home</Link></main>;
@@ -61,34 +58,6 @@ export const CoveragePage = ({ expectedType }: { expectedType: 'country' | 'regi
   if (!coverage || coverage.type !== expectedType) return <NotFound />;
   const path = expectedType === 'country' ? `/diem-den/${coverage.slug}` : `/khu-vuc/${coverage.slug}`;
   return <main id="main-content" tabIndex={-1} className="public-page"><SeoHead path={path} metadata={{ ...defaultMetadata(), title: `${coverage.name} | HICO eSIM`, description: `Public packages for ${coverage.name}.` }} schema={breadcrumbSchema([{ name: 'Home', path: '/' }, { name: expectedType === 'country' ? 'Destinations' : 'Regions', path: expectedType === 'country' ? '/diem-den' : '/san-pham' }, { name: coverage.name, path }])} /><div className="container"><div className="page-heading"><p>{expectedType === 'country' ? 'Destination' : 'Region'}</p><h1>{coverage.name}</h1></div><div className="public-card-grid">{coverage.products.map((product) => <ProductCard key={product.id} product={product} />)}</div></div></main>;
-};
-
-export const ArticleListPage = () => {
-  const [articles, setArticles] = useState<PublicArticle[] | null>(null);
-  useEffect(() => { const controller = new AbortController(); getPublicArticles(controller.signal).then(setArticles).catch(() => setArticles([])); return () => controller.abort(); }, []);
-  if (!articles) return <Loading />;
-  return <main id="main-content" tabIndex={-1} className="public-page"><SeoHead path="/bai-viet" metadata={{ ...defaultMetadata(), title: 'Travel guides | HICO eSIM', description: 'Travel and eSIM guides from HICO.' }} /><div className="container"><div className="page-heading"><p>HICO guides</p><h1>Articles</h1></div><div className="public-card-grid">{articles.map((article) => <Link key={article.id} className="public-product-card" to={getArticlePath(article)}><img src={article.image || seoConfig.defaultImage} alt={article.title} /><div><h2>{article.title}</h2><p>{article.date}</p></div></Link>)}</div></div></main>;
-};
-
-const sanitizeHtml = (html: string) => {
-  const documentFragment = new DOMParser().parseFromString(html, 'text/html');
-  documentFragment.querySelectorAll('script, style, iframe, object, embed').forEach((node) => node.remove());
-  documentFragment.querySelectorAll('*').forEach((element) => {
-    [...element.attributes].forEach((attribute) => {
-      if (attribute.name.startsWith('on') || (attribute.name === 'href' && !/^(https?:|mailto:|\/)/i.test(attribute.value))) element.removeAttribute(attribute.name);
-    });
-  });
-  return documentFragment.body.innerHTML;
-};
-
-export const ArticlePage = () => {
-  const { slug = '' } = useParams();
-  const [article, setArticle] = useState<PublicArticle | null | undefined>(undefined);
-  useEffect(() => { const controller = new AbortController(); getArticleBySlug(slug, controller.signal).then(setArticle).catch(() => setArticle(null)); return () => controller.abort(); }, [slug]);
-  if (article === undefined) return <Loading />;
-  if (!article) return <NotFound />;
-  const path = getArticlePath(article);
-  return <main id="main-content" tabIndex={-1} className="public-page article-page"><SeoHead path={path} metadata={articleMetadata(article)} schema={{ '@context': 'https://schema.org', '@graph': [breadcrumbSchema([{ name: 'Home', path: '/' }, { name: 'Articles', path: '/bai-viet' }, { name: article.title, path }]), articleSchema(article, path)] }} /><article className="container article-content"><p>{article.date}</p><h1>{article.title}</h1>{article.image && <img src={article.image} alt={article.title} />}<div dangerouslySetInnerHTML={{ __html: sanitizeHtml(article.content || '') }} /></article></main>;
 };
 
 export const CartPage = ({ checkout = false }: { checkout?: boolean }) => {

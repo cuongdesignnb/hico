@@ -1503,11 +1503,12 @@ The response must be a valid JSON object with the following structure:
 
 app.post('/api/admin/articles', async (req, res) => {
   try {
-    const { title, image, imageMediaId, date, content, seoTitle, seoDescription, seoKeywords, status, scheduledDate } = await resolvePublicMediaInput(req.body);
+    const { title, category, image, imageMediaId, date, content, seoTitle, seoDescription, seoKeywords, status, scheduledDate } = await resolvePublicMediaInput(req.body);
     const id = 'art-' + Date.now();
     const art = {
       id,
       title,
+      category: typeof category === 'string' ? category.trim() : '',
       image: image || '/images/art_esim_intro.png',
       imageMediaId: imageMediaId || null,
       date: date || new Date().toLocaleDateString('vi-VN'),

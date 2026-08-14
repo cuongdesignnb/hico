@@ -12,6 +12,7 @@ export interface PublicArticle {
   id: string;
   slug?: string;
   title: string;
+  category?: string;
   date?: string;
   image?: string;
   content?: string;
