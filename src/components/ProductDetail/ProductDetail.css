@@ -628,7 +628,7 @@
 
 .tab-bottom-grid {
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
+  grid-template-columns: 1fr;
   gap: 28px;
   align-items: start;
 }
@@ -651,6 +651,11 @@
   transform: translateY(-2px);
   border-color: rgba(255, 79, 0, 0.2);
   box-shadow: 0 12px 35px rgba(255, 79, 0, 0.06);
+}
+
+/* The product detail no longer shows a duplicate product-info card beside the tab content. */
+.popular-card-box {
+  display: none;
 }
 
 .tab-section-heading,
