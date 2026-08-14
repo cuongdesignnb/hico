@@ -54,11 +54,6 @@ export interface ProductDetailViewModel {
   variants: ProductDetailVariantViewModel[];
 }
 
-const stripHtml = (value: string | undefined) => value
-  ?.replace(/<[^>]*>/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim();
-
 const coverageLabel = (product: PublicProduct) => {
   if (product.coverageLabel) return product.coverageLabel;
   if (product.operation === 'device_sale') return 'Thiết bị';
@@ -106,13 +101,17 @@ export const toProductDetailViewModel = (product: PublicProduct): ProductDetailV
   const images = getProductImages(product);
   const variants = product.variants.map((variant) => toVariantViewModel(variant, product));
   const firstVariant = variants[0];
-  const description = product.description || stripHtml(product.guide);
+  const description = product.description?.trim()
+    ? product.description
+    : 'Thông tin chi tiết sản phẩm đang được cập nhật.';
   const technicalContent = product.operation === 'device_sale'
     ? product.instructions || product.deviceSpecifications?.model || product.deviceSpecs?.model || 'Thông số kỹ thuật được lấy từ dữ liệu canonical của sản phẩm.'
     : firstVariant?.simTypeLabel === 'SIM vật lý'
       ? 'Thông tin gói SIM vật lý và điều kiện giao hàng được lấy từ variant canonical.'
       : 'Thông tin gói và điều kiện sử dụng được lấy từ dữ liệu canonical.';
-  const installationContent = product.installationGuide || product.guide || 'Hướng dẫn cài đặt sẽ được cập nhật từ nội dung canonical của sản phẩm.';
+  const installationContent = product.installationGuide?.trim()
+    ? product.installationGuide
+    : 'Hướng dẫn cài đặt đang được cập nhật.';
   const compatibilityContent = product.compatibilityContent || (product.operation === 'device_sale'
     ? product.deviceSpecifications?.simCompatibility || product.deviceSpecs?.simCompatibility || 'Thông tin tương thích đang được cập nhật từ dữ liệu canonical.'
     : firstVariant?.simTypeLabel === 'SIM vật lý'
