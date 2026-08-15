@@ -117,20 +117,6 @@ export const toProductDetailViewModel = (product: PublicProduct): ProductDetailV
     : firstVariant?.simTypeLabel === 'SIM vật lý'
       ? 'Thiết bị cần hỗ trợ SIM vật lý và kết nối mạng tương thích.'
       : 'Thiết bị cần hỗ trợ eSIM và không bị khóa mạng.');
-/*
-  const technicalContent = product.operation === 'device_sale'
-    ? 'Thông số kỹ thuật được lấy từ dữ liệu canonical của sản phẩm.'
-    : firstVariant?.simTypeLabel === 'SIM vật lý'
-      ? 'Thông tin gói SIM vật lý và điều kiện giao hàng được lấy từ variant canonical.'
-      : 'Thông tin gói và điều kiện sử dụng được lấy từ dữ liệu canonical.';
-  const installationContent = product.guide || 'Hướng dẫn cài đặt sẽ được cập nhật từ nội dung canonical của sản phẩm.';
-  const compatibilityContent = product.operation === 'device_sale'
-    ? product.deviceSpecs?.simCompatibility || 'Thông tin tương thích đang được cập nhật từ dữ liệu canonical.'
-    : firstVariant?.simTypeLabel === 'SIM vật lý'
-      ? 'Thiết bị cần hỗ trợ SIM vật lý và kết nối mạng tương thích.'
-      : 'Thiết bị cần hỗ trợ eSIM và không bị khóa mạng.';
-*/
-
   return {
     id: product.id,
     slug: product.slug,
@@ -145,7 +131,6 @@ export const toProductDetailViewModel = (product: PublicProduct): ProductDetailV
     comparePriceDisplay: firstVariant?.compareAtPrice ? `${firstVariant.compareAtPrice.toLocaleString('vi-VN')} ${firstVariant.currency}` : undefined,
     currency: firstVariant?.currency,
     description,
-    guide: product.guide,
     technicalContent,
     installationContent,
     compatibilityContent,
