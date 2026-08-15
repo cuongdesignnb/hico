@@ -6,8 +6,10 @@ import {
   LoaderCircle,
   Plus,
   RefreshCw,
+  TableProperties,
 } from 'lucide-react';
 import { getAdminCatalogProducts } from '../../../services/catalogApi';
+import { getAdminCategories } from '../../../services/catalogWriteApi';
 import { useBulkExecute } from '../../../hooks/catalog/useBulkExecute';
 import { useBulkPreview } from '../../../hooks/catalog/useBulkPreview';
 import { useBulkSelection } from '../../../hooks/catalog/useBulkSelection';
@@ -15,6 +17,7 @@ import { useCatalogQueues } from '../../../hooks/catalog/useCatalogQueues';
 import type { BulkEntityType, BulkFilter, BulkOperation } from '../../../types/catalogBulk';
 import type {
   CatalogAdminProductSummary,
+  CatalogCategory,
   CoverageType,
   ProductOperation,
   SimMedium,
@@ -31,6 +34,9 @@ import NeedsReviewQueue from './Bulk/NeedsReviewQueue';
 import ProviderIssueQueue from './Bulk/ProviderIssueQueue';
 import SkuConflictQueue from './Bulk/SkuConflictQueue';
 import './CatalogTab.css';
+import CategorySidebar, { type CategorySelection } from './CategorySidebar';
+import CategoryManagerDialog from './CategoryManagerDialog';
+import CatalogImportDialog from './CatalogImportDialog';
 
 interface CatalogTabProps {
   searchQuery: string;
@@ -55,7 +61,12 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
   const [pagination, setPagination] = useState({ page: 1, pageSize: PAGE_SIZE, total: 0, totalPages: 1 });
   const [summary, setSummary] = useState({ products: 0, variants: 0, needsReview: 0 });
   const [catalogVersionId, setCatalogVersionId] = useState('');
-  const [wizard, setWizard] = useState<{ mode: 'create' | 'edit'; productId?: string } | null>(null);
+  const [categories, setCategories] = useState<CatalogCategory[]>([]);
+  const [unresolvedCount, setUnresolvedCount] = useState(0);
+  const [categorySelection, setCategorySelection] = useState<CategorySelection>('all');
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [wizard, setWizard] = useState<{ mode: 'create' | 'edit'; productId?: string; cloneProductId?: string; initialCategoryId?: string } | null>(null);
   const [entityType, setEntityType] = useState<BulkEntityType>('product');
   const [bulkOperation, setBulkOperation] = useState<BulkOperationType>('PUBLISH');
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
@@ -72,6 +83,8 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
       const response = await getAdminCatalogProducts({
         ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
         ...(operation !== 'all' ? { operation } : {}),
+        ...(categorySelection !== 'all' && categorySelection !== 'unresolved' ? { category: categorySelection } : {}),
+        ...(categorySelection === 'unresolved' ? { unresolved: true } : {}),
         ...(coverage !== 'all' ? { coverage } : {}),
         ...(medium !== 'all' ? { medium } : {}),
         ...(supplier !== 'all' ? { supplier } : {}),
@@ -87,15 +100,27 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [coverage, medium, operation, page, searchQuery, supplier]);
+  }, [categorySelection, coverage, medium, operation, page, searchQuery, supplier]);
+
+  const loadCategories = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await getAdminCategories(signal);
+      setCategories(response.items);
+      setUnresolvedCount(response.unresolvedCount);
+      setCatalogVersionId(response.catalogVersionId);
+    } catch (loadError) {
+      if (!signal?.aborted) setError(loadError instanceof Error ? loadError.message : 'Không thể tải danh mục.');
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     queueMicrotask(() => {
       if (!controller.signal.aborted) void loadProducts(controller.signal);
+      if (!controller.signal.aborted) void loadCategories(controller.signal);
     });
     return () => controller.abort();
-  }, [loadProducts]);
+  }, [loadCategories, loadProducts]);
 
   const bulkFilter = useMemo<BulkFilter>(() => ({
     ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
@@ -136,6 +161,9 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
     setPage(1);
   };
 
+  const selectedCategory = categories.find((category) => category.id === categorySelection);
+  const selectedLeaf = selectedCategory?.parentId ? selectedCategory : undefined;
+
   if (loading) return <div className="catalog-state" role="status"><LoaderCircle className="catalog-spinner" size={24} /><span>Đang tải sản phẩm...</span></div>;
 
   if (error) return <div className="catalog-state catalog-state-error" role="alert"><AlertCircle size={24} /><strong>{error}</strong><button type="button" onClick={() => void loadProducts()}>Thử lại</button></div>;
@@ -147,10 +175,15 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
         <div className="catalog-heading-row">
           <div><h2>Danh mục sản phẩm</h2><p>{pagination.total.toLocaleString('vi-VN')} sản phẩm phù hợp</p></div>
           <div className="catalog-heading-actions">
-            <button type="button" className="catalog-secondary-button" onClick={() => setWizard({ mode: 'create' })}><Plus size={16} /> Tạo sản phẩm</button>
+            <button type="button" className="catalog-secondary-button" onClick={() => setImportOpen(true)}><TableProperties size={16} /> Nhập nhanh từ Sheet</button>
+            <button type="button" className="catalog-secondary-button" disabled={Boolean(selectedCategory && !selectedLeaf)} title={selectedCategory && !selectedLeaf ? 'Hãy chọn một danh mục con' : undefined} onClick={() => setWizard({ mode: 'create', initialCategoryId: selectedLeaf?.id })}><Plus size={16} /> Tạo sản phẩm</button>
             <button type="button" className="catalog-icon-button" onClick={() => void loadProducts()} aria-label="Làm mới danh mục" title="Làm mới"><RefreshCw size={17} /></button>
           </div>
         </div>
+
+        <div className="catalog-workspace">
+          <CategorySidebar categories={categories} selected={categorySelection} unresolvedCount={unresolvedCount} onSelect={(value) => { setCategorySelection(value); setPage(1); bulkSelection.clear(); }} onManage={() => setCategoryManagerOpen(true)} />
+          <div className="catalog-product-workspace">
 
         <div className="catalog-summary" aria-label="Tổng quan danh mục">
           <div><span>Sản phẩm</span><strong>{summary.products.toLocaleString('vi-VN')}</strong></div>
@@ -170,7 +203,7 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
         </div>
 
         {products.length > 0 ? <>
-          <ProductTable products={products} onEdit={(productId) => setWizard({ mode: 'edit', productId })} entityType={entityType} selectedIds={bulkSelection.selectedIds} onTogglePage={bulkSelection.selectPage} />
+          <ProductTable products={products} onEdit={(productId) => setWizard({ mode: 'edit', productId })} onClone={(cloneProductId) => setWizard({ mode: 'create', cloneProductId })} entityType={entityType} selectedIds={bulkSelection.selectedIds} onTogglePage={bulkSelection.selectPage} />
           <div className="catalog-pagination"><span>Trang {currentPage.toLocaleString('vi-VN')} / {pagination.totalPages.toLocaleString('vi-VN')}</span><div><button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage === 1} aria-label="Trang trước" title="Trang trước"><ChevronLeft size={16} /></button><button type="button" onClick={() => setPage((value) => Math.min(pagination.totalPages, value + 1))} disabled={currentPage === pagination.totalPages} aria-label="Trang sau" title="Trang sau"><ChevronRight size={16} /></button></div></div>
         </> : <div className="catalog-empty"><strong>Không có sản phẩm phù hợp</strong><span>Hãy đổi bộ lọc hoặc từ khóa tìm kiếm.</span></div>}
 
@@ -182,8 +215,12 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
           {queueTab === 'provider' && <ProviderIssueQueue data={queues.providerIssues} />}
           {queueTab === 'inventory' && <InventoryWarningQueue data={queues.inventoryWarnings} />}
         </section>
+          </div>
+        </div>
       </section>
-      {wizard && <ProductWizard mode={wizard.mode} productId={wizard.productId} onClose={() => setWizard(null)} onSaved={() => { setWizard(null); void loadProducts(); }} />}
+      {wizard && <ProductWizard mode={wizard.mode} productId={wizard.productId} cloneProductId={wizard.cloneProductId} initialCategoryId={wizard.initialCategoryId} onClose={() => setWizard(null)} onSaved={() => { setWizard(null); void loadProducts(); void loadCategories(); }} />}
+      {categoryManagerOpen && <CategoryManagerDialog categories={categories} catalogVersionId={catalogVersionId} onClose={() => setCategoryManagerOpen(false)} onChanged={() => { void loadCategories(); void loadProducts(); }} />}
+      {importOpen && <CatalogImportDialog categories={categories} initialCategoryId={selectedLeaf?.id} catalogVersionId={catalogVersionId} onClose={() => setImportOpen(false)} onComplete={() => { setImportOpen(false); void loadProducts(); void loadCategories(); }} />}
       <BulkPreviewDialog key={`${bulkOperation}-${bulkDialogOpen}`} open={bulkDialogOpen} entityType={entityType} operationType={bulkOperation} selection={bulkSelection.selection} preview={bulkPreview.preview} previewLoading={bulkPreview.loading} previewError={bulkPreview.error} executeLoading={bulkExecute.loading} executeError={bulkExecute.error} onClose={() => setBulkDialogOpen(false)} onPreview={runBulkPreview} onExecute={runBulkExecute} />
       <BulkResultDialog result={bulkExecute.result} onClose={() => bulkExecute.clear()} />
     </>

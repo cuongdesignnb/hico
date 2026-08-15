@@ -1,4 +1,5 @@
 import type {
+  CatalogCategory,
   CatalogProduct,
   CatalogVariant,
 } from '../types/catalog';
@@ -152,3 +153,37 @@ export const getCatalogSourceStatus = () => requestJson<import('../types/product
 );
 
 export const getCatalogVersions = () => requestJson<unknown[]>('/api/admin/catalog/versions');
+
+export interface CatalogCategoriesResponse {
+  items: CatalogCategory[];
+  unresolvedCount: number;
+  catalogVersionId: string;
+}
+
+export const getAdminCategories = (signal?: AbortSignal) => requestJson<CatalogCategoriesResponse>(
+  '/api/admin/catalog/categories',
+  { signal },
+);
+
+export const createCategory = (body: unknown) => requestJson<{ category: CatalogCategory; catalogVersionId: string }>(
+  '/api/admin/catalog/categories',
+  commandInit(body),
+);
+
+export const updateCategory = (categoryId: string, body: unknown) => requestJson<{ category: CatalogCategory; catalogVersionId: string }>(
+  `/api/admin/catalog/categories/${encodeURIComponent(categoryId)}`,
+  { ...commandInit(body), method: 'PUT' },
+);
+
+export const setCategoryArchived = (categoryId: string, archived: boolean, body: unknown) => requestJson<{ category: CatalogCategory; catalogVersionId: string }>(
+  `/api/admin/catalog/categories/${encodeURIComponent(categoryId)}/${archived ? 'archive' : 'restore'}`,
+  commandInit(body),
+);
+
+export const getCategoryBackfillPreview = (signal?: AbortSignal) => requestJson<{
+  assigned: number;
+  unresolved: number;
+  unchanged: number;
+  publicSkusAssigned: number;
+  catalogVersionId: string;
+}>('/api/admin/catalog/category-backfill/preview', { signal });

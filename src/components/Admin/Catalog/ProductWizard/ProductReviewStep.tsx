@@ -12,11 +12,12 @@ interface ProductReviewStepProps {
 
 const ProductReviewStep = ({ state, readiness, readinessLoading, onCheckReadiness }: ProductReviewStepProps) => (
   <section className="product-wizard-step-content">
-    <div className="product-wizard-section-heading"><span className="product-wizard-kicker">Bước 5</span><h3>Kiểm tra và lưu nháp</h3><p>Đây là bước review và lưu canonical draft, không tự publish.</p></div>
+    <div className="product-wizard-section-heading"><span className="product-wizard-kicker">Bước 4</span><h3>Kiểm tra và lưu nháp</h3><p>Đây là bước review và lưu canonical draft, không tự publish.</p></div>
     <div className="product-wizard-review-layout">
       <div className="product-wizard-review-main">
         <div className="product-wizard-summary-grid">
           <div><span>Loại nghiệp vụ</span><strong>{operationLabels[state.product.operation]}</strong></div>
+          <div><span>Danh mục</span><strong>{state.product.categoryId || 'Chưa chọn'}</strong></div>
           <div><span>Vùng phủ</span><strong>{state.product.coverageType} · {state.product.coverageIds.length} mục</strong></div>
           <div><span>Variants</span><strong>{state.variants.length}</strong></div>
           <div><span>Catalog version</span><strong>{state.catalogVersionId || 'Chưa có'}</strong></div>

@@ -20,6 +20,7 @@ import {
 import { createCatalogBulkRouter } from './catalog/bulk/catalogBulkRouter.js';
 import { createCatalogQueueRouter } from './catalog/queues/catalogQueueRouter.js';
 import { createCatalogPublishRouter } from './catalog/publish/catalogPublishRouter.js';
+import { createCatalogSheetImportRouter } from './catalog/import/catalogSheetImportRouter.js';
 import { createSheetSyncRouter } from './catalog/sheetSync/sheetSyncRouter.js';
 import { createSheetSyncService } from './catalog/sheetSync/sheetSyncService.js';
 import { createSheetSyncRepository } from './catalog/sheetSync/sheetSyncRepository.js';
@@ -551,6 +552,7 @@ app.use('/api', createCatalogWriteRouter({ catalogWriteService, catalogGuard }))
 app.use('/api', createCatalogBulkRouter({ catalogBulkService, catalogGuard }));
 app.use('/api', createCatalogQueueRouter({ catalogQueueService, catalogGuard }));
 app.use('/api', createCatalogPublishRouter({ catalogPublishService, catalogGuard }));
+app.use('/api', createCatalogSheetImportRouter({ catalogGuard }));
 
 // Ensure uploads folder exists
 if (!fs.existsSync('uploads')) {

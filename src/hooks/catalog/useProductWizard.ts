@@ -8,6 +8,7 @@ import type {
   WizardSourceMode,
 } from '../../types/productWizard';
 import { createProductDraft } from './useProductDraft';
+import type { ProviderOffer } from '../../types/provider';
 
 const createTempId = () => `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -60,13 +61,29 @@ export const variantToDraft = (variant: CatalogVariant): VariantDraft => ({
   saved: true,
 });
 
-const createInitialState = ({ mode, catalogVersionId, product }: ProductWizardInput): ProductWizardState => ({
+const createInitialState = ({ mode, catalogVersionId, product, initialCategoryId }: ProductWizardInput): ProductWizardState => ({
   mode,
   step: 1,
-  product: createProductDraft(product),
-  variants: product?.variants.map(variantToDraft) ?? [],
-  productId: product?.id,
-  productVersion: product?.version,
+  product: {
+    ...createProductDraft(product),
+    categoryId: initialCategoryId ?? product?.categoryId ?? '',
+    ...(mode === 'create' && product ? { name: `${product.name} (Bản sao)`, slug: '' } : {}),
+  },
+  variants: product?.variants.map((variant) => mode === 'create'
+    ? {
+      ...variantToDraft(variant),
+      tempId: createTempId(),
+      id: undefined,
+      version: undefined,
+      sku: '',
+      providerOfferId: undefined,
+      wmproductId: undefined,
+      providerProductId: undefined,
+      saved: false,
+    }
+    : variantToDraft(variant)) ?? [],
+  productId: mode === 'edit' ? product?.id : undefined,
+  productVersion: mode === 'edit' ? product?.version : undefined,
   catalogVersionId,
   dirty: false,
   saving: false,
@@ -120,7 +137,7 @@ export const useProductWizard = (input: ProductWizardInput) => {
       if (!source) return current;
       return {
         ...current,
-        variants: [...current.variants, { ...source, tempId: createTempId(), id: undefined, version: undefined, saved: false, sku: `${source.sku}-COPY` }],
+        variants: [...current.variants, { ...source, tempId: createTempId(), id: undefined, version: undefined, saved: false, sku: '', providerOfferId: undefined, wmproductId: undefined, providerProductId: undefined }],
         dirty: true,
       };
     });
@@ -131,7 +148,34 @@ export const useProductWizard = (input: ProductWizardInput) => {
   }, []);
 
   const setStep = useCallback((step: number) => {
-    setState((current) => ({ ...current, step: Math.min(5, Math.max(1, step)) }));
+    setState((current) => ({ ...current, step: Math.min(4, Math.max(1, step)) }));
+  }, []);
+
+  const addProviderOffers = useCallback((offers: ProviderOffer[]) => {
+    setState((current) => ({
+      ...current,
+      variants: [...current.variants, ...offers.map((offer): VariantDraft => ({
+        tempId: createTempId(),
+        sku: offer.wmproductId,
+        dataLimit: '',
+        duration: '',
+        price: '',
+        compareAtPrice: '',
+        currency: 'VND',
+        sourceMode: offer.providerProductType === 2 ? 'worldmove_topup' : offer.providerProductType === 1 ? 'worldmove_physical' : offer.leSIM === false ? 'local_esim' : 'worldmove_esim',
+        providerOfferId: offer.id,
+        wmproductId: offer.wmproductId,
+        providerProductId: offer.providerProductId,
+        providerProductType: offer.providerProductType,
+        leSIM: offer.leSIM,
+        requiresExistingSim: offer.providerProductType === 2,
+        stock: '',
+        active: false,
+        needsReview: false,
+        saved: false,
+      }))],
+      dirty: true,
+    }));
   }, []);
 
   const setValidation = useCallback((validationErrors: ProductWizardState['validationErrors'], validationWarnings: ProductWizardState['validationWarnings']) => {
@@ -174,6 +218,7 @@ export const useProductWizard = (input: ProductWizardInput) => {
     addVariant,
     duplicateVariant,
     removeVariant,
+    addProviderOffers,
     setStep,
     setValidation,
     markSaving,

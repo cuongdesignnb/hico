@@ -5,6 +5,7 @@ import type { ProductDraft } from '../../types/productWizard';
 export const createProductDraft = (product?: CatalogProductRecord): ProductDraft => ({
   name: product?.name ?? '',
   slug: product?.slug ?? '',
+  categoryId: product?.categoryId ?? '',
   operation: product?.operation ?? 'new_subscription',
   coverageType: product?.coverageType ?? 'country',
   coverageIds: product?.coverageIds ?? [],

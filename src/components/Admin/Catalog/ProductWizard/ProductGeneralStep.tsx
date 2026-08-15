@@ -41,8 +41,9 @@ const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGenera
         <textarea rows={3} value={product.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="Mô tả ngắn cho Admin và khách hàng." />
       </label>
       <div className="product-wizard-field product-wizard-field-wide">
-        <span>Hướng dẫn sử dụng</span>
-        <RichTextEditor value={product.guide} onChange={(guide) => onChange({ guide })} placeholder="Các bước kích hoạt hoặc lưu ý." />
+        <span>Hướng dẫn cài đặt</span>
+        <RichTextEditor value={product.installationGuide} onChange={(installationGuide) => onChange({ installationGuide })} placeholder="Các bước kích hoạt, cài đặt hoặc lưu ý." />
+        {!product.installationGuide.trim() && product.guide.trim() && <button type="button" className="product-wizard-inline-button" onClick={() => onChange({ installationGuide: product.guide })}>Dùng nội dung hướng dẫn cũ</button>}
       </div>
       <div className="product-wizard-field product-wizard-field-wide">
         <MediaGalleryField value={product.galleryMediaIds} legacyUrls={product.gallery.map((item) => item.url)} onChange={(galleryMediaIds) => onChange({ galleryMediaIds })} />
@@ -65,7 +66,6 @@ const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGenera
       <div className="product-wizard-form-grid">
         <label className="product-wizard-field"><span>Nhãn mạng</span><input value={product.networkLabel} onChange={(event) => onChange({ networkLabel: event.target.value })} /></label>
         <label className="product-wizard-field"><span>Nhãn tốc độ</span><input value={product.speedLabel} onChange={(event) => onChange({ speedLabel: event.target.value })} /></label>
-        <label className="product-wizard-field product-wizard-field-wide"><span>Hướng dẫn cài đặt public</span><textarea rows={2} value={product.installationGuide} onChange={(event) => onChange({ installationGuide: event.target.value })} /></label>
         <label className="product-wizard-field product-wizard-field-wide"><span>Tương thích</span><textarea rows={2} value={product.compatibilityContent} onChange={(event) => onChange({ compatibilityContent: event.target.value })} /></label>
         <label className="product-wizard-field"><span>Trong hộp</span><input value={product.packageContents} onChange={(event) => onChange({ packageContents: event.target.value })} /></label>
         <label className="product-wizard-field"><span>Ghi chú giao hàng</span><input value={product.deliveryNote} onChange={(event) => onChange({ deliveryNote: event.target.value })} /></label>

@@ -1,8 +1,10 @@
-import type { AdminCatalogListResponse, CatalogProductRecord } from '../types/catalog';
+import type { AdminCatalogListResponse, CatalogCategory, CatalogProductRecord } from '../types/catalog';
 
 export interface AdminCatalogFilters {
   search?: string;
   operation?: string;
+  category?: string;
+  unresolved?: boolean;
   coverage?: string;
   medium?: string;
   supplier?: string;
@@ -51,4 +53,9 @@ export const getCatalogProduct = (productId: string, signal?: AbortSignal) => (
     `/api/catalog/products/${encodeURIComponent(productId)}`,
     signal,
   )
+);
+
+export const getPublicCatalogCategories = (signal?: AbortSignal) => requestJson<{ items: Array<Pick<CatalogCategory, 'id' | 'slug' | 'name' | 'parentId' | 'kind' | 'sortOrder'> & { productCount: number }> }>(
+  '/api/catalog/categories',
+  signal,
 );
