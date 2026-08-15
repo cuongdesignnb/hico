@@ -41,6 +41,7 @@ import { AccountSecurityPage } from '../pages/account/AccountSecurityPage';
 import { AccountSupportPage } from '../pages/account/AccountSupportPage';
 import { AccountSupportTicketPage } from '../pages/account/AccountSupportTicketPage';
 import '../App.css';
+import '../pages/customerAuth/customerAuth.css';
 
 const PublicLayout = () => {
   const { isOnline, notification } = useApp();
