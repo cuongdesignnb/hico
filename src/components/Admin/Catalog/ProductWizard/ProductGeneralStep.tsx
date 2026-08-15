@@ -2,6 +2,7 @@ import type { ProductDraft } from '../../../../types/productWizard';
 import type { CatalogDeviceSpecs } from '../../../../types/catalog';
 import { MediaAssetField } from '../../media/MediaAssetField';
 import { MediaGalleryField } from '../../media/MediaGalleryField';
+import RichTextEditor from '../../RichTextEditor';
 
 interface ProductGeneralStepProps {
   product: ProductDraft;
@@ -39,10 +40,10 @@ const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGenera
         <span>Mô tả</span>
         <textarea rows={3} value={product.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="Mô tả ngắn cho Admin và khách hàng." />
       </label>
-      <label className="product-wizard-field product-wizard-field-wide">
+      <div className="product-wizard-field product-wizard-field-wide">
         <span>Hướng dẫn sử dụng</span>
-        <textarea rows={3} value={product.guide} onChange={(event) => onChange({ guide: event.target.value })} placeholder="Các bước kích hoạt hoặc lưu ý." />
-      </label>
+        <RichTextEditor value={product.guide} onChange={(guide) => onChange({ guide })} placeholder="Các bước kích hoạt hoặc lưu ý." />
+      </div>
       <div className="product-wizard-field product-wizard-field-wide">
         <MediaGalleryField value={product.galleryMediaIds} legacyUrls={product.gallery.map((item) => item.url)} onChange={(galleryMediaIds) => onChange({ galleryMediaIds })} />
       </div>
