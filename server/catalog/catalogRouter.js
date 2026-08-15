@@ -29,6 +29,8 @@ export const createCatalogRouter = ({
       const filters = {
         search: typeof req.query.search === 'string' ? req.query.search : undefined,
         operation: typeof req.query.operation === 'string' ? req.query.operation : undefined,
+        category: typeof req.query.category === 'string' ? req.query.category : undefined,
+        unresolved: req.query.unresolved === 'true' ? true : undefined,
         coverage: typeof req.query.coverage === 'string' ? req.query.coverage : undefined,
         medium: typeof req.query.medium === 'string' ? req.query.medium : undefined,
         supplier: typeof req.query.supplier === 'string' ? req.query.supplier : undefined,
@@ -45,6 +47,7 @@ export const createCatalogRouter = ({
     try {
       const filters = {
         operation: typeof req.query.operation === 'string' ? req.query.operation : undefined,
+        category: typeof req.query.category === 'string' ? req.query.category : undefined,
         medium: typeof req.query.medium === 'string' ? req.query.medium : undefined,
         coverage: typeof req.query.coverage === 'string' ? req.query.coverage : undefined,
         supplier: typeof req.query.supplier === 'string' ? req.query.supplier : undefined,
@@ -57,6 +60,14 @@ export const createCatalogRouter = ({
         search: typeof req.query.search === 'string' ? req.query.search : undefined,
       };
       res.json(await catalogService.listPublicProducts({ filters, paginate: true }));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get('/catalog/categories', async (_req, res) => {
+    try {
+      res.json({ items: await catalogService.listPublicCategories() });
     } catch (error) {
       sendError(res, error);
     }

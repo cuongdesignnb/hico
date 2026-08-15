@@ -10,8 +10,9 @@ import {
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { assertCanonicalCatalog } from './canonicalCatalogValidation.js';
-import { checksumRecords } from './canonicalCatalogChecksum.js';
+import { checksumCatalog, checksumRecords } from './canonicalCatalogChecksum.js';
 import { createCatalogReadCache, invalidateCatalogReadCache } from '../read/catalogReadCache.js';
+import { cloneSeedCategories } from '../categories/catalogCategories.js';
 
 const defaultUploadsDirectory = fileURLToPath(
   new URL('../../uploads/', import.meta.url),
@@ -53,6 +54,7 @@ export const createCanonicalCatalogRepository = ({
   const currentFile = path.join(uploadsDirectory, 'catalog_current.json');
   const productsMirrorFile = path.join(uploadsDirectory, 'catalog_products.json');
   const variantsMirrorFile = path.join(uploadsDirectory, 'catalog_variants.json');
+  const categoriesMirrorFile = path.join(uploadsDirectory, 'catalog_categories.json');
   const versionsDirectory = path.join(uploadsDirectory, 'catalog_versions');
   const reportsDirectory = path.join(uploadsDirectory, 'migration_reports');
 
@@ -71,7 +73,7 @@ export const createCanonicalCatalogRepository = ({
     loadCatalog: async ({ manifest, required }) => {
       if (!manifest) {
         if (required) throw new Error('Canonical catalog has not been migrated.');
-        return { products: [], variants: [], manifest: null };
+        return { products: [], variants: [], categories: cloneSeedCategories(), manifest: null };
       }
 
       const productsFile = safeVersionPath(
@@ -82,18 +84,23 @@ export const createCanonicalCatalogRepository = ({
         uploadsDirectory,
         manifest.variantsFile,
       );
-      const [products, variants] = await Promise.all([
+      const [products, variants, categories] = await Promise.all([
         readJson(productsFile),
         readJson(variantsFile),
+        manifest.categoriesFile
+          ? readJson(safeVersionPath(uploadsDirectory, manifest.categoriesFile))
+          : Promise.resolve(cloneSeedCategories()),
       ]);
       if (
         checksumRecords(products) !== manifest.productsChecksum
         || checksumRecords(variants) !== manifest.variantsChecksum
+        || (manifest.categoriesChecksum
+          && checksumRecords(categories) !== manifest.categoriesChecksum)
       ) {
         throw new Error('Canonical catalog checksum does not match its manifest.');
       }
-      assertCanonicalCatalog({ products, variants });
-      return { products, variants, manifest };
+      assertCanonicalCatalog({ products, variants, categories });
+      return { products, variants, categories, manifest };
     },
   });
 
@@ -109,6 +116,7 @@ export const createCanonicalCatalogRepository = ({
       migrationId,
       products,
       variants,
+      categories = cloneSeedCategories(),
       checksums,
       createdAt,
       providerOffers = [],
@@ -117,6 +125,7 @@ export const createCanonicalCatalogRepository = ({
       assertCanonicalCatalog({
         products,
         variants,
+        categories,
         providerOffers,
         manualQrs,
       });
@@ -130,11 +139,16 @@ export const createCanonicalCatalogRepository = ({
 
       const productsContent = serialize(products);
       const variantsContent = serialize(variants);
+      const categoriesContent = serialize(categories);
+      const effectiveChecksums = checksumCatalog({ products, variants, categories });
       const manifest = {
+        schemaVersion: 2,
         migrationId,
         productsFile: `catalog_versions/${migrationId}/catalog_products.json`,
         variantsFile: `catalog_versions/${migrationId}/catalog_variants.json`,
+        categoriesFile: `catalog_versions/${migrationId}/catalog_categories.json`,
         ...checksums,
+        ...effectiveChecksums,
         createdAt,
       };
 
@@ -147,6 +161,10 @@ export const createCanonicalCatalogRepository = ({
           atomicWrite(
             path.join(stageDirectory, 'catalog_variants.json'),
             variantsContent,
+          ),
+          atomicWrite(
+            path.join(stageDirectory, 'catalog_categories.json'),
+            categoriesContent,
           ),
         ]);
         await atomicWrite(
@@ -168,6 +186,7 @@ export const createCanonicalCatalogRepository = ({
         await Promise.all([
           atomicWrite(productsMirrorFile, productsContent),
           atomicWrite(variantsMirrorFile, variantsContent),
+          atomicWrite(categoriesMirrorFile, categoriesContent),
         ]);
         invalidateCatalogReadCache(uploadsDirectory);
         return manifest;

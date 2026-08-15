@@ -302,6 +302,7 @@ const createService = ({
         assertCanonicalCatalog({
           products: evaluation.products,
           variants: nextVariants,
+          categories: context.categories,
           providerOffers: context.providerOffers,
           manualQrs: context.manualQrs,
         });
@@ -330,6 +331,7 @@ const createService = ({
           parentVersionId: currentVersionId(context.manifest),
           products: evaluation.products,
           variants: nextVariants,
+          categories: context.categories,
           commandType: `BULK_${previewRecord.operation.type}`,
           commandId,
           requestHash,

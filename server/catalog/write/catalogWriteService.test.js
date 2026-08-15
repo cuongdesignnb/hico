@@ -17,6 +17,8 @@ const baseProduct = {
   name: 'Base Product',
   slug: 'base-product',
   operation: 'new_subscription',
+  categoryId: 'cat-esim-du-lich',
+  categoryNeedsReview: false,
   coverageType: 'country',
   coverageIds: ['vn'],
   image: '/images/base.png',
@@ -35,6 +37,8 @@ const productRequest = (catalogVersionId, changes = {}) => ({
     name: 'Sản phẩm mới',
     slug: 'san-pham-moi',
     operation: 'new_subscription',
+    categoryId: 'cat-esim-du-lich',
+    categoryNeedsReview: false,
     coverageType: 'country',
     coverageIds: ['jp'],
     image: '/images/japan.png',
@@ -69,6 +73,7 @@ const setup = async (t, {
     productReferences: async () => [],
     variantReferences: async () => [],
   },
+  products = [baseProduct],
 } = {}) => {
   const uploadsDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'hico-write-service-'),
@@ -82,7 +87,7 @@ const setup = async (t, {
   await commitService.commit({
     versionId: 'catalog-base',
     parentVersionId: null,
-    products: [baseProduct],
+    products,
     variants: [],
     commandType: 'MIGRATE',
     commandId: 'migration',
@@ -430,4 +435,80 @@ test('audit persistence failure leaves pointer and version list unchanged', asyn
   );
   assert.equal(await currentId(fixture), 'catalog-base');
   assert.equal((await fixture.commitService.listVersions()).length, 1);
+});
+
+test('category writes enforce leaf hierarchy, optimistic concurrency and kind guards', async (t) => {
+  const fixture = await setup(t);
+  const created = await fixture.service.createCategory({
+    idempotencyKey: 'create-category',
+    catalogVersionId: await currentId(fixture),
+    category: {
+      id: 'cat-data-roaming',
+      slug: 'data-roaming',
+      name: 'Data roaming',
+      parentId: 'cat-sim-esim',
+      kind: 'esim',
+      sortOrder: 30,
+    },
+  });
+  assert.equal(created.body.category.version, 1);
+
+  const updated = await fixture.service.updateCategory('cat-data-roaming', {
+    idempotencyKey: 'update-category',
+    catalogVersionId: created.body.catalogVersionId,
+    version: 1,
+    changes: { name: 'Data roaming quốc tế', sortOrder: 40 },
+  });
+  assert.equal(updated.body.category.version, 2);
+
+  await assert.rejects(
+    fixture.service.updateCategory('cat-data-roaming', {
+      idempotencyKey: 'stale-category',
+      catalogVersionId: updated.body.catalogVersionId,
+      version: 1,
+      changes: { name: 'Stale' },
+    }),
+    (error) => error.code === 'ENTITY_VERSION_CONFLICT',
+  );
+
+  await assert.rejects(
+    fixture.service.createCategory({
+      idempotencyKey: 'third-level-category',
+      catalogVersionId: updated.body.catalogVersionId,
+      category: {
+        id: 'cat-third-level',
+        slug: 'third-level',
+        name: 'Third level',
+        parentId: 'cat-data-roaming',
+        kind: 'esim',
+        sortOrder: 10,
+      },
+    }),
+    (error) => error.code === 'CATEGORY_VALIDATION_FAILED',
+  );
+
+  await assert.rejects(
+    fixture.service.updateCategory('cat-esim-du-lich', {
+      idempotencyKey: 'change-assigned-kind',
+      catalogVersionId: updated.body.catalogVersionId,
+      version: 1,
+      changes: { kind: 'topup' },
+    }),
+    (error) => error.code === 'CATEGORY_IN_USE',
+  );
+});
+
+test('active products prevent their category from being archived', async (t) => {
+  const fixture = await setup(t, { products: [{ ...baseProduct, status: 'active' }] });
+  const categories = await fixture.service.listCategories();
+  assert.equal(categories.items.find((category) => category.id === 'cat-sim-esim').productCount, 1);
+  assert.equal(categories.items.find((category) => category.id === 'cat-esim-du-lich').productCount, 1);
+  await assert.rejects(
+    fixture.service.setCategoryArchived('cat-esim-du-lich', {
+      idempotencyKey: 'archive-active-category',
+      catalogVersionId: await currentId(fixture),
+      version: 1,
+    }, true),
+    (error) => error.code === 'CATEGORY_HAS_ACTIVE_PRODUCTS',
+  );
 });

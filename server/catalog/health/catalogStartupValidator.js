@@ -3,10 +3,13 @@ import path from 'node:path';
 import {
   checksumCatalog,
   checksumRecords,
+  sha256,
 } from '../canonical/canonicalCatalogChecksum.js';
 import { validateCanonicalCatalog } from '../canonical/canonicalCatalogValidation.js';
+import { cloneSeedCategories } from '../categories/catalogCategories.js';
 
-export const SUPPORTED_CATALOG_SCHEMA_VERSION = 1;
+export const SUPPORTED_CATALOG_SCHEMA_VERSION = 2;
+const SUPPORTED_SCHEMA_VERSIONS = new Set([1, 2]);
 
 export class CatalogStartupValidationError extends Error {
   constructor(message, { code, details } = {}) {
@@ -90,10 +93,12 @@ const validateManifest = (manifest) => {
     fail('Canonical catalog version is invalid.', 'CATALOG_VERSION_MISSING');
   }
   const schemaVersion = manifest.schemaVersion ?? SUPPORTED_CATALOG_SCHEMA_VERSION;
-  if (schemaVersion !== SUPPORTED_CATALOG_SCHEMA_VERSION) {
+  if (!SUPPORTED_SCHEMA_VERSIONS.has(schemaVersion)) {
     fail('Canonical catalog schema version is unsupported.', 'CATALOG_SCHEMA_UNSUPPORTED');
   }
-  for (const field of ['productsChecksum', 'variantsChecksum', 'businessChecksum']) {
+  const checksumFields = ['productsChecksum', 'variantsChecksum', 'businessChecksum'];
+  if (schemaVersion === 2) checksumFields.push('categoriesChecksum');
+  for (const field of checksumFields) {
     if (typeof manifest[field] !== 'string' || manifest[field].trim() === '') {
       fail('Canonical catalog manifest is invalid.', 'CATALOG_MANIFEST_INVALID');
     }
@@ -123,7 +128,9 @@ export const validateCanonicalCatalogStorage = async ({
   if (versionManifest.versionId !== versionId) {
     fail('Canonical catalog pointer and manifest do not match.', 'CATALOG_MANIFEST_INVALID');
   }
-  for (const field of ['productsChecksum', 'variantsChecksum', 'businessChecksum']) {
+  const pointerChecksumFields = ['productsChecksum', 'variantsChecksum', 'businessChecksum'];
+  if (schemaVersion === 2) pointerChecksumFields.push('categoriesChecksum');
+  for (const field of pointerChecksumFields) {
     if (manifest[field] !== pointer[field]) {
       fail('Canonical catalog pointer and manifest do not match.', 'CATALOG_MANIFEST_INVALID');
     }
@@ -131,20 +138,29 @@ export const validateCanonicalCatalogStorage = async ({
 
   const productsFile = safeVersionFile(uploadsDirectory, pointer.productsFile, versionId);
   const variantsFile = safeVersionFile(uploadsDirectory, pointer.variantsFile, versionId);
+  const categoriesFile = schemaVersion === 2
+    ? safeVersionFile(uploadsDirectory, pointer.categoriesFile, versionId)
+    : null;
   await requireFile(productsFile);
   await requireFile(variantsFile);
+  if (categoriesFile) await requireFile(categoriesFile);
   const products = requireArray(await parseJson(productsFile, 'CATALOG_FILE_MISSING'), 'CATALOG_FILE_MISSING');
   const variants = requireArray(await parseJson(variantsFile, 'CATALOG_FILE_MISSING'), 'CATALOG_FILE_MISSING');
-  const checksums = checksumCatalog({ products, variants });
+  const categories = categoriesFile
+    ? requireArray(await parseJson(categoriesFile, 'CATALOG_FILE_MISSING'), 'CATALOG_FILE_MISSING')
+    : cloneSeedCategories();
+  const checksums = checksumCatalog({ products, variants, categories });
+  const legacyBusinessChecksum = sha256(`${checksumRecords(products, { business: true })}:${checksumRecords(variants, { business: true })}`);
   if (
     checksumRecords(products) !== pointer.productsChecksum
     || checksumRecords(variants) !== pointer.variantsChecksum
-    || checksums.businessChecksum !== pointer.businessChecksum
+    || (schemaVersion === 2 && checksumRecords(categories) !== pointer.categoriesChecksum)
+    || (schemaVersion === 2 ? checksums.businessChecksum : legacyBusinessChecksum) !== pointer.businessChecksum
   ) {
     fail('Canonical catalog checksum validation failed.', 'CATALOG_CHECKSUM_MISMATCH');
   }
 
-  const validation = validateCanonicalCatalog({ products, variants });
+  const validation = validateCanonicalCatalog({ products, variants, categories });
   if (!validation.valid) {
     fail('Canonical catalog references or required fields are invalid.', 'CATALOG_REFERENCE_INVALID', {
       errors: validation.errors,
@@ -157,6 +173,7 @@ export const validateCanonicalCatalogStorage = async ({
     schemaVersion,
     products: products.length,
     variants: variants.length,
+    categories: categories.length,
     checksumValid: true,
     businessChecksumValid: true,
     warnings: validation.warnings,

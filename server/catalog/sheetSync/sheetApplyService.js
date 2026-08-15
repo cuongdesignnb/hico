@@ -55,10 +55,10 @@ export const createSheetApplyService = ({
       auditChanges.push({ row, fields });
     }
     if (!auditChanges.length) return { versionId: null, applied };
-    assertCanonicalCatalog({ products: context.products, variants: nextVariants, providerOffers: nextOffers });
+    assertCanonicalCatalog({ products: context.products, variants: nextVariants, categories: context.categories, providerOffers: nextOffers });
     const createdAt = now().toISOString(); const newVersion = versionId();
     const audit = { id: `audit-${randomUUID()}`, actorId: actor.id, action: 'CATALOG_SHEET_SYNC_APPLY', entityType: 'catalog_sheet_sync', entityId: batch.id, changedFields: [...new Set(auditChanges.flatMap((item) => item.fields))].sort(), catalogVersionBefore: currentVersion(context.manifest), catalogVersionAfter: newVersion, createdAt };
-    await commitService.commit({ versionId: newVersion, parentVersionId: currentVersion(context.manifest), products: context.products, variants: nextVariants, providerOffers: nextOffers, commandType: 'CATALOG_SHEET_SYNC_APPLY', commandId: batch.id, requestHash: requestHash(batch.id, selectedRows.map((row) => row.id), selectedFields), createdAt,
+    await commitService.commit({ versionId: newVersion, parentVersionId: currentVersion(context.manifest), products: context.products, variants: nextVariants, categories: context.categories, providerOffers: nextOffers, commandType: 'CATALOG_SHEET_SYNC_APPLY', commandId: batch.id, requestHash: requestHash(batch.id, selectedRows.map((row) => row.id), selectedFields), createdAt,
       beforePointer: async () => { await providerRepository.replaceOffers(nextOffers); await auditRepository.append(audit); },
       rollbackBeforePointer: async () => { await providerRepository.replaceOffers(offers); await auditRepository.remove(audit.id); },
     });

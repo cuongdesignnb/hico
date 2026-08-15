@@ -30,6 +30,8 @@ const PRODUCT_FIELDS = new Set([
   'name',
   'slug',
   'operation',
+  'categoryId',
+  'categoryNeedsReview',
   'coverageType',
   'coverageIds',
   'image',
@@ -163,6 +165,18 @@ export const normalizeProductInput = (input, { partial = false } = {}) => {
       throw new CatalogWriteError('operation không hợp lệ.');
     }
   }
+  if (input.categoryId !== undefined) {
+    if (input.categoryId === null || input.categoryId === '') result.categoryId = null;
+    else {
+      const categoryId = requireNonEmptyString(input.categoryId, 'product.categoryId');
+      if (!ID_PATTERN.test(categoryId)) throw new CatalogWriteError('product.categoryId không hợp lệ.');
+      result.categoryId = categoryId;
+    }
+  }
+  if (input.categoryNeedsReview !== undefined) {
+    if (typeof input.categoryNeedsReview !== 'boolean') throw new CatalogWriteError('categoryNeedsReview phải là boolean.');
+    result.categoryNeedsReview = input.categoryNeedsReview;
+  }
   if (!partial || input.coverageType !== undefined || input.coverageIds !== undefined) {
     if (partial && (
       input.coverageType === undefined
@@ -227,6 +241,8 @@ export const validateProductRecord = (product) => {
       name: product.name,
       slug: product.slug,
       operation: product.operation,
+      categoryId: product.categoryId,
+      categoryNeedsReview: product.categoryNeedsReview,
       coverageType: product.coverageType,
       coverageIds: product.coverageIds,
       image: product.image,

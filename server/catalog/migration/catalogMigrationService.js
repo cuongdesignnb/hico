@@ -22,6 +22,11 @@ import {
 } from '../reconciliation/reconciliationRules.js';
 import { createMigrationReport } from './catalogMigrationReport.js';
 import { validateMigrationSources } from './catalogMigrationValidation.js';
+import {
+  cloneSeedCategories,
+  inferCategoryId,
+} from '../categories/catalogCategories.js';
+import { backfillVariantPublicSkus } from '../public/publicSku.js';
 
 const defaultUploadsDirectory = fileURLToPath(
   new URL('../../uploads/', import.meta.url),
@@ -161,6 +166,14 @@ const addVersionMetadata = (records, existingRecords, now) => {
     };
   });
 };
+
+const assignMigrationCategories = (products, variants) => products.map((product) => {
+  if (product.categoryId) return product;
+  const categoryId = inferCategoryId(product, variants);
+  return categoryId
+    ? { ...product, categoryId, categoryNeedsReview: false }
+    : { ...product, categoryNeedsReview: true };
+});
 
 const safeLegacyResolution = (variant) => {
   if (
@@ -323,19 +336,25 @@ export const createCatalogMigrationService = ({
       providerOffers: sources.providerOffers,
     });
     const timestamp = now().toISOString();
+    const categorizedCandidates = assignMigrationCategories(slugs.products, reconciled.variants);
+    const aliasedCandidates = backfillVariantPublicSkus(reconciled.variants).variants;
     const products = addVersionMetadata(
-      slugs.products,
+      categorizedCandidates,
       current.products,
       timestamp,
     );
     const variants = addVersionMetadata(
-      reconciled.variants,
+      aliasedCandidates,
       current.variants,
       timestamp,
     );
+    const categories = cloneSeedCategories();
+    const categorizedProducts = products;
+    const aliasedVariants = variants;
     const validation = validateCanonicalCatalog({
-      products,
-      variants,
+      products: categorizedProducts,
+      variants: aliasedVariants,
+      categories,
       providerOffers: sources.providerOffers,
       manualQrs: sources.manualQrs,
     });
@@ -348,15 +367,15 @@ export const createCatalogMigrationService = ({
     const parity = createCatalogParity({
       legacyProducts: legacy.products,
       legacyVariants: legacy.variants,
-      canonicalProducts: products,
-      canonicalVariants: variants,
+      canonicalProducts: categorizedProducts,
+      canonicalVariants: aliasedVariants,
       validation,
     });
     if (hasParityFailure(parity)) {
       validation.errors.push('Canonical catalog failed legacy parity checks.');
       validation.valid = false;
     }
-    const checksums = checksumCatalog({ products, variants });
+    const checksums = checksumCatalog({ products: categorizedProducts, variants: aliasedVariants, categories });
     const migrationId = `catalog-${checksums.businessChecksum.slice(0, 20)}`;
     const completedAt = now().toISOString();
     const report = createMigrationReport({
@@ -373,8 +392,9 @@ export const createCatalogMigrationService = ({
 
     return {
       migrationId,
-      products,
-      variants,
+      products: categorizedProducts,
+      variants: aliasedVariants,
+      categories,
       checksums,
       report,
       sources,
@@ -412,6 +432,7 @@ export const createCatalogMigrationService = ({
           migrationId: prepared.migrationId,
           products: prepared.products,
           variants: prepared.variants,
+          categories: prepared.categories,
           checksums: prepared.checksums,
           createdAt: prepared.completedAt,
           providerOffers: prepared.sources.providerOffers,

@@ -21,6 +21,7 @@ import {
 } from './catalogWritePersistence.js';
 import { CatalogWriteError } from './catalogWriteValidation.js';
 import { invalidateCatalogReadCache } from '../read/catalogReadCache.js';
+import { cloneSeedCategories } from '../categories/catalogCategories.js';
 
 const VERSION_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
 
@@ -52,6 +53,7 @@ export const createCatalogVersionCommitService = ({
   const currentFile = path.join(uploadsDirectory, 'catalog_current.json');
   const productsMirrorFile = path.join(uploadsDirectory, 'catalog_products.json');
   const variantsMirrorFile = path.join(uploadsDirectory, 'catalog_variants.json');
+  const categoriesMirrorFile = path.join(uploadsDirectory, 'catalog_categories.json');
 
   const safeVersionDirectory = (versionId) => {
     if (!VERSION_PATTERN.test(versionId)) {
@@ -63,23 +65,28 @@ export const createCatalogVersionCommitService = ({
   const readVersion = async (versionId) => {
     const directory = safeVersionDirectory(versionId);
     try {
-      const [manifest, products, variants] = await Promise.all([
-        readJson(path.join(directory, 'manifest.json')),
+      const manifest = await readJson(path.join(directory, 'manifest.json'));
+      const [products, variants, categories] = await Promise.all([
         readJson(path.join(directory, 'catalog_products.json')),
         readJson(path.join(directory, 'catalog_variants.json')),
+        manifest.categoriesFile
+          ? readJson(path.join(directory, 'catalog_categories.json'))
+          : Promise.resolve(cloneSeedCategories()),
       ]);
       const normalized = normalizeManifest(manifest);
       if (
         checksumRecords(products) !== normalized.productsChecksum
         || checksumRecords(variants) !== normalized.variantsChecksum
+        || (normalized.categoriesChecksum
+          && checksumRecords(categories) !== normalized.categoriesChecksum)
       ) {
         throw new CatalogWriteError(
           'Checksum của catalog version không hợp lệ.',
           { status: 422, code: 'VERSION_CHECKSUM_INVALID' },
         );
       }
-      assertCanonicalCatalog({ products, variants });
-      return { manifest: normalized, products, variants };
+      assertCanonicalCatalog({ products, variants, categories });
+      return { manifest: normalized, products, variants, categories };
     } catch (error) {
       if (error?.code === 'ENOENT') {
         throw new CatalogWriteError('Không tìm thấy catalog version.', {
@@ -125,6 +132,7 @@ export const createCatalogVersionCommitService = ({
       parentVersionId,
       products,
       variants,
+      categories = cloneSeedCategories(),
       commandType,
       commandId,
       requestHash,
@@ -137,10 +145,11 @@ export const createCatalogVersionCommitService = ({
       assertCanonicalCatalog({
         products,
         variants,
+        categories,
         providerOffers,
         manualQrs,
       });
-      const checksums = checksumCatalog({ products, variants });
+      const checksums = checksumCatalog({ products, variants, categories });
       const finalDirectory = safeVersionDirectory(versionId);
       const stageDirectory = path.join(
         versionsDirectory,
@@ -148,13 +157,15 @@ export const createCatalogVersionCommitService = ({
       );
       const productsContent = serializeJson(products);
       const variantsContent = serializeJson(variants);
+      const categoriesContent = serializeJson(categories);
       const manifest = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         versionId,
         migrationId: versionId,
         parentVersionId,
         productsFile: `catalog_versions/${versionId}/catalog_products.json`,
         variantsFile: `catalog_versions/${versionId}/catalog_variants.json`,
+        categoriesFile: `catalog_versions/${versionId}/catalog_categories.json`,
         ...checksums,
         commandType,
         commandId,
@@ -176,13 +187,18 @@ export const createCatalogVersionCommitService = ({
           path.join(stageDirectory, 'catalog_variants.json'),
           variantsContent,
         );
+        await failureInjector('categories');
+        await durableWrite(
+          path.join(stageDirectory, 'catalog_categories.json'),
+          categoriesContent,
+        );
         await failureInjector('manifest');
         await durableWrite(
           path.join(stageDirectory, 'manifest.json'),
           serializeJson(manifest),
         );
 
-        const [writtenProducts, writtenVariants] = await Promise.all([
+        const [writtenProducts, writtenVariants, writtenCategories] = await Promise.all([
           JSON.parse(await readFile(
             path.join(stageDirectory, 'catalog_products.json'),
             'utf8',
@@ -191,10 +207,15 @@ export const createCatalogVersionCommitService = ({
             path.join(stageDirectory, 'catalog_variants.json'),
             'utf8',
           )),
+          JSON.parse(await readFile(
+            path.join(stageDirectory, 'catalog_categories.json'),
+            'utf8',
+          )),
         ]);
         if (
           checksumRecords(writtenProducts) !== manifest.productsChecksum
           || checksumRecords(writtenVariants) !== manifest.variantsChecksum
+          || checksumRecords(writtenCategories) !== manifest.categoriesChecksum
         ) {
           throw new Error('Staged catalog checksum verification failed.');
         }
@@ -240,6 +261,7 @@ export const createCatalogVersionCommitService = ({
         await Promise.all([
           atomicWriteJson(productsMirrorFile, products),
           atomicWriteJson(variantsMirrorFile, variants),
+          atomicWriteJson(categoriesMirrorFile, categories),
         ]);
       } catch (error) {
         warnings.push({
