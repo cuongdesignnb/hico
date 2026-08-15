@@ -29,6 +29,7 @@ export interface CoverageOption {
 export interface ProductDraft {
   name: string;
   slug: string;
+  categoryId: string;
   operation: ProductOperation;
   coverageType: CoverageType;
   coverageIds: string[];
@@ -151,6 +152,7 @@ export interface ProductWizardInput {
   mode: WizardMode;
   catalogVersionId: string;
   product?: CatalogProductRecord;
+  initialCategoryId?: string;
 }
 
 export type ProductDraftChanges = Partial<Omit<CatalogProduct, 'id' | 'version' | 'createdAt' | 'updatedAt'>>;

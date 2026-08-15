@@ -3,6 +3,29 @@ export type ProductOperation =
   | 'topup'
   | 'device_sale';
 
+export type CatalogCategoryKind = 'esim' | 'physical_sim' | 'topup' | 'device' | 'accessory';
+
+export interface CatalogCategoryPathItem {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+export interface CatalogCategory {
+  id: string;
+  slug: string;
+  name: string;
+  parentId: string | null;
+  kind: CatalogCategoryKind | null;
+  sortOrder: number;
+  status: 'active' | 'archived';
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  path?: CatalogCategoryPathItem[];
+  productCount?: number;
+}
+
 export type CoverageType =
   | 'country'
   | 'region'
@@ -55,6 +78,9 @@ export interface CatalogProduct {
   slug: string;
   name: string;
   operation: ProductOperation;
+  categoryId?: string | null;
+  categoryPath?: CatalogCategoryPathItem[];
+  categoryNeedsReview?: boolean;
   coverageType: CoverageType;
   coverageIds: string[];
   image?: string;
@@ -99,6 +125,7 @@ export interface CatalogVariant {
   id: string;
   productId: string;
   sku: string;
+  publicSku?: string;
   dataLimit?: string;
   duration?: string;
   price: number;

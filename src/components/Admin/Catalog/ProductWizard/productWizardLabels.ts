@@ -1,4 +1,4 @@
-import type { ProductOperation } from '../../../../types/catalog';
+import type { CatalogCategoryKind, ProductOperation } from '../../../../types/catalog';
 import type { ProviderOffer } from '../../../../types/provider';
 import type { VariantDraft, WizardSourceMode } from '../../../../types/productWizard';
 
@@ -28,7 +28,11 @@ export const sourceDescriptions: Record<WizardSourceMode, string> = {
   manual_processing: 'Đơn cần Admin xử lý thủ công và không publish.',
 };
 
-export const getCompatibleSources = (operation: ProductOperation): WizardSourceMode[] => {
+export const getCompatibleSources = (operation: ProductOperation, categoryKind?: CatalogCategoryKind | null): WizardSourceMode[] => {
+  if (categoryKind === 'esim') return ['worldmove_esim', 'local_esim', 'hico_manual_qr', 'manual_processing'];
+  if (categoryKind === 'physical_sim') return ['hico_physical', 'worldmove_physical', 'manual_processing'];
+  if (categoryKind === 'topup') return ['worldmove_topup', 'manual_processing'];
+  if (categoryKind === 'device' || categoryKind === 'accessory') return ['hico_physical', 'worldmove_physical', 'manual_processing'];
   if (operation === 'topup') return ['worldmove_topup', 'manual_processing'];
   if (operation === 'device_sale') return ['hico_physical', 'worldmove_physical', 'manual_processing'];
   return [

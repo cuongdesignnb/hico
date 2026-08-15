@@ -6,22 +6,22 @@ import {
   createProduct,
   createVariant,
   getProduct,
+  getAdminCategories,
   updateProduct,
   updateVariant,
 } from '../../../../services/catalogWriteApi';
 import type { ProviderOffer } from '../../../../types/provider';
-import type { CatalogProductRecord } from '../../../../types/catalog';
+import type { CatalogCategory, CatalogProductRecord } from '../../../../types/catalog';
 import type { CoverageOption, ProductDraft, ProductReadinessResult, VariantDraft } from '../../../../types/productWizard';
 import { getCatalogSourceStatus } from '../../../../services/catalogWriteApi';
 import { getWorldmoveOffers } from '../../../../services/providerApi';
 import { useProductReadiness } from '../../../../hooks/catalog/useProductReadiness';
-import { sourceTechnicalFields } from './productWizardLabels';
+import { getCompatibleSources, sourceTechnicalFields } from './productWizardLabels';
 import ConflictAlert from './ConflictAlert';
 import ProductCoverageStep from './ProductCoverageStep';
 import ProductGeneralStep from './ProductGeneralStep';
 import ProductReviewStep from './ProductReviewStep';
-import ProductSourcesStep from './ProductSourcesStep';
-import ProductTypeStep from './ProductTypeStep';
+import ProductCategoryStep from './ProductCategoryStep';
 import ProductVariantsStep from './ProductVariantsStep';
 import ProductWizardFooter from './ProductWizardFooter';
 import ProductWizardHeader from './ProductWizardHeader';
@@ -34,6 +34,8 @@ import './ProductWizard.css';
 interface ProductWizardProps {
   mode: 'create' | 'edit';
   productId?: string;
+  cloneProductId?: string;
+  initialCategoryId?: string;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -41,6 +43,7 @@ interface ProductWizardProps {
 interface LoadedWizardData {
   catalogVersionId: string;
   product?: CatalogProductRecord;
+  categories: CatalogCategory[];
 }
 
 const makeSlug = (value: string) => value
@@ -66,6 +69,8 @@ const makeIdempotencyKey = (sessionId: string, operation: string, entityId: stri
 const buildProductPayload = (product: ProductDraft) => ({
   name: product.name.trim(),
   slug: product.slug.trim(),
+  categoryId: product.categoryId,
+  categoryNeedsReview: false,
   operation: product.operation,
   coverageType: product.coverageType,
   coverageIds: product.coverageIds,
@@ -129,9 +134,10 @@ const buildVariantPayload = (variant: VariantDraft) => {
   };
 };
 
-const validateWizard = (product: ProductDraft, variants: VariantDraft[]) => {
+const validateWizard = (product: ProductDraft, variants: VariantDraft[], categoryKind?: CatalogCategory['kind']) => {
   const errors: Array<{ step: number; field?: string; message: string }> = [];
   const warnings: Array<{ step: number; field?: string; message: string }> = [];
+  if (!product.categoryId) errors.push({ step: 1, field: 'categoryId', message: 'Hãy chọn một danh mục con.' });
   if (!product.name.trim()) errors.push({ step: 2, field: 'name', message: 'Tên sản phẩm là bắt buộc.' });
   if (!product.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(product.slug.trim())) errors.push({ step: 2, field: 'slug', message: 'Slug chỉ dùng chữ thường, số và dấu gạch ngang.' });
   if (product.coverageType === 'country' && product.coverageIds.length !== 1) errors.push({ step: 2, field: 'coverageIds', message: 'Coverage quốc gia phải chọn đúng một quốc gia.' });
@@ -145,17 +151,18 @@ const validateWizard = (product: ProductDraft, variants: VariantDraft[]) => {
     if (skuSet.has(variant.sku.trim())) errors.push({ step: 3, field: `variant-${variant.tempId}-sku`, message: `SKU của gói ${row} bị trùng trong wizard.` });
     skuSet.add(variant.sku.trim());
     if (variant.price.trim() === '' || Number.isNaN(Number(variant.price)) || Number(variant.price) < 0) errors.push({ step: 3, message: `Giá bán của gói ${row} không hợp lệ.` });
-    if (!variant.sourceMode) errors.push({ step: 4, message: `Gói ${row} chưa chọn nguồn cấp.` });
-    if (variant.sourceMode === 'hico_physical' && (!/^\d+$/.test(variant.stock) || Number(variant.stock) < 0)) errors.push({ step: 4, message: `Tồn kho của gói ${row} phải là số nguyên không âm.` });
-    if (variant.sourceMode && ['worldmove_esim', 'local_esim', 'worldmove_physical', 'worldmove_topup'].includes(variant.sourceMode) && !variant.providerOfferId) errors.push({ step: 4, message: `Gói ${row} cần chọn Provider Offer active.` });
+    if (!variant.sourceMode) errors.push({ step: 3, message: `Gói ${row} chưa chọn nguồn cấp.` });
+    if (variant.sourceMode && !getCompatibleSources(product.operation, categoryKind).includes(variant.sourceMode)) errors.push({ step: 3, message: `Nguồn cấp của gói ${row} không khớp danh mục đã chọn.` });
+    if (variant.sourceMode === 'hico_physical' && (!/^\d+$/.test(variant.stock) || Number(variant.stock) < 0)) errors.push({ step: 3, message: `Tồn kho của gói ${row} phải là số nguyên không âm.` });
+    if (variant.sourceMode && ['worldmove_esim', 'local_esim', 'worldmove_physical', 'worldmove_topup'].includes(variant.sourceMode) && !variant.providerOfferId) errors.push({ step: 3, message: `Gói ${row} cần chọn Provider Offer active.` });
     if (variant.compareAtPrice && Number(variant.compareAtPrice) < Number(variant.price)) warnings.push({ step: 3, message: `Giá so sánh của gói ${row} thấp hơn giá bán.` });
-    if (variant.sourceMode === 'manual_processing') warnings.push({ step: 4, message: `Gói ${row} là xử lý thủ công và sẽ không publishable.` });
+    if (variant.sourceMode === 'manual_processing') warnings.push({ step: 3, message: `Gói ${row} là xử lý thủ công và sẽ không publishable.` });
   });
   return { errors, warnings };
 };
 
-const ProductWizardBody = ({ data, mode, onClose, onSaved }: { data: LoadedWizardData; mode: 'create' | 'edit'; onClose: () => void; onSaved: () => void }) => {
-  const wizard = useProductWizard({ mode, catalogVersionId: data.catalogVersionId, product: data.product });
+const ProductWizardBody = ({ data, mode, initialCategoryId, onClose, onSaved }: { data: LoadedWizardData; mode: 'create' | 'edit'; initialCategoryId?: string; onClose: () => void; onSaved: () => void }) => {
+  const wizard = useProductWizard({ mode, catalogVersionId: data.catalogVersionId, product: data.product, initialCategoryId });
   const [offers, setOffers] = useState<ProviderOffer[]>([]);
   const [offersLoading, setOffersLoading] = useState(true);
   const [coverageOptions, setCoverageOptions] = useState<CoverageOption[]>([]);
@@ -163,6 +170,7 @@ const ProductWizardBody = ({ data, mode, onClose, onSaved }: { data: LoadedWizar
   const [showUnsaved, setShowUnsaved] = useState(false);
   const [conflictMessage, setConflictMessage] = useState('');
   const { readiness, loading: readinessLoading, checkReadiness } = useProductReadiness();
+  const selectedCategory = data.categories.find((category) => category.id === wizard.state.product.categoryId);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -183,14 +191,14 @@ const ProductWizardBody = ({ data, mode, onClose, onSaved }: { data: LoadedWizar
       return;
     }
 
-    const validation = validateWizard(wizard.state.product, wizard.state.variants);
+    const validation = validateWizard(wizard.state.product, wizard.state.variants, selectedCategory?.kind);
     wizard.setValidation(validation.errors, validation.warnings);
     const blocked = validation.errors.some((error) => error.step <= wizard.state.step);
     if (!blocked) wizard.setStep(targetStep);
   };
 
   const save = async () => {
-    const validation = validateWizard(wizard.state.product, wizard.state.variants);
+    const validation = validateWizard(wizard.state.product, wizard.state.variants, selectedCategory?.kind);
     wizard.setValidation(validation.errors, validation.warnings);
     if (validation.errors.length > 0 || !wizard.state.catalogVersionId) return;
     wizard.markSaving(true);
@@ -244,15 +252,20 @@ const ProductWizardBody = ({ data, mode, onClose, onSaved }: { data: LoadedWizar
     }
   };
 
+  const applySourceToAll = (sourceMode: VariantDraft['sourceMode']) => {
+    if (!sourceMode) return;
+    for (const variant of wizard.state.variants) {
+      wizard.updateVariant(variant.tempId, { sourceMode, providerOfferId: undefined, wmproductId: undefined, providerProductId: undefined, providerProductType: undefined, leSIM: undefined });
+    }
+  };
+
   const content = wizard.state.step === 1
-    ? <ProductTypeStep value={wizard.state.product.operation} onChange={(operation) => wizard.updateProduct({ operation })} />
+    ? <ProductCategoryStep categories={data.categories} categoryId={wizard.state.product.categoryId} onChange={(categoryId, operation) => wizard.updateProduct({ categoryId, operation })} />
     : wizard.state.step === 2
       ? <><ProductGeneralStep product={wizard.state.product} onChange={wizard.updateProduct} onGenerateSlug={() => wizard.updateProduct({ slug: makeSlug(wizard.state.product.name) })} /><ProductCoverageStep product={wizard.state.product} options={coverageOptions} loading={coverageLoading} onChange={wizard.updateProduct} /></>
       : wizard.state.step === 3
-        ? <ProductVariantsStep variants={wizard.state.variants} onAdd={wizard.addVariant} onUpdate={wizard.updateVariant} onDuplicate={wizard.duplicateVariant} onRemove={wizard.removeVariant} />
-        : wizard.state.step === 4
-          ? <ProductSourcesStep operation={wizard.state.product.operation} variants={wizard.state.variants} offers={offers} offersLoading={offersLoading} onUpdate={wizard.updateVariant} />
-          : <ProductReviewStep state={wizard.state} readiness={readiness as ProductReadinessResult | null} readinessLoading={readinessLoading} onCheckReadiness={() => { if (wizard.state.productId) void checkReadiness(wizard.state.productId); }} />;
+        ? <ProductVariantsStep operation={wizard.state.product.operation} categoryKind={selectedCategory?.kind} variants={wizard.state.variants} offers={offers} offersLoading={offersLoading} onAdd={wizard.addVariant} onAddProviderOffers={wizard.addProviderOffers} onApplySource={applySourceToAll} onUpdate={wizard.updateVariant} onDuplicate={wizard.duplicateVariant} onRemove={wizard.removeVariant} />
+        : <ProductReviewStep state={wizard.state} readiness={readiness as ProductReadinessResult | null} readinessLoading={readinessLoading} onCheckReadiness={() => { if (wizard.state.productId) void checkReadiness(wizard.state.productId); }} />;
 
   return (
     <div className="product-wizard-backdrop" role="presentation">
@@ -270,7 +283,7 @@ const ProductWizardBody = ({ data, mode, onClose, onSaved }: { data: LoadedWizar
   );
 };
 
-const ProductWizard = ({ mode, productId, onClose, onSaved }: ProductWizardProps) => {
+const ProductWizard = ({ mode, productId, cloneProductId, initialCategoryId, onClose, onSaved }: ProductWizardProps) => {
   const [data, setData] = useState<LoadedWizardData | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -279,20 +292,21 @@ const ProductWizard = ({ mode, productId, onClose, onSaved }: ProductWizardProps
     const controller = new AbortController();
     Promise.all([
       getCatalogSourceStatus(),
-      mode === 'edit' && productId ? getProduct(productId, controller.signal) : Promise.resolve(null),
-    ]).then(([sourceStatus, productResponse]) => {
+      getAdminCategories(controller.signal),
+      (mode === 'edit' && productId) || cloneProductId ? getProduct((mode === 'edit' ? productId : cloneProductId) as string, controller.signal) : Promise.resolve(null),
+    ]).then(([sourceStatus, categoryResponse, productResponse]) => {
       if (!sourceStatus.canonicalVersion) throw new Error('Canonical catalog chưa sẵn sàng để ghi.');
       const product = productResponse ? { ...productResponse.product, variants: productResponse.variants } : undefined;
-      setData({ catalogVersionId: sourceStatus.canonicalVersion, product });
+      setData({ catalogVersionId: sourceStatus.canonicalVersion, product, categories: categoryResponse.items });
     }).catch((loadError: unknown) => {
       if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : 'Không thể mở Product Wizard.');
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [mode, productId]);
+  }, [cloneProductId, mode, productId]);
 
   if (loading) return <div className="product-wizard-backdrop" role="status"><div className="product-wizard-loading"><LoaderCircle className="catalog-spinner" size={24} /> Đang tải Product Wizard...</div></div>;
   if (error || !data) return <div className="product-wizard-backdrop" role="presentation"><div className="product-wizard-loading product-wizard-loading-error"><AlertCircle size={22} /><strong>{error || 'Không có dữ liệu Product Wizard.'}</strong><button type="button" className="product-wizard-secondary-button" onClick={onClose}>Đóng</button></div></div>;
-  return <ProductWizardBody key={data.product?.id || 'new'} data={data} mode={mode} onClose={onClose} onSaved={onSaved} />;
+  return <ProductWizardBody key={`${mode}-${data.product?.id || 'new'}`} data={data} mode={mode} initialCategoryId={initialCategoryId} onClose={onClose} onSaved={onSaved} />;
 };
 
 export default ProductWizard;

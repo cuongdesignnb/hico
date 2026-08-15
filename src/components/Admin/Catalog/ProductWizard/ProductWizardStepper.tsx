@@ -3,7 +3,7 @@ interface ProductWizardStepperProps {
   onStepClick: (step: number) => void;
 }
 
-const steps = ['Loại sản phẩm', 'Thông tin chung', 'Gói bán', 'Nguồn cấp', 'Kiểm tra & lưu'];
+const steps = ['Danh mục & loại', 'Thông tin & nội dung', 'Biến thể & nguồn', 'Kiểm tra & lưu'];
 
 const ProductWizardStepper = ({ step, onStepClick }: ProductWizardStepperProps) => (
   <nav className="product-wizard-stepper" aria-label="Các bước tạo sản phẩm">

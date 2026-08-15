@@ -15,7 +15,7 @@ const ProductWizardFooter = ({ step, saving, dirty, onBack, onNext, onSave }: Pr
       <ArrowLeft size={16} /> Quay lại
     </button>
     <span className="product-wizard-save-state">{dirty ? 'Có thay đổi chưa lưu' : 'Đã đồng bộ'}</span>
-    {step < 5 ? (
+    {step < 4 ? (
       <button type="button" className="product-wizard-primary-button" onClick={onNext} disabled={saving}>
         Tiếp theo <ArrowRight size={16} />
       </button>

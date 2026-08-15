@@ -1,4 +1,4 @@
-import { AlertTriangle, Pencil } from 'lucide-react';
+import { AlertTriangle, Copy, Pencil } from 'lucide-react';
 import type {
   CatalogAdminProductSummary,
   CatalogStatus,
@@ -11,6 +11,7 @@ import type { BulkEntityType } from '../../../types/catalogBulk';
 interface ProductTableProps {
   products: CatalogAdminProductSummary[];
   onEdit: (productId: string) => void;
+  onClone: (productId: string) => void;
   entityType: BulkEntityType;
   selectedIds: string[];
   onTogglePage: (ids: string[]) => void;
@@ -75,7 +76,7 @@ const getSupplierSummary = (product: CatalogAdminProductSummary) => {
   return suppliers.map((supplier) => supplierLabels[supplier]).join(', ');
 };
 
-const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage }: ProductTableProps) => {
+const ProductTable = ({ products, onEdit, onClone, entityType, selectedIds, onTogglePage }: ProductTableProps) => {
   const pageIds = products.flatMap((product) => entityType === 'product' ? [product.id] : product.variantIds);
   const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
 
@@ -86,6 +87,7 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage 
         <tr>
           <th className="catalog-select-cell"><input type="checkbox" checked={allSelected} onChange={() => onTogglePage(pageIds)} aria-label="Chọn toàn bộ trang" /></th>
           <th>Sản phẩm</th>
+          <th>Danh mục</th>
           <th>Loại nghiệp vụ</th>
           <th>Vùng phủ</th>
           <th>Số gói</th>
@@ -133,6 +135,7 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage 
                   </div>
                 </div>
               </td>
+              <td>{product.categoryPath?.length ? product.categoryPath.map((item) => item.name).join(' / ') : <span className="catalog-review-warning"><AlertTriangle size={12} /> Chưa phân loại</span>}</td>
               <td>{operationLabels[product.operation]}</td>
               <td>{coverageLabels[product.coverageType]}</td>
               <td>{product.variantCount.toLocaleString('vi-VN')}</td>
@@ -144,6 +147,9 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage 
                 </span>
               </td>
               <td>
+                <button type="button" className="catalog-icon-button" onClick={() => onClone(product.id)} aria-label={`Nhân bản sản phẩm ${product.name}`} title="Nhân bản sản phẩm">
+                  <Copy size={15} />
+                </button>
                 <button type="button" className="catalog-icon-button" onClick={() => onEdit(product.id)} aria-label={`Sửa sản phẩm ${product.name}`} title="Sửa sản phẩm">
                   <Pencil size={15} />
                 </button>
