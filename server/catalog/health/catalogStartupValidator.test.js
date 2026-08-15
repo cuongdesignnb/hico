@@ -3,7 +3,11 @@ import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { checksumCatalog } from '../canonical/canonicalCatalogChecksum.js';
+import {
+  checksumCatalog,
+  checksumRecords,
+  sha256,
+} from '../canonical/canonicalCatalogChecksum.js';
 import { cloneSeedCategories } from '../categories/catalogCategories.js';
 import { createCatalogVersionCommitService } from '../write/catalogVersionCommitService.js';
 import {
@@ -84,6 +88,44 @@ test('startup validator accepts a complete canonical pointer and ignores a mirro
   await writeFile(path.join(uploadsDirectory, 'catalog_products.json'), '{"mirror":"stale"}\n', 'utf8');
   const afterMirrorMismatch = await validateCanonicalCatalogStorage({ uploadsDirectory });
   assert.equal(afterMirrorMismatch.healthy, true);
+});
+
+test('startup validator accepts a legacy v1 pointer without schemaVersion or versionId', async (t) => {
+  const { uploadsDirectory, versionDirectory } = await setup(t);
+  const currentFile = path.join(uploadsDirectory, 'catalog_current.json');
+  const manifestFile = path.join(versionDirectory, 'manifest.json');
+  const legacyManifest = {
+    migrationId: 'catalog-base',
+    productsFile: 'catalog_versions/catalog-base/catalog_products.json',
+    variantsFile: 'catalog_versions/catalog-base/catalog_variants.json',
+    productsChecksum: checksumRecords(products),
+    variantsChecksum: checksumRecords(variants),
+    businessChecksum: sha256(`${checksumRecords(products, { business: true })}:${checksumRecords(variants, { business: true })}`),
+    createdAt: timestamp,
+  };
+  await writeJson(currentFile, legacyManifest);
+  await writeJson(manifestFile, legacyManifest);
+
+  const result = await validateCanonicalCatalogStorage({ uploadsDirectory });
+
+  assert.deepEqual(
+    {
+      versionId: result.versionId,
+      schemaVersion: result.schemaVersion,
+      products: result.products,
+      variants: result.variants,
+      categories: result.categories,
+      checksumValid: result.checksumValid,
+    },
+    {
+      versionId: 'catalog-base',
+      schemaVersion: 1,
+      products: 1,
+      variants: 1,
+      categories: categories.length,
+      checksumValid: true,
+    },
+  );
 });
 
 test('startup validator reports pointer, version, manifest and file failures', async (t) => {

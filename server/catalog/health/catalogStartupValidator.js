@@ -92,7 +92,8 @@ const validateManifest = (manifest) => {
   if (typeof versionId !== 'string' || !safeVersionId.test(versionId) || versionId.startsWith('.')) {
     fail('Canonical catalog version is invalid.', 'CATALOG_VERSION_MISSING');
   }
-  const schemaVersion = manifest.schemaVersion ?? SUPPORTED_CATALOG_SCHEMA_VERSION;
+  // Legacy manifests predate schemaVersion and category snapshots; treat them as v1.
+  const schemaVersion = manifest.schemaVersion ?? 1;
   if (!SUPPORTED_SCHEMA_VERSIONS.has(schemaVersion)) {
     fail('Canonical catalog schema version is unsupported.', 'CATALOG_SCHEMA_UNSUPPORTED');
   }
