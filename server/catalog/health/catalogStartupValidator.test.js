@@ -4,12 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { checksumCatalog } from '../canonical/canonicalCatalogChecksum.js';
+import { cloneSeedCategories } from '../categories/catalogCategories.js';
 import { createCatalogVersionCommitService } from '../write/catalogVersionCommitService.js';
 import {
   validateCanonicalCatalogStorage,
 } from './catalogStartupValidator.js';
 
 const timestamp = '2026-07-31T00:00:00.000Z';
+const categories = cloneSeedCategories();
 const products = [{
   id: 'product-1',
   name: 'Product 1',
@@ -56,6 +58,7 @@ const setup = async (t) => {
     parentVersionId: null,
     products,
     variants,
+    categories,
     commandType: 'MIGRATE',
     commandId: 'migration',
     requestHash: 'migration',
@@ -122,7 +125,7 @@ test('startup validator reports duplicate IDs and orphan variants after checksum
   const nextVariants = [{ ...variants[0], productId: 'missing-product' }];
   await writeJson(productsFile, nextProducts);
   await writeJson(variantsFile, nextVariants);
-  const checksums = checksumCatalog({ products: nextProducts, variants: nextVariants });
+  const checksums = checksumCatalog({ products: nextProducts, variants: nextVariants, categories });
   const current = await readJson(currentFile);
   const manifest = await readJson(manifestFile);
   Object.assign(current, checksums);

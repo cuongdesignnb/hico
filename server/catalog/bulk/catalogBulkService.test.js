@@ -16,6 +16,8 @@ const product = {
   name: 'Product 1',
   slug: 'product-1',
   operation: 'new_subscription',
+  categoryId: 'cat-esim-du-lich',
+  categoryNeedsReview: false,
   coverageType: 'country',
   coverageIds: ['vn'],
   featured: false,

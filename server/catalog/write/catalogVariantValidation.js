@@ -8,6 +8,7 @@ import {
   normalizePublicContent,
   PUBLIC_CONTENT_FIELDS,
 } from './catalogContractFields.js';
+import { PUBLIC_SKU_PATTERN } from '../public/publicSku.js';
 
 const CURRENCIES = new Set(['VND', 'USD']);
 const MEDIUMS = new Set(['esim', 'physical_sim', null]);
@@ -26,6 +27,7 @@ const ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/;
 const VARIANT_FIELDS = new Set([
   'id',
   'sku',
+  'publicSku',
   'dataLimit',
   'duration',
   'price',
@@ -82,6 +84,10 @@ export const normalizeVariantInput = (input, { partial = false } = {}) => {
   if (!partial || input.sku !== undefined) {
     result.sku = requireNonEmptyString(input.sku, 'variant.sku');
     if (result.sku.length > 160) throw new CatalogWriteError('variant.sku quá dài.');
+  }
+  if (input.publicSku !== undefined) {
+    result.publicSku = requireNonEmptyString(input.publicSku, 'variant.publicSku').toUpperCase();
+    if (!PUBLIC_SKU_PATTERN.test(result.publicSku)) throw new CatalogWriteError('variant.publicSku không hợp lệ.');
   }
   for (const field of ['dataLimit', 'duration']) {
     if (input[field] !== undefined) {
@@ -220,6 +226,7 @@ export const validateVariantRecord = ({
     normalizeVariantInput({
       id: variant.id,
       sku: variant.sku,
+      publicSku: variant.publicSku,
       dataLimit: variant.dataLimit,
       duration: variant.duration,
       price: variant.price,

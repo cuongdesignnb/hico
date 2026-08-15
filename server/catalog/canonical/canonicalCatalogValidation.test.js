@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateCanonicalCatalog } from './canonicalCatalogValidation.js';
+import { cloneSeedCategories } from '../categories/catalogCategories.js';
 
 const product = (overrides = {}) => ({
   id: 'p1',
@@ -100,4 +101,20 @@ test('reports invalid provider mapping and orphan manual QR', () => {
   assert.equal(result.valid, false);
   assert.deepEqual(result.orphanManualQrs, ['qr-1']);
   assert.match(result.errors.join(' '), /missing provider offer/);
+});
+
+test('rejects a fulfillment medium that conflicts with the assigned category kind', () => {
+  const result = validateCanonicalCatalog({
+    products: [product({ categoryId: 'cat-esim-du-lich', categoryNeedsReview: false })],
+    variants: [variant({
+      medium: 'physical_sim',
+      supplier: 'hico',
+      fulfillmentMethod: 'HICO_PHYSICAL_STOCK',
+      stock: 1,
+      needsReview: false,
+    })],
+    categories: cloneSeedCategories(),
+  });
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(' '), /does not match its eSIM category/);
 });

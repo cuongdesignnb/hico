@@ -5,8 +5,13 @@ import {
 import { getSeoVisibility } from '../seo/seoVisibility.js';
 import { publicVariantsForProduct, toPublicProduct } from './publicCatalogProjection.js';
 import { createProviderOfferRepository } from '../providers/providerOfferRepository.js';
+import {
+  categoryFilterIds,
+  cloneSeedCategories,
+  projectProductCategory,
+} from './categories/catalogCategories.js';
 
-const attachVariants = ({ products, variants }) => {
+const attachVariants = ({ products, variants, categories = cloneSeedCategories() }) => {
   const variantsByProduct = new Map();
 
   for (const variant of variants) {
@@ -15,10 +20,13 @@ const attachVariants = ({ products, variants }) => {
     variantsByProduct.set(variant.productId, productVariants);
   }
 
-  return products.map((product) => ({
-    ...product,
-    variants: variantsByProduct.get(product.id) ?? [],
-}));
+  return products.map((product) => {
+    const productVariants = variantsByProduct.get(product.id) ?? [];
+    return {
+      ...projectProductCategory(product, productVariants, categories),
+      variants: productVariants,
+    };
+  });
 };
 
 const versionIdFor = (manifest) => manifest?.versionId ?? manifest?.migrationId ?? null;
@@ -53,6 +61,9 @@ const toAdminProductSummary = (product) => {
   slug: product.slug,
   name: product.name,
   operation: product.operation,
+  categoryId: product.categoryId ?? null,
+  categoryPath: product.categoryPath ?? [],
+  categoryNeedsReview: product.categoryNeedsReview === true,
   coverageType: product.coverageType,
   coverageIds: Array.isArray(product.coverageIds) ? [...product.coverageIds] : [],
   image: product.image ?? null,
@@ -70,6 +81,8 @@ const matchesAdminFilters = (product, filters) => {
     ? filters.search.trim().toLocaleLowerCase('vi-VN')
     : '';
   if (filters.operation && product.operation !== filters.operation) return false;
+  if (filters.categoryIds?.size && !filters.categoryIds.has(product.categoryId)) return false;
+  if (filters.unresolved === true && product.categoryId && !product.categoryNeedsReview) return false;
   if (filters.coverage && product.coverageType !== filters.coverage) return false;
   if (filters.medium && !product.variants.some((variant) => variant.medium === filters.medium)) return false;
   if (filters.supplier && !product.variants.some((variant) => variant.supplier === filters.supplier)) return false;
@@ -92,6 +105,7 @@ export const createCatalogService = (
   const publicMediaAssets = async () => mediaAssetRepository?.list?.() ?? [];
   const publicProviderOffers = async () => providerRepository?.listOffers?.() ?? [];
   let cachedModel = null;
+  let cachedCategories = null;
   let cachedVersion = null;
   const readModel = async () => {
     const catalog = typeof reader.readCatalog === 'function'
@@ -99,17 +113,19 @@ export const createCatalogService = (
       : mapLegacyCatalog(await reader.readLegacyCatalog());
     const version = versionIdFor(catalog.manifest);
     if (!cachedModel || version === null || cachedVersion !== version) {
-      cachedModel = attachVariants(catalog);
+      cachedCategories = catalog.categories ?? cloneSeedCategories();
+      cachedModel = attachVariants({ ...catalog, categories: cachedCategories });
       cachedVersion = version;
     }
-    return { products: cachedModel, versionId: version };
+    return { products: cachedModel, categories: cachedCategories, versionId: version };
   };
 
   return {
     async listAdminProducts({ filters = {}, paginate = false } = {}) {
-      const { products, versionId } = await readModel();
+      const { products, categories, versionId } = await readModel();
       if (!paginate) return products;
-      const filtered = products.filter((product) => matchesAdminFilters(product, filters));
+      const categoryIds = filters.category ? categoryFilterIds(categories, filters.category) : new Set();
+      const filtered = products.filter((product) => matchesAdminFilters(product, { ...filters, categoryIds }));
       const page = Math.max(1, Number.parseInt(filters.page ?? '1', 10) || 1);
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(filters.pageSize ?? '20', 10) || 20));
       const start = (page - 1) * pageSize;
@@ -131,7 +147,8 @@ export const createCatalogService = (
     },
 
     async listPublicProducts({ filters = {}, paginate = false } = {}) {
-      const { products } = await readModel();
+      const { products, categories } = await readModel();
+      const categoryIds = filters.category ? categoryFilterIds(categories, filters.category) : new Set();
       const [mediaAssets, providerOffers] = await Promise.all([publicMediaAssets(), publicProviderOffers()]);
       const publicProducts = products
         .filter((product) => getSeoVisibility(product, product.variants).public)
@@ -139,6 +156,7 @@ export const createCatalogService = (
       const normalizedSearch = typeof filters.search === 'string' ? filters.search.trim().toLocaleLowerCase('vi-VN') : '';
       const filtered = publicProducts.filter((product) => {
         if (filters.operation && product.operation !== filters.operation) return false;
+        if (categoryIds.size && !categoryIds.has(product.categoryId)) return false;
         if (filters.medium && !product.variants.some((variant) => variant.medium === filters.medium)) return false;
         if (filters.supplier && !product.variants.some((variant) => variant.supplier === filters.supplier)) return false;
         if (filters.currency && !product.variants.some((variant) => variant.currency === filters.currency)) return false;
@@ -169,6 +187,24 @@ export const createCatalogService = (
         items: sorted.slice(start, start + pageSize),
         pagination: { page, pageSize, total: sorted.length, totalPages: Math.ceil(sorted.length / pageSize) },
       };
+    },
+
+    async listPublicCategories() {
+      const { products, categories } = await readModel();
+      return categories
+        .filter((category) => category.status === 'active')
+        .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, 'vi'))
+        .map((category) => ({
+          id: category.id,
+          slug: category.slug,
+          name: category.name,
+          parentId: category.parentId,
+          kind: category.kind,
+          sortOrder: category.sortOrder,
+          productCount: category.parentId
+            ? products.filter((product) => product.categoryId === category.id && product.status === 'active').length
+            : products.filter((product) => categories.some((child) => child.parentId === category.id && child.id === product.categoryId) && product.status === 'active').length,
+        }));
     },
 
     async getPublicProduct(productId) {

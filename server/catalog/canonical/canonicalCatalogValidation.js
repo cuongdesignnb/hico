@@ -1,3 +1,11 @@
+import {
+  categoryById,
+  isLeafCategory,
+  operationForCategoryKind,
+  validateCategories,
+} from '../categories/catalogCategories.js';
+import { PUBLIC_SKU_PATTERN } from '../public/publicSku.js';
+
 const PRODUCT_OPERATIONS = new Set([
   'new_subscription',
   'topup',
@@ -72,6 +80,7 @@ export class CanonicalCatalogValidationError extends Error {
 export const validateCanonicalCatalog = ({
   products,
   variants,
+  categories = [],
   providerOffers,
   manualQrs,
 }) => {
@@ -79,12 +88,17 @@ export const validateCanonicalCatalog = ({
   const warnings = [];
   const productList = Array.isArray(products) ? products : [];
   const variantList = Array.isArray(variants) ? variants : [];
+  const categoryList = Array.isArray(categories) ? categories : [];
+  const categoryValidation = validateCategories(categoryList);
+  errors.push(...categoryValidation.errors);
   const duplicateProductIds = findDuplicates(productList.map((item) => item?.id));
   const duplicateVariantIds = findDuplicates(variantList.map((item) => item?.id));
   const duplicateSkus = findDuplicates(variantList.map((item) => item?.sku));
+  const duplicatePublicSkus = findDuplicates(variantList.map((item) => item?.publicSku).filter(Boolean));
   const duplicateSkuSet = new Set(duplicateSkus);
   const duplicateSlugs = findDuplicates(productList.map((item) => item?.slug));
   const productIds = new Set(productList.map((item) => item?.id));
+  const productsById = new Map(productList.map((item) => [item?.id, item]));
   const variantIds = new Set(variantList.map((item) => item?.id));
   const providerOfferList = providerOffers ?? [];
   const manualQrList = manualQrs ?? [];
@@ -116,6 +130,7 @@ export const validateCanonicalCatalog = ({
       `${duplicateSkus.length} duplicate legacy SKU values require review.`,
     );
   }
+  if (duplicatePublicSkus.length) errors.push('Duplicate canonical public SKU values.');
 
   for (const product of productList) {
     const label = `Product ${product?.id ?? '<missing>'}`;
@@ -137,6 +152,16 @@ export const validateCanonicalCatalog = ({
     if (!CATALOG_STATUSES.has(product?.status)) {
       errors.push(`${label} has invalid status.`);
     }
+    if (product?.categoryId) {
+      const category = categoryById(categoryList, product.categoryId);
+      if (!category || !isLeafCategory(category, categoryList)) {
+        errors.push(`${label} references an invalid leaf category.`);
+      } else if (operationForCategoryKind(category.kind) !== product.operation) {
+        errors.push(`${label} operation does not match its category kind.`);
+      }
+    } else {
+      warnings.push(`${label} requires category review.`);
+    }
     if (!Number.isInteger(product?.version) || product.version < 1) {
       errors.push(`${label} has invalid version.`);
     }
@@ -154,9 +179,25 @@ export const validateCanonicalCatalog = ({
     }
     if (!isNonEmptyString(variant?.id)) errors.push(`${label} has invalid id.`);
     if (!isNonEmptyString(variant?.sku)) errors.push(`${label} has invalid sku.`);
+    if (variant?.publicSku !== undefined && !PUBLIC_SKU_PATTERN.test(variant.publicSku)) {
+      errors.push(`${label} has invalid publicSku.`);
+    }
     if (!productIds.has(variant?.productId)) {
       orphanVariants.push(variant?.id);
       errors.push(`${label} references a missing product.`);
+    }
+    const variantProduct = productsById.get(variant?.productId);
+    const variantCategory = categoryById(categoryList, variantProduct?.categoryId);
+    if (variantCategory && variant?.fulfillmentMethod !== 'MANUAL_PROCESSING') {
+      if (variantCategory.kind === 'esim' && variant.medium !== 'esim') {
+        errors.push(`${label} medium does not match its eSIM category.`);
+      }
+      if (['physical_sim', 'device', 'accessory'].includes(variantCategory.kind) && variant.medium !== 'physical_sim') {
+        errors.push(`${label} medium does not match its physical category.`);
+      }
+      if (variantCategory.kind === 'topup' && variant.fulfillmentMethod !== 'WORLDMOVE_TOPUP') {
+        errors.push(`${label} fulfillment does not match its top-up category.`);
+      }
     }
     if (!isNonNegativeNumber(variant?.price)) {
       errors.push(`${label} has invalid price.`);

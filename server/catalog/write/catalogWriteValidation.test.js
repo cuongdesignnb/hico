@@ -20,6 +20,8 @@ const product = {
   name: 'eSIM Nhật Bản',
   slug: 'esim-nhat-ban',
   operation: 'new_subscription',
+  categoryId: 'cat-esim-du-lich',
+  categoryNeedsReview: false,
   coverageType: 'country',
   coverageIds: ['jp'],
   image: '/images/japan.png',

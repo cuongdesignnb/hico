@@ -37,6 +37,23 @@ import {
   defaultUploadsDirectory,
   readJson,
 } from './catalogWritePersistence.js';
+import {
+  backfillProductCategories,
+  categoryById,
+  categoryFilterIds,
+  categoryPath,
+  isLeafCategory,
+  operationForCategoryKind,
+  projectProductCategory,
+} from '../categories/catalogCategories.js';
+import {
+  backfillVariantPublicSkus,
+  publicSkuForVariantId,
+} from '../public/publicSku.js';
+import {
+  assertCategoryCollection,
+  normalizeCategoryInput,
+} from '../categories/catalogCategoryValidation.js';
 
 const currentVersionId = (manifest) => (
   manifest?.versionId ?? manifest?.migrationId
@@ -100,6 +117,42 @@ const assertValidEntity = (result) => {
         },
       },
     );
+  }
+};
+
+const assertUniquePublicSku = (variants, publicSku, exceptId) => {
+  if (variants.some((variant) => variant.id !== exceptId && variant.publicSku === publicSku)) {
+    throw new CatalogWriteError('Public SKU đã tồn tại.', {
+      status: 409,
+      code: 'PUBLIC_SKU_CONFLICT',
+    });
+  }
+};
+
+const assertProductCategory = (product, categories, { required = false } = {}) => {
+  if (!product.categoryId) {
+    if (required) {
+      throw new CatalogWriteError('Product phải thuộc một danh mục con.', {
+        code: 'CATEGORY_REQUIRED',
+      });
+    }
+    return;
+  }
+  const category = categoryById(categories, product.categoryId);
+  if (!category || !isLeafCategory(category, categories)) {
+    throw new CatalogWriteError('Danh mục Product không hợp lệ.', {
+      code: 'CATEGORY_INVALID',
+    });
+  }
+  if (category.status !== 'active') {
+    throw new CatalogWriteError('Danh mục Product đã ngừng sử dụng.', {
+      code: 'CATEGORY_ARCHIVED',
+    });
+  }
+  if (operationForCategoryKind(category.kind) !== product.operation) {
+    throw new CatalogWriteError('Loại nghiệp vụ không khớp danh mục.', {
+      code: 'CATEGORY_OPERATION_MISMATCH',
+    });
   }
 };
 
@@ -175,6 +228,7 @@ export const createCatalogWriteService = ({
     context,
     products,
     variants,
+    categories = context.categories,
     commandType,
     commandId,
     hash,
@@ -189,6 +243,7 @@ export const createCatalogWriteService = ({
     assertCanonicalCatalog({
       products,
       variants: nextVariants,
+      categories,
       providerOffers: validateExternalMappings
         ? context.providerOffers
         : undefined,
@@ -229,6 +284,7 @@ export const createCatalogWriteService = ({
       parentVersionId: currentVersionId(context.manifest),
       products,
       variants: nextVariants,
+      categories,
       commandType,
       commandId,
       requestHash: hash,
@@ -270,6 +326,150 @@ export const createCatalogWriteService = ({
   });
 
   return {
+    async listCategories() {
+      const context = await readContext();
+      const projected = context.products.map((product) => projectProductCategory(
+        product,
+        context.variants,
+        context.categories,
+      ));
+      return {
+        items: [...context.categories]
+          .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, 'vi'))
+          .map((category) => ({
+            ...category,
+            path: categoryPath(context.categories, category.id),
+            productCount: projected.filter((product) => categoryFilterIds(context.categories, category.id).has(product.categoryId)).length,
+          })),
+        unresolvedCount: projected.filter((product) => !product.categoryId || product.categoryNeedsReview).length,
+        catalogVersionId: currentVersionId(context.manifest),
+      };
+    },
+
+    createCategory(request, actor) {
+      requireObject(request, 'request');
+      return execute({
+        operation: 'CREATE_CATEGORY', request, actor,
+        handler: async ({ commandId, requestHash: hash }) => {
+          const context = await readContext();
+          requireBaseVersion(request, context.manifest);
+          const input = normalizeCategoryInput(request.category);
+          const timestamp = now().toISOString();
+          const category = {
+            ...input,
+            id: input.id ?? idFactory('category'),
+            status: input.status ?? 'active',
+            version: 1,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+          if (context.categories.some((item) => item.id === category.id)) throw new CatalogWriteError('Category ID đã tồn tại.', { status: 409, code: 'CATEGORY_ID_CONFLICT' });
+          if (context.categories.some((item) => item.slug === category.slug)) throw new CatalogWriteError('Category slug đã tồn tại.', { status: 409, code: 'CATEGORY_SLUG_CONFLICT' });
+          const categories = [...context.categories, category];
+          assertCategoryCollection(categories);
+          const committed = await commit({
+            context, products: context.products, variants: context.variants, categories,
+            commandType: 'CREATE_CATEGORY', commandId, hash,
+            audit: { actor, entityType: 'category', entityId: category.id, afterVersion: 1, changedFields: Object.keys(category).filter((field) => !['createdAt', 'updatedAt'].includes(field)) },
+          });
+          return { status: 201, catalogVersionId: committed.versionId, body: { category, catalogVersionId: committed.versionId, warnings: committed.warnings } };
+        },
+      });
+    },
+
+    updateCategory(categoryId, request, actor) {
+      requireObject(request, 'request');
+      return execute({
+        operation: `UPDATE_CATEGORY:${categoryId}`, request, actor,
+        handler: async ({ commandId, requestHash: hash }) => {
+          const context = await readContext();
+          requireBaseVersion(request, context.manifest);
+          const existing = categoryById(context.categories, categoryId);
+          if (!existing) throw new CatalogWriteError('Không tìm thấy category.', { status: 404, code: 'CATEGORY_NOT_FOUND' });
+          assertEntityVersion(requirePositiveVersion(request.version), existing.version);
+          if (request.changes?.id !== undefined) throw new CatalogWriteError('Không được thay đổi category ID.');
+          const changes = normalizeCategoryInput(request.changes, { partial: true });
+          const assigned = context.products.some((product) => product.categoryId === categoryId);
+          if (assigned && ((changes.kind !== undefined && changes.kind !== existing.kind) || (changes.parentId !== undefined && changes.parentId !== existing.parentId))) {
+            throw new CatalogWriteError('Không thể đổi loại hoặc cấp của category đang có Product.', { status: 409, code: 'CATEGORY_IN_USE' });
+          }
+          if (changes.slug && context.categories.some((item) => item.id !== categoryId && item.slug === changes.slug)) throw new CatalogWriteError('Category slug đã tồn tại.', { status: 409, code: 'CATEGORY_SLUG_CONFLICT' });
+          const updated = { ...existing, ...changes, version: existing.version + 1, updatedAt: now().toISOString() };
+          const categories = context.categories.map((category) => category.id === categoryId ? updated : category);
+          assertCategoryCollection(categories);
+          const committed = await commit({
+            context, products: context.products, variants: context.variants, categories,
+            commandType: 'UPDATE_CATEGORY', commandId, hash,
+            audit: { actor, entityType: 'category', entityId: categoryId, beforeVersion: existing.version, afterVersion: updated.version, changedFields: changedFields(existing, updated).filter((field) => !['updatedAt', 'version'].includes(field)) },
+          });
+          return { status: 200, catalogVersionId: committed.versionId, body: { category: updated, catalogVersionId: committed.versionId, warnings: committed.warnings } };
+        },
+      });
+    },
+
+    setCategoryArchived(categoryId, request, archived, actor) {
+      requireObject(request, 'request');
+      const action = archived ? 'ARCHIVE_CATEGORY' : 'RESTORE_CATEGORY';
+      return execute({
+        operation: `${action}:${categoryId}`, request, actor,
+        handler: async ({ commandId, requestHash: hash }) => {
+          const context = await readContext();
+          requireBaseVersion(request, context.manifest);
+          const existing = categoryById(context.categories, categoryId);
+          if (!existing) throw new CatalogWriteError('Không tìm thấy category.', { status: 404, code: 'CATEGORY_NOT_FOUND' });
+          assertEntityVersion(requirePositiveVersion(request.version), existing.version);
+          const affectedIds = new Set([categoryId, ...context.categories.filter((category) => category.parentId === categoryId).map((category) => category.id)]);
+          if (archived && context.products.some((product) => affectedIds.has(product.categoryId) && product.status === 'active')) {
+            throw new CatalogWriteError('Không thể ngừng category đang có Product active.', { status: 409, code: 'CATEGORY_HAS_ACTIVE_PRODUCTS' });
+          }
+          if (archived && context.categories.some((category) => category.parentId === categoryId && category.status === 'active')) {
+            throw new CatalogWriteError('Hãy ngừng các category con trước.', { status: 409, code: 'CATEGORY_HAS_ACTIVE_CHILDREN' });
+          }
+          const updated = { ...existing, status: archived ? 'archived' : 'active', version: existing.version + 1, updatedAt: now().toISOString() };
+          const categories = context.categories.map((category) => category.id === categoryId ? updated : category);
+          assertCategoryCollection(categories);
+          const committed = await commit({
+            context, products: context.products, variants: context.variants, categories,
+            commandType: action, commandId, hash,
+            audit: { actor, entityType: 'category', entityId: categoryId, beforeVersion: existing.version, afterVersion: updated.version, changedFields: ['status'] },
+          });
+          return { status: 200, catalogVersionId: committed.versionId, body: { category: updated, catalogVersionId: committed.versionId, warnings: committed.warnings } };
+        },
+      });
+    },
+
+    async categoryBackfillPreview() {
+      const context = await readContext();
+      const timestamp = now().toISOString();
+      const categoryResult = backfillProductCategories({ products: context.products, variants: context.variants, now: timestamp });
+      const skuResult = backfillVariantPublicSkus(context.variants);
+      return {
+        ...categoryResult.report,
+        publicSkusAssigned: skuResult.assigned,
+        catalogVersionId: currentVersionId(context.manifest),
+      };
+    },
+
+    executeCategoryBackfill(request, actor) {
+      requireObject(request, 'request');
+      return execute({
+        operation: 'BACKFILL_CATALOG_TAXONOMY', request, actor,
+        handler: async ({ commandId, requestHash: hash }) => {
+          const context = await readContext();
+          requireBaseVersion(request, context.manifest);
+          const timestamp = now().toISOString();
+          const categoryResult = backfillProductCategories({ products: context.products, variants: context.variants, now: timestamp });
+          const skuResult = backfillVariantPublicSkus(context.variants);
+          const committed = await commit({
+            context, products: categoryResult.products, variants: skuResult.variants,
+            commandType: 'BACKFILL_CATALOG_TAXONOMY', commandId, hash,
+            audit: { actor, entityType: 'catalog', entityId: 'taxonomy-v2', changedFields: ['categories', 'categoryId', 'categoryNeedsReview', 'publicSku'] },
+          });
+          return { status: 200, catalogVersionId: committed.versionId, body: { ...categoryResult.report, publicSkusAssigned: skuResult.assigned, catalogVersionId: committed.versionId, warnings: committed.warnings } };
+        },
+      });
+    },
+
     async getProduct(productId) {
       const context = await readContext();
       const product = findById(context.products, productId);
@@ -328,6 +528,7 @@ export const createCatalogWriteService = ({
           };
           assertUniqueProductId(context.products, product.id);
           assertUniqueSlug(context.products, product.slug);
+          assertProductCategory(product, context.categories, { required: true });
           assertValidEntity(validateProductRecord(product));
           const products = [...context.products, product];
           const committed = await commit({
@@ -396,6 +597,7 @@ export const createCatalogWriteService = ({
             version: existing.version + 1,
             updatedAt: now().toISOString(),
           };
+          assertProductCategory(updated, context.categories);
           assertValidEntity(validateProductRecord(updated));
           const products = context.products.map(
             (product) => product.id === productId ? updated : product,
@@ -584,9 +786,11 @@ export const createCatalogWriteService = ({
           }
           const input = normalizeVariantInput(request.variant);
           const timestamp = now().toISOString();
+          const newVariantId = input.id ?? idFactory('variant');
           const variant = {
             ...input,
-            id: input.id ?? idFactory('variant'),
+            id: newVariantId,
+            publicSku: input.publicSku ?? publicSkuForVariantId(newVariantId),
             productId,
             compareAtPrice: input.compareAtPrice ?? null,
             providerProductType: input.providerProductType ?? null,
@@ -604,6 +808,7 @@ export const createCatalogWriteService = ({
           };
           assertUniqueVariantId(context.variants, variant.id);
           assertUniqueSku(context.variants, variant.sku);
+          assertUniquePublicSku(context.variants, variant.publicSku);
           assertValidEntity(validateVariantRecord({
             variant,
             product,
@@ -663,6 +868,9 @@ export const createCatalogWriteService = ({
           if (request.changes?.id !== undefined) {
             throw new CatalogWriteError('Không được thay đổi variant ID.');
           }
+          if (request.changes?.publicSku !== undefined) {
+            throw new CatalogWriteError('Không được thay đổi public SKU.');
+          }
           const changes = normalizeVariantInput(request.changes, {
             partial: true,
           });
@@ -717,6 +925,7 @@ export const createCatalogWriteService = ({
               products: context.products,
               variants: candidateVariants,
               providerOffers: context.providerOffers,
+              categories: context.categories,
             });
             if (!readiness.publishable) {
               throw new CatalogWriteError(
@@ -913,6 +1122,7 @@ export const createCatalogWriteService = ({
           products: context.products,
           variants: context.variants,
           providerOffers: context.providerOffers,
+          categories: context.categories,
         }),
         catalogVersionId: currentVersionId(context.manifest),
       };
@@ -936,6 +1146,7 @@ export const createCatalogWriteService = ({
           products: context.products,
           variants: context.variants,
           providerOffers: context.providerOffers,
+          categories: context.categories,
         }),
         catalogVersionId: currentVersionId(context.manifest),
       };
@@ -949,6 +1160,7 @@ export const createCatalogWriteService = ({
         manifest: version.manifest,
         products: version.products.length,
         variants: version.variants.length,
+        categories: version.categories.length,
       };
     },
 
@@ -966,6 +1178,7 @@ export const createCatalogWriteService = ({
             context,
             products: target.products,
             variants: target.variants,
+            categories: target.categories,
             commandType: 'ROLLBACK_CATALOG',
             commandId,
             hash,

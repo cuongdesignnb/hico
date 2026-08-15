@@ -41,19 +41,23 @@ export const checksumRecords = (records, {
   ignoredKeys: business ? BUSINESS_IGNORED_KEYS : new Set(),
 }));
 
-export const checksumCatalog = ({ products, variants }) => {
+export const checksumCatalog = ({ products, variants, categories = [] }) => {
   const productsChecksum = checksumRecords(products);
   const variantsChecksum = checksumRecords(variants);
+  const categoriesChecksum = checksumRecords(categories);
   const productsBusinessChecksum = checksumRecords(products, { business: true });
   const variantsBusinessChecksum = checksumRecords(variants, { business: true });
+  const categoriesBusinessChecksum = checksumRecords(categories, { business: true });
 
   return {
     productsChecksum,
     variantsChecksum,
+    categoriesChecksum,
     productsBusinessChecksum,
     variantsBusinessChecksum,
+    categoriesBusinessChecksum,
     businessChecksum: sha256(
-      `${productsBusinessChecksum}:${variantsBusinessChecksum}`,
+      `${productsBusinessChecksum}:${variantsBusinessChecksum}:${categoriesBusinessChecksum}`,
     ),
   };
 };

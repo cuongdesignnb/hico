@@ -53,6 +53,34 @@ export const createCatalogWriteRouter = ({
   const router = express.Router();
   router.use((req, res, next) => req.path.startsWith('/admin/catalog/') ? catalogGuard(req, res, next) : next());
 
+  router.get('/admin/catalog/categories', asyncRoute(async (_req, res) => {
+    res.json(await catalogWriteService.listCategories());
+  }));
+
+  router.post('/admin/catalog/categories', asyncRoute(async (req, res) => {
+    sendCommand(res, await catalogWriteService.createCategory(req.body, actorFromRequest(req)));
+  }));
+
+  router.put('/admin/catalog/categories/:categoryId', asyncRoute(async (req, res) => {
+    sendCommand(res, await catalogWriteService.updateCategory(req.params.categoryId, req.body, actorFromRequest(req)));
+  }));
+
+  router.post('/admin/catalog/categories/:categoryId/archive', asyncRoute(async (req, res) => {
+    sendCommand(res, await catalogWriteService.setCategoryArchived(req.params.categoryId, req.body, true, actorFromRequest(req)));
+  }));
+
+  router.post('/admin/catalog/categories/:categoryId/restore', asyncRoute(async (req, res) => {
+    sendCommand(res, await catalogWriteService.setCategoryArchived(req.params.categoryId, req.body, false, actorFromRequest(req)));
+  }));
+
+  router.get('/admin/catalog/category-backfill/preview', asyncRoute(async (_req, res) => {
+    res.json(await catalogWriteService.categoryBackfillPreview());
+  }));
+
+  router.post('/admin/catalog/category-backfill/execute', asyncRoute(async (req, res) => {
+    sendCommand(res, await catalogWriteService.executeCategoryBackfill(req.body, actorFromRequest(req)));
+  }));
+
   router.post('/admin/catalog/products', asyncRoute(async (req, res) => {
     sendCommand(res, await catalogWriteService.createProduct(
       req.body,
