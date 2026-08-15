@@ -1,4 +1,5 @@
 import { isPublicVariant } from '../../seo/seoVisibility.js';
+import { publicSkuForVariant } from './publicSku.js';
 
 const PUBLIC_DEVICE_FIELDS = [
   'brand',
@@ -102,7 +103,7 @@ export const toPublicVariant = (variant, { providerOffers = [] } = {}) => {
   return {
     id: variant.id,
     productId: variant.productId,
-    sku: variant.sku,
+    sku: publicSkuForVariant(variant),
     price: variant.price,
     compareAtPrice: variant.compareAtPrice ?? null,
     currency: variant.currency,
@@ -169,6 +170,8 @@ export const toPublicProduct = (product, variants = [], { includeVariants = true
     slug: product.slug,
     name: product.name,
     operation: product.operation,
+    categoryId: product.categoryId ?? null,
+    categoryPath: Array.isArray(product.categoryPath) ? product.categoryPath.map(({ id, slug, name }) => ({ id, slug, name })) : [],
     status: product.status,
     featured: product.featured === true,
     coverageType: product.coverageType,

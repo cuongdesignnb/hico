@@ -98,6 +98,8 @@ export interface PublicProduct {
   slug: string;
   name: string;
   operation: PublicOperation;
+  categoryId: string | null;
+  categoryPath: Array<{ id: string; slug: string; name: string }>;
   status: 'active';
   coverageType: PublicCoverageType;
   coverageIds: string[];
@@ -149,6 +151,7 @@ export interface PublicCatalogListResponse {
 
 export interface PublicCatalogFilters {
   operation?: PublicOperation;
+  category?: string;
   medium?: Exclude<PublicMedium, null>;
   coverage?: string;
   supplier?: string;

@@ -3,17 +3,35 @@ import { readJson, defaultUploadsDirectory } from '../catalog/write/catalogWrite
 import { CheckoutError } from './checkoutError.js';
 import { validateCanonicalCart, validateCheckoutRequest } from './checkoutValidation.js';
 import { createOrderSnapshot } from './checkoutSnapshot.js';
+import { publicSkuForOrderItem, publicSkuForVariant } from '../catalog/public/publicSku.js';
 
 const publicItem = ({ product, variant, requested }) => ({
   productId: product.id,
   productName: product.name,
   variantId: variant.id,
-  sku: variant.sku,
+  sku: publicSkuForVariant(variant),
   quantity: requested.quantity,
   unitPrice: variant.price,
   currency: variant.currency,
   fulfillmentMethod: variant.fulfillmentMethod,
   medium: variant.medium,
+});
+
+const publicOrder = (order) => ({
+  orderId: order.orderId,
+  createdAt: order.createdAt,
+  status: order.status,
+  currency: order.currency,
+  subtotal: order.subtotal,
+  items: Array.isArray(order.items) ? order.items.map((item) => ({
+    productId: item.productId,
+    productName: item.productName,
+    variantId: item.variantId,
+    sku: publicSkuForOrderItem(item),
+    quantity: item.quantity,
+    unitPrice: item.unitPrice,
+    currency: item.currency,
+  })) : [],
 });
 
 export const createCheckoutService = ({
@@ -90,7 +108,7 @@ export const createCheckoutService = ({
             guestPhoneSnapshot: validated.customer.phone,
           },
         });
-        const response = { order, orderId: order.orderId, status: order.status };
+        const response = { order: publicOrder(order), orderId: order.orderId, status: order.status };
         await idempotencyRepository.save({ key: request.idempotencyKey, payload: request, orderId: order.orderId, response });
         return response;
       });

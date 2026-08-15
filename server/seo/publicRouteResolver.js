@@ -1,6 +1,7 @@
 import { createCanonicalCatalogReader } from '../catalog/canonical/canonicalCatalogReader.js';
 import { createCatalogSlugHistoryRepository } from '../catalog/write/catalogSlugHistoryRepository.js';
 import { getSeoVisibility, isPublicArticle } from './seoVisibility.js';
+import { cloneSeedCategories, projectProductCategory } from '../catalog/categories/catalogCategories.js';
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -23,14 +24,17 @@ export const getArticleSlug = (article) => {
   return slugPattern.test(explicit) ? explicit : slugify(article?.title);
 };
 
-const attachVariants = ({ products, variants }) => {
+const attachVariants = ({ products, variants, categories = cloneSeedCategories() }) => {
   const variantsByProduct = new Map();
   for (const variant of variants) {
     const rows = variantsByProduct.get(variant.productId) ?? [];
     rows.push(variant);
     variantsByProduct.set(variant.productId, rows);
   }
-  return products.map((product) => ({ ...product, variants: variantsByProduct.get(product.id) ?? [] }));
+  return products.map((product) => {
+    const productVariants = variantsByProduct.get(product.id) ?? [];
+    return { ...projectProductCategory(product, productVariants, categories), variants: productVariants };
+  });
 };
 
 const normalizeSlug = (slug) => String(slug ?? '').trim().toLowerCase();

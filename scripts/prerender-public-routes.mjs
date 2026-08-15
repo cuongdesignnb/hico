@@ -43,9 +43,21 @@ const render = (template, metadata) => {
 
 const main = async () => {
   const template = await readFile(path.join(distDirectory, 'index.html'), 'utf8');
-  const articleProvider = async () => JSON.parse(await readFile(path.join(uploadsDirectory, 'articles.json'), 'utf8'));
+  const articleProvider = async () => {
+    try {
+      return JSON.parse(await readFile(path.join(uploadsDirectory, 'articles.json'), 'utf8'));
+    } catch (error) {
+      if (error?.code === 'ENOENT') return [];
+      throw error;
+    }
+  };
+  const canonicalRepository = createCanonicalCatalogRepository({ uploadsDirectory });
+  const currentManifest = await canonicalRepository.readCurrentManifest();
+  const catalogReader = currentManifest
+    ? createCanonicalCatalogReader({ canonicalRepository, env: { CATALOG_READ_SOURCE: 'canonical', CATALOG_CANONICAL_FALLBACK: 'false' } })
+    : { readCatalog: async () => ({ products: [], variants: [], categories: [], manifest: null }) };
   const resolver = createPublicRouteResolver({
-    catalogReader: createCanonicalCatalogReader({ env: { CATALOG_READ_SOURCE: 'canonical', CATALOG_CANONICAL_FALLBACK: 'false' } }),
+    catalogReader,
     slugHistoryRepository: createCatalogSlugHistoryRepository({ recordsFile: path.join(uploadsDirectory, 'catalog_slug_history.json') }),
     articleProvider,
   });
@@ -55,7 +67,7 @@ const main = async () => {
     { path: '/san-pham', metadata: metadataFor({ path: '/san-pham', title: 'Travel eSIM packages | HICO eSIM', description: 'Browse public HICO travel eSIM packages.' }) },
     { path: '/diem-den', metadata: metadataFor({ path: '/diem-den', title: 'Destinations | HICO eSIM', description: 'Explore public HICO eSIM destinations.' }) },
     { path: '/bai-viet', metadata: metadataFor({ path: '/bai-viet', title: 'Travel guides | HICO eSIM', description: 'Travel and eSIM guides from HICO.' }) },
-    ...products.map((product) => ({ path: getCanonicalProductPath(product), metadata: metadataFor({ path: getCanonicalProductPath(product), title: product.seoTitle || `${product.name} | HICO eSIM`, description: product.seoDescription || plainText(product.description || product.guide), image: product.image, type: 'product' }) })),
+    ...products.map((product) => ({ path: getCanonicalProductPath(product), metadata: metadataFor({ path: getCanonicalProductPath(product), title: product.seoTitle || `${product.name} | HICO eSIM`, description: product.seoDescription || plainText(product.description), image: product.image, type: 'product' }) })),
     ...coverage.map((entry) => {
       const route = entry.type === 'country' ? `/diem-den/${entry.slug}` : `/khu-vuc/${entry.slug}`;
       return { path: route, metadata: metadataFor({ path: route, title: `${entry.name} | HICO eSIM`, description: `Public HICO packages for ${entry.name}.` }) };
@@ -75,8 +87,7 @@ const main = async () => {
     await mkdir(path.dirname(output), { recursive: true });
     await writeFile(output, render(template, route.metadata), 'utf8');
   }
-  const manifest = await createCanonicalCatalogRepository().readCurrentManifest();
-  const catalogVersionId = manifest?.versionId ?? manifest?.migrationId ?? null;
+  const catalogVersionId = currentManifest?.versionId ?? currentManifest?.migrationId ?? null;
   await writeFile(path.join(distDirectory, 'prerender-manifest.json'), `${JSON.stringify({ catalogVersionId, generatedAt: new Date().toISOString(), routes: uniqueRoutes.map((route) => route.path) }, null, 2)}\n`, 'utf8');
   console.log(JSON.stringify({ generated: uniqueRoutes.length, catalogVersionId }));
 };

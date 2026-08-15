@@ -1,3 +1,5 @@
+import { publicSkuForVariant } from '../catalog/public/publicSku.js';
+
 const optional = (value) => (
   value === undefined || value === null || value === '' ? undefined : value
 );
@@ -14,7 +16,8 @@ export const createOrderItemSnapshot = ({ product, variant, providerOffer = null
   productName: product.name,
   productSlug: optional(product.slug),
   variantId: variant.id,
-  sku: variant.sku,
+  sku: publicSkuForVariant(variant),
+  publicSku: publicSkuForVariant(variant),
   operation: product.operation,
   medium: variant.medium ?? null,
   supplier: providerResolution ? 'worldmove' : variant.supplier,
