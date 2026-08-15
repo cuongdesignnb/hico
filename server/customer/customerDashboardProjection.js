@@ -1,3 +1,5 @@
+import { publicSkuForOrderItem } from '../catalog/public/publicSku.js';
+
 const COMPLETED = new Set(['PROVISIONED', 'SHIPPED', 'COMPLETED']);
 const CANCELLED = new Set(['CANCELLED']);
 const PENDING = new Set(['PENDING', 'PROCESSING']);
@@ -18,7 +20,7 @@ const safeItem = (item = {}, status = 'PENDING') => ({
   productName: String(item.productName ?? item.name ?? 'Product'),
   productId: item.productId ?? null,
   variantId: item.variantId ?? null,
-  sku: item.sku ?? null,
+  sku: publicSkuForOrderItem(item),
   operation: item.operation ?? null,
   quantity: Math.max(1, numberOrZero(item.quantity ?? 1)),
   unitPrice: numberOrZero(item.unitPrice ?? item.price),

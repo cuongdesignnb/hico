@@ -29,6 +29,8 @@ test('checkout idempotency serializes duplicate concurrent creates and rejects p
   });
   const [first, second] = await Promise.all([service.createOrder(request), service.createOrder(request)]);
   assert.equal(first.orderId, second.orderId);
+  assert.match(first.order.items[0].sku, /^HICO-[A-F0-9]{8}$/);
+  assert.equal(JSON.stringify(first).includes('S-1'), false);
   assert.equal(creates, 1);
   await assert.rejects(service.createOrder({ ...request, items: [{ variantId: 'v-1', quantity: 2 }] }), (error) => error.code === 'CHECKOUT_IDEMPOTENCY_CONFLICT');
 });

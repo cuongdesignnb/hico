@@ -13,6 +13,8 @@ test('order item snapshot keeps sold catalog data and provider fulfillment evide
     quantity: 1,
   });
   assert.equal(snapshot.soldVariantId, 'variant-1');
+  assert.match(snapshot.sku, /^HICO-[A-F0-9]{8}$/);
+  assert.equal(snapshot.soldSku, 'SKU-1');
   assert.equal(snapshot.soldDurationDays, 1);
   assert.equal(snapshot.providerWmproductId, 'WM-CN-500MB-2D');
   assert.equal(snapshot.providerDurationDays, 2);

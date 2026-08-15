@@ -5,7 +5,7 @@ import { toPublicProduct } from './public/publicProductSerializer.js';
 
 const now = new Date().toISOString();
 const products = [
-  { id: 'p-ph', slug: 'philippines', name: 'Philippines', operation: 'new_subscription', status: 'active', coverageType: 'country', coverageIds: ['ph'], image: '/uploads/ph.webp', featured: true, seoTitle: 'Philippines', version: 1, createdAt: now, updatedAt: now },
+  { id: 'p-ph', slug: 'philippines', name: 'Philippines', operation: 'new_subscription', categoryId: 'cat-esim-du-lich', status: 'active', coverageType: 'country', coverageIds: ['ph'], image: '/uploads/ph.webp', featured: true, seoTitle: 'Philippines', version: 1, createdAt: now, updatedAt: now },
   { id: 'p-draft', slug: 'draft-product', name: 'Draft', operation: 'new_subscription', status: 'draft', coverageType: 'country', coverageIds: ['draft'], version: 1, createdAt: now, updatedAt: now },
 ];
 const variants = [
@@ -19,9 +19,22 @@ test('public catalog exposes only published safe canonical fields', async () => 
   assert.equal(response.pagination.total, 1);
   assert.equal(response.items[0].slug, 'philippines');
   assert.equal(response.items[0].variants[0].id, 'v-ph');
+  assert.match(response.items[0].variants[0].sku, /^HICO-[A-F0-9]{8}$/);
+  assert.notEqual(response.items[0].variants[0].sku, variants[0].sku);
+  assert.deepEqual(response.items[0].categoryPath.map((item) => item.slug), ['sim-esim', 'esim-du-lich']);
   assert.equal('providerOfferId' in response.items[0].variants[0], false);
   assert.equal('wmproductId' in response.items[0].variants[0], false);
   assert.equal(await service.getPublicProductBySlug('unknown'), null);
+});
+
+test('public category filters include descendants for a parent and preserve legacy unfiltered routes', async () => {
+  const service = createCatalogService({ readCatalog: async () => ({ products, variants }) });
+  const parent = await service.listPublicProducts({ paginate: true, filters: { category: 'sim-esim' } });
+  const leaf = await service.listPublicProducts({ paginate: true, filters: { category: 'esim-du-lich' } });
+  const legacy = await service.listPublicProducts({ paginate: true, filters: {} });
+  assert.equal(parent.pagination.total, 1);
+  assert.equal(leaf.pagination.total, 1);
+  assert.equal(legacy.pagination.total, 1);
 });
 
 test('public serializer preserves safe media/content and strips private fields recursively', () => {

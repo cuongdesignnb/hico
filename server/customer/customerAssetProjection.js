@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { publicSkuForOrderItem } from '../catalog/public/publicSku.js';
 
 const ASSET_TYPES = new Set(['ESIM', 'PHYSICAL_SIM', 'DEVICE', 'TOPUP']);
 const MOCK_PATTERN = /mock|demo|sample|fixture/i;
@@ -77,7 +78,7 @@ const baseAsset = ({ assetId, assetType, order, item, record, index }) => {
     productSlug: first(item.productSlug, item.slug),
     productId: first(item.productId),
     variantId: first(item.variantId),
-    sku: first(item.sku),
+    sku: publicSkuForOrderItem(item),
     quantity: Math.max(1, Number(item.quantity) || 1),
     unitPrice: numberValue(item.unitPrice ?? item.price) ?? 0,
     currency: String(item.currency ?? order.currency ?? 'VND').toUpperCase(),

@@ -25,18 +25,19 @@ export const createInventoryRepository = ({
     },
     async reserve({ variant, orderId, orderItemId, quantity }) {
       return withLock(async () => {
+        const variantId = variant.variantId ?? variant.id;
         const movements = await list(movementsFile, []);
         const key = `${orderId}:${orderItemId}:HICO_PHYSICAL_STOCK`;
         const existing = movements.find((movement) => movement.idempotencyKey === key);
         if (existing) return existing;
         const inventory = await list(inventoryFile, []);
-        const source = inventory.find((record) => record.variantId === variant.variantId || record.variantId === variant.id || record.sku === variant.sku);
+        const source = inventory.find((record) => record.variantId === variantId || record.sku === (variant.soldSku ?? variant.sku));
         const available = source ? Number(source.available ?? source.quantity ?? source.stock) : Number(variant.stock);
         if (!Number.isFinite(available) || available < quantity) {
           throw new CheckoutError('Kho SIM vật lý không đủ hàng.', 'PHYSICAL_STOCK_UNAVAILABLE', 409);
         }
         const used = movements
-          .filter((movement) => movement.variantId === variant.id && movement.type === 'reserve')
+          .filter((movement) => movement.variantId === variantId && movement.type === 'reserve')
           .reduce((sum, movement) => sum + movement.quantity, 0);
         if (available - used < quantity) {
           throw new CheckoutError('Kho SIM vật lý không đủ hàng.', 'PHYSICAL_STOCK_UNAVAILABLE', 409);
@@ -44,8 +45,8 @@ export const createInventoryRepository = ({
         const movement = {
           id: `movement-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           idempotencyKey: key,
-          variantId: variant.id,
-          sku: variant.sku,
+          variantId,
+          sku: variant.soldSku ?? variant.sku,
           orderId,
           orderItemId,
           quantity,
