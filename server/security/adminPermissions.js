@@ -2,6 +2,7 @@ const isWrite = (method) => !['GET', 'HEAD', 'OPTIONS'].includes(method);
 
 export const permissionForAdminRequest = (req) => {
   const { method, path } = req;
+  if (path.startsWith('/catalog/reset')) return isWrite(method) ? 'catalog.reset' : 'catalog.product.read';
   if (path.startsWith('/catalog-sheet-sync/')) return 'catalog.sheet_sync';
   if (path.startsWith('/catalog/sheet-reconciliation/')) return isWrite(method) ? 'catalog.sheet.reconcile.write' : 'catalog.sheet.reconcile.read';
   if (path.startsWith('/catalog/variant-aliases/')) return 'catalog.sheet.reconcile.write';

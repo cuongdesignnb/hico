@@ -29,6 +29,13 @@ export const DEFAULT_HICO_GOC_FIELD_MAPPING = Object.freeze({
   wmproductIdEsim: 24,
 });
 
+export const OPTIONAL_HICO_GOC_FIELD_MAPPING = Object.freeze([
+  'imageUrl',
+  'galleryImageUrls',
+  'description',
+  'installationGuide',
+]);
+
 export const PRICE_SOURCES = Object.freeze({
   physical: Object.freeze(['pricePhysical', 'priceWholesalePhysical', 'priceCtvPhysical']),
   esim: Object.freeze(['priceEsim', 'priceWholesaleEsim', 'priceCtvEsim']),
@@ -48,6 +55,11 @@ const index = (value, fallback) => {
     : null;
 };
 
+const optionalIndex = (value) => {
+  if (value === undefined || value === null || value === '') return null;
+  return index(value, null);
+};
+
 const validPriceSource = (medium, value, allowEmpty = false) => {
   if (allowEmpty && (value === undefined || value === null || value === '')) return null;
   if (typeof value !== 'string' || !PRICE_SOURCES[medium].includes(value)) return null;
@@ -63,6 +75,7 @@ export const normalizeHicoGocMapping = (mapping = {}) => {
   if (Object.values(normalized).some((value) => value === null)) {
     throw new SheetSyncError('HICO GỐC field mapping is invalid.', { code: 'SHEET_FIELD_MAPPING_INVALID', status: 422 });
   }
+  for (const field of OPTIONAL_HICO_GOC_FIELD_MAPPING) normalized[field] = optionalIndex(source[field]);
   return normalized;
 };
 

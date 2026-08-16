@@ -15,6 +15,7 @@ export const QUICK_SHEET_SYNC_FIELDS = [
   'speedLabel',
   'cancellable',
 ];
+export const FULL_SHEET_SYNC_FIELDS = [...QUICK_SHEET_SYNC_FIELDS, 'imageUrl', 'galleryImageUrls', 'description', 'installationGuide'];
 export const SHEET_SYNC_STATUSES = new Set(['FETCHED', 'VALIDATED', 'READY_FOR_REVIEW', 'APPLYING', 'APPLIED', 'PARTIALLY_APPLIED', 'REJECTED', 'FAILED']);
 export const ROW_STATUSES = new Set(['VALID', 'INVALID', 'APPLIED', 'SKIPPED']);
 export const CLEAR_VALUE = '__CLEAR__';
@@ -70,7 +71,7 @@ const PUBLIC_NORMALIZED_FIELDS = new Set([
   'productName', 'dataPolicy', 'dataLimit', 'duration', 'durationDays',
   'tripDayOptions', 'price', 'compareAtPrice', 'apn', 'networkLabel',
   'publicNote', 'activationPolicy', 'speedLabel', 'cancellable', 'medium',
-  'sourceRows',
+  'sourceRows', 'imageUrl', 'galleryImageUrls', 'description', 'installationGuide',
 ]);
 
 const publicNormalizedData = (value) => Object.fromEntries(

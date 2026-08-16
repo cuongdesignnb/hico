@@ -1,5 +1,5 @@
 export const ALL_PERMISSIONS = [
-  'catalog.product.read', 'catalog.product.create', 'catalog.product.update', 'catalog.product.archive', 'catalog.variant.manage', 'catalog.publish', 'catalog.bulk.execute', 'catalog.rollback', 'catalog.sheet_sync', 'catalog.sheet.settings.read', 'catalog.sheet.settings.write', 'catalog.sheet.settings.test', 'catalog.sheet.sync.preview', 'catalog.sheet.sync.apply',
+  'catalog.product.read', 'catalog.product.create', 'catalog.product.update', 'catalog.product.archive', 'catalog.variant.manage', 'catalog.publish', 'catalog.bulk.execute', 'catalog.rollback', 'catalog.reset', 'catalog.sheet_sync', 'catalog.sheet.settings.read', 'catalog.sheet.settings.write', 'catalog.sheet.settings.test', 'catalog.sheet.sync.preview', 'catalog.sheet.sync.apply',
   'catalog.sheet.reconcile.read', 'catalog.sheet.reconcile.write', 'catalog.fulfillment.read', 'catalog.fulfillment.write', 'provider.read', 'provider.sync', 'reconciliation.read', 'reconciliation.resolve',
   'inventory.qr.read', 'inventory.qr.manage', 'inventory.stock.read', 'inventory.stock.manage',
   'orders.read', 'orders.update', 'orders.retry_fulfillment',

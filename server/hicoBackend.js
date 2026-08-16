@@ -24,6 +24,9 @@ import { createCatalogSheetImportRouter } from './catalog/import/catalogSheetImp
 import { createSheetSyncRouter } from './catalog/sheetSync/sheetSyncRouter.js';
 import { createSheetSyncService } from './catalog/sheetSync/sheetSyncService.js';
 import { createSheetSyncRepository } from './catalog/sheetSync/sheetSyncRepository.js';
+import { createCatalogResyncService } from './catalog/sheetSync/catalogResyncService.js';
+import { createCatalogResetRouter } from './catalog/reset/catalogResetRouter.js';
+import { createCatalogResetService } from './catalog/reset/catalogResetService.js';
 import { createVariantAliasRepository } from './catalog/variantAliases/variantAliasRepository.js';
 import { createVariantAliasService } from './catalog/variantAliases/variantAliasService.js';
 import { createVariantAliasRouter } from './catalog/variantAliases/variantAliasRouter.js';
@@ -44,6 +47,7 @@ import { createCatalogQueueService } from './catalog/queues/catalogQueueService.
 import { createCatalogPublishService } from './catalog/publish/catalogPublishService.js';
 import { createCatalogCommandService } from './catalog/write/catalogCommandService.js';
 import { createCatalogVersionCommitService } from './catalog/write/catalogVersionCommitService.js';
+import { createCatalogAuditRepository } from './catalog/write/catalogAuditRepository.js';
 import { createCatalogWriteService } from './catalog/write/catalogWriteService.js';
 import {
   createCanonicalCatalogGuard,
@@ -268,6 +272,26 @@ const sheetSyncService = createSheetSyncService({
   fulfillmentProfileRepository,
   commitService: catalogCommitService,
   variantAliasRepository,
+});
+const catalogAuditRepository = createCatalogAuditRepository({ uploadsDirectory: catalogUploadsDirectory });
+const catalogResyncService = createCatalogResyncService({
+  repository: sheetSyncRepository,
+  referenceClient: { readRows: () => googleSheetConnectionService.readRows() },
+  canonicalRepository: canonicalCatalogRepository,
+  commitService: catalogCommitService,
+  auditRepository: catalogAuditRepository,
+  providerRepository: providerOfferRepository,
+  commandService: catalogCommandService,
+  mediaAssetRepository,
+  uploadsDirectory: catalogUploadsDirectory,
+});
+const catalogResetService = createCatalogResetService({
+  canonicalRepository: canonicalCatalogRepository,
+  commitService: catalogCommitService,
+  auditRepository: catalogAuditRepository,
+  commandService: catalogCommandService,
+  providerRepository: providerOfferRepository,
+  uploadsDirectory: catalogUploadsDirectory,
 });
 const { repository: userRepository } = createAdminUserRepository({ env: process.env, uploadsDirectory: catalogUploadsDirectory, pool: authPool });
 const { repository: sessionRepository, driver: sessionDriver, shared: sessionShared } = createSessionStore({ env: process.env, uploadsDirectory: catalogUploadsDirectory, pool: authPool });
@@ -544,7 +568,8 @@ app.use('/api/admin', createFulfillmentProfileRouter({ service: fulfillmentProfi
 app.use('/api/admin', createFulfillmentBindingRouter({ service: fulfillmentBindingService }));
 app.use('/api', createCatalogHealthRouter({ catalogHealthService }));
 app.use('/api', createCatalogRouter({ catalogGuard, mediaAssetRepository, providerRepository: providerOfferRepository }));
-app.use('/api', createSheetSyncRouter({ sheetSyncService, catalogGuard }));
+app.use('/api', createSheetSyncRouter({ sheetSyncService, resyncService: catalogResyncService, catalogGuard }));
+app.use('/api', createCatalogResetRouter({ catalogResetService, catalogGuard }));
 app.use('/api', createProviderRouter());
 app.use('/api', createReconciliationRouter());
 app.use('/api', createCatalogMigrationRouter());

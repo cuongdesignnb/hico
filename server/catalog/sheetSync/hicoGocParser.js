@@ -64,6 +64,22 @@ const validateMediumEvidence = (value, medium, errors) => {
   if (medium === 'esim' && normalized === 'sim') errors.push({ code: 'MEDIUM_SOURCE_MISMATCH', field: 'simType' });
 };
 const valueAt = (cells, mapping, field) => cells[mapping[field]];
+const optionalImage = (value, field, errors) => {
+  const text = clean(value, field, errors);
+  if (text === undefined) return undefined;
+  if (!/^\/(?:images|uploads)\//.test(text) || text.includes('..')) {
+    errors.push({ code: 'IMAGE_SOURCE_UNSUPPORTED', field });
+    return undefined;
+  }
+  return text;
+};
+const optionalGallery = (value, field, errors) => {
+  const text = clean(value, field, errors);
+  if (text === undefined) return undefined;
+  const values = text.split(/[\r\n,;]+/).map((item) => item.trim()).filter(Boolean);
+  const images = values.map((item) => optionalImage(item, field, errors)).filter(Boolean);
+  return images.length ? [...new Set(images)] : undefined;
+};
 const sourceFor = (cells, mapping, field, priceMapping, errors) => {
   const source = priceMapping[field];
   return parsePrice(valueAt(cells, mapping, source), errors, 'price');
@@ -106,6 +122,10 @@ const makeCandidate = ({ cells, rowNumber, medium, mapping, priceMapping }) => {
     activationPolicy: clean(valueAt(cells, mapping, 'activationPolicy'), 'activationPolicy', errors),
     speedLabel: parseSpeedLabel(productName, errors),
     cancellable: parseCancellable(valueAt(cells, mapping, 'cancellable'), errors),
+    ...(mapping.imageUrl !== null && mapping.imageUrl !== undefined ? { imageUrl: optionalImage(valueAt(cells, mapping, 'imageUrl'), 'imageUrl', errors) } : {}),
+    ...(mapping.galleryImageUrls !== null && mapping.galleryImageUrls !== undefined ? { galleryImageUrls: optionalGallery(valueAt(cells, mapping, 'galleryImageUrls'), 'galleryImageUrls', errors) } : {}),
+    ...(mapping.description !== null && mapping.description !== undefined ? { description: clean(valueAt(cells, mapping, 'description'), 'description', errors) } : {}),
+    ...(mapping.installationGuide !== null && mapping.installationGuide !== undefined ? { installationGuide: clean(valueAt(cells, mapping, 'installationGuide'), 'installationGuide', errors) } : {}),
   };
   if (!sku) errors.push({ code: 'EXACT_MATCH_REQUIRED', field: 'sku' });
   if (!wmproductId) errors.push({ code: 'PROVIDER_NOT_FOUND', field: 'wmproductId' });

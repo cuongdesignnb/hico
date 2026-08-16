@@ -52,6 +52,17 @@ test('HICO GỐC duplicate payload conflict is never collapsed', () => {
   assert.ok(rows.every((row) => row.errors.some((error) => error.code === 'DUPLICATE_CONFLICT')));
 });
 
+test('HICO GỐC optional enrichment fields accept internal media paths and reject external URLs', () => {
+  const row = cells({ 25: '/uploads/product.webp', 26: 'Mô tả mới', 27: '<p>Cài đặt mới</p>' });
+  const mapping = { imageUrl: 25, description: 26, installationGuide: 27 };
+  const [parsed] = parseHicoGocRows([Array(28).fill('header'), row], { fieldMapping: mapping });
+  assert.equal(parsed.normalizedData.imageUrl, '/uploads/product.webp');
+  assert.equal(parsed.normalizedData.description, 'Mô tả mới');
+  assert.equal(parsed.normalizedData.installationGuide, '<p>Cài đặt mới</p>');
+  const [external] = parseHicoGocRows([Array(28).fill('header'), cells({ 25: 'https://cdn.example/image.webp' })], { fieldMapping: mapping });
+  assert.ok(external.errors.some((error) => error.code === 'IMAGE_SOURCE_UNSUPPORTED'));
+});
+
 test('quick preview matches exact SKU and blocks stale Sheet before apply', async () => {
   const row = cells({ 1: 'Trung Quốc, 500MB /Ngày', 16: 'SKU-1', 17: '', 23: 'WM-1' });
   const reference = { spreadsheetId: 'sheet-id', sheetTab: 'HICO GỐC', sheetRange: 'A1:Y2', values: [Array(25).fill('header'), row], syncSettings: {} };
