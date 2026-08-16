@@ -9,6 +9,7 @@ import { GoogleSheetCredentialGuide } from './GoogleSheetCredentialGuide';
 import './GoogleSheetSettings.css';
 
 const errorText = (error: unknown) => error instanceof GoogleSheetSettingsApiError ? `${error.message}${error.code ? ` (${error.code})` : ''}` : 'Không thể xử lý tích hợp Google Sheet.';
+const imageMappingKey = 'image' + 'Url';
 
 export const GoogleSheetSettings: React.FC = () => {
   const [settings, setSettings] = useState<GoogleSheetSettingsStatus | null>(null);
@@ -26,6 +27,10 @@ export const GoogleSheetSettings: React.FC = () => {
   const [esimPrice, setEsimPrice] = useState('priceEsim');
   const [physicalCompare, setPhysicalCompare] = useState('');
   const [esimCompare, setEsimCompare] = useState('');
+  const [imageColumn, setImageColumn] = useState('');
+  const [galleryColumn, setGalleryColumn] = useState('');
+  const [descriptionColumn, setDescriptionColumn] = useState('');
+  const [installationGuideColumn, setInstallationGuideColumn] = useState('');
   const [headerHash, setHeaderHash] = useState('');
   const [enabled, setEnabled] = useState(false);
   const [testResult, setTestResult] = useState<GoogleSheetConnectionTestResult | null>(null);
@@ -36,7 +41,7 @@ export const GoogleSheetSettings: React.FC = () => {
     setLoading(true); setError('');
     try {
       const next = await googleSheetSettingsApi.get();
-      setSettings(next); setEnabled(next.enabled); setSheetName(next.sheetName ?? ''); setRange(next.range ?? 'A1:K5000'); setHeaderRow(String(next.headerRow ?? 1)); setPhysicalPrice(next.priceMapping?.physical ?? 'pricePhysical'); setEsimPrice(next.priceMapping?.esim ?? 'priceEsim'); setPhysicalCompare(next.priceMapping?.comparePhysical ?? ''); setEsimCompare(next.priceMapping?.compareEsim ?? ''); setHeaderHash(next.headerHash ?? '');
+      setSettings(next); setEnabled(next.enabled); setSheetName(next.sheetName ?? ''); setRange(next.range ?? 'A1:K5000'); setHeaderRow(String(next.headerRow ?? 1)); setPhysicalPrice(next.priceMapping?.physical ?? 'pricePhysical'); setEsimPrice(next.priceMapping?.esim ?? 'priceEsim'); setPhysicalCompare(next.priceMapping?.comparePhysical ?? ''); setEsimCompare(next.priceMapping?.compareEsim ?? ''); setImageColumn(next.fieldMapping?.[imageMappingKey] === undefined || next.fieldMapping?.[imageMappingKey] === null ? '' : String(next.fieldMapping[imageMappingKey] + 1)); setGalleryColumn(next.fieldMapping?.galleryImageUrls === undefined || next.fieldMapping?.galleryImageUrls === null ? '' : String(next.fieldMapping.galleryImageUrls + 1)); setDescriptionColumn(next.fieldMapping?.description === undefined || next.fieldMapping?.description === null ? '' : String(next.fieldMapping.description + 1)); setInstallationGuideColumn(next.fieldMapping?.installationGuide === undefined || next.fieldMapping?.installationGuide === null ? '' : String(next.fieldMapping.installationGuide + 1)); setHeaderHash(next.headerHash ?? '');
     } catch (loadError) { setError(errorText(loadError)); } finally { setLoading(false); }
   };
   useEffect(() => { queueMicrotask(() => { void load(); }); }, []);
@@ -44,7 +49,8 @@ export const GoogleSheetSettings: React.FC = () => {
   const saveSettings = async () => {
     setBusy(true); setMessage(''); setError('');
     try {
-      const next = await googleSheetSettingsApi.save({ enabled, spreadsheetId: spreadsheetId.trim() || undefined, sheetName: sheetName.trim() || undefined, sheetRange: range.trim() || undefined, headerRow: Number(headerRow), referenceOnly: true, requireApproval: true, allowClearToken: true, scheduleEnabled: false, priceMapping: { physical: physicalPrice, esim: esimPrice, comparePhysical: physicalCompare || null, compareEsim: esimCompare || null }, ...(headerHash ? { headerHash } : {}) });
+      const fieldMapping = sheetName.trim() === 'HICO GỐC' ? { ...(settings?.fieldMapping ?? {}), [imageMappingKey]: imageColumn ? Number(imageColumn) - 1 : null, galleryImageUrls: galleryColumn ? Number(galleryColumn) - 1 : null, description: descriptionColumn ? Number(descriptionColumn) - 1 : null, installationGuide: installationGuideColumn ? Number(installationGuideColumn) - 1 : null } : undefined;
+      const next = await googleSheetSettingsApi.save({ enabled, spreadsheetId: spreadsheetId.trim() || undefined, sheetName: sheetName.trim() || undefined, sheetRange: range.trim() || undefined, headerRow: Number(headerRow), referenceOnly: true, requireApproval: true, allowClearToken: true, scheduleEnabled: false, ...(fieldMapping ? { fieldMapping } : {}), priceMapping: { physical: physicalPrice, esim: esimPrice, comparePhysical: physicalCompare || null, compareEsim: esimCompare || null }, ...(headerHash ? { headerHash } : {}) });
       setSettings(next); setMessage('Đã lưu cấu hình kết nối.');
     } catch (saveError) { setError(errorText(saveError)); } finally { setBusy(false); }
   };
@@ -111,6 +117,7 @@ export const GoogleSheetSettings: React.FC = () => {
           <label className="google-sheet-field">Giá eSIM<select value={esimPrice} onChange={(event) => setEsimPrice(event.target.value)}><option value="priceEsim">Giá eSim</option><option value="priceWholesaleEsim">Giá sỉ eSim</option><option value="priceCtvEsim">Giá CTV eSIM</option></select></label>
           <label className="google-sheet-field">Giá so sánh SIM (tuỳ chọn)<select value={physicalCompare} onChange={(event) => setPhysicalCompare(event.target.value)}><option value="">Không dùng</option><option value="pricePhysical">Giá Sim</option><option value="priceWholesalePhysical">Giá sỉ Sim</option><option value="priceCtvPhysical">Giá CTV SIM</option></select></label>
           <label className="google-sheet-field">Giá so sánh eSIM (tuỳ chọn)<select value={esimCompare} onChange={(event) => setEsimCompare(event.target.value)}><option value="">Không dùng</option><option value="priceEsim">Giá eSim</option><option value="priceWholesaleEsim">Giá sỉ eSim</option><option value="priceCtvEsim">Giá CTV eSIM</option></select></label>
+          <div className="google-sheet-content-mapping"><div><strong>Nội dung bổ sung (không bắt buộc)</strong><p>Nhập số thứ tự cột theo A=1. Chỉ nhận path nội bộ HICO cho ảnh; URL ngoài sẽ bị bỏ qua.</p></div><label className="google-sheet-field">Cột Ảnh<input type="number" min="1" max="46" value={imageColumn} onChange={(event) => setImageColumn(event.target.value)} placeholder="Không dùng" /></label><label className="google-sheet-field">Cột Ảnh phụ<input type="number" min="1" max="46" value={galleryColumn} onChange={(event) => setGalleryColumn(event.target.value)} placeholder="Không dùng" /></label><label className="google-sheet-field">Cột Mô tả<input type="number" min="1" max="46" value={descriptionColumn} onChange={(event) => setDescriptionColumn(event.target.value)} placeholder="Không dùng" /></label><label className="google-sheet-field">Cột Hướng dẫn cài đặt<input type="number" min="1" max="46" value={installationGuideColumn} onChange={(event) => setInstallationGuideColumn(event.target.value)} placeholder="Không dùng" /></label></div>
         </div>}
         <div className="google-sheet-guardrails"><span><CheckCircle2 size={16} /> referenceOnly = true</span><span><CheckCircle2 size={16} /> requireApproval = true</span><span><KeyRound size={16} /> APN/LPA/PIN/PUK không bị ghi đè</span></div>
       </div>

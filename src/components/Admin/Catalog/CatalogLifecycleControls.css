@@ -1,0 +1,28 @@
+.catalog-lifecycle-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.catalog-danger-button, .catalog-primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; border: 1px solid transparent; border-radius: 6px; padding: 0 14px; font: inherit; font-weight: 700; cursor: pointer; }
+.catalog-danger-button { color: #9b1c1c; background: #fff5f5; border-color: #e7aaaa; }
+.catalog-primary-button { color: #fff; background: #116b70; border-color: #116b70; }
+.catalog-danger-button:disabled, .catalog-primary-button:disabled { opacity: .55; cursor: not-allowed; }
+.catalog-lifecycle-message, .catalog-lifecycle-error { margin: 10px 0 0; padding: 10px 12px; border-radius: 6px; font-size: 13px; }
+.catalog-lifecycle-message { color: #14532d; background: #ecfdf3; border: 1px solid #a7f3d0; }
+.catalog-lifecycle-error { color: #991b1b; background: #fff1f2; border: 1px solid #fecaca; }
+.catalog-lifecycle-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px; background: rgb(15 23 42 / 55%); }
+.catalog-lifecycle-dialog { width: min(720px, 100%); max-height: min(760px, 90vh); overflow: auto; background: #fff; border: 1px solid #d8e2e8; border-radius: 10px; box-shadow: 0 24px 70px rgb(15 23 42 / 28%); }
+.catalog-lifecycle-dialog > header { display: flex; justify-content: space-between; gap: 16px; padding: 22px 24px 18px; border-bottom: 1px solid #e7eef1; }
+.catalog-lifecycle-dialog h2 { margin: 0; color: #102a43; font-size: 22px; }
+.catalog-lifecycle-eyebrow { margin: 0 0 5px; color: #116b70; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.catalog-lifecycle-close { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid #d8e2e8; border-radius: 6px; color: #486581; background: #fff; cursor: pointer; }
+.catalog-lifecycle-warning, .catalog-lifecycle-safe { display: flex; gap: 12px; margin: 20px 24px 0; padding: 13px; border-radius: 6px; }
+.catalog-lifecycle-warning { color: #7c2d12; background: #fff7ed; border: 1px solid #fed7aa; }
+.catalog-lifecycle-safe { color: #155e75; background: #ecfeff; border: 1px solid #a5f3fc; }
+.catalog-lifecycle-warning div { display: grid; gap: 4px; }
+.catalog-lifecycle-warning span { font-size: 13px; }
+.catalog-lifecycle-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 18px 24px; }
+.catalog-lifecycle-grid > div { display: grid; gap: 5px; padding: 12px; border: 1px solid #e5edf0; border-radius: 6px; background: #f8fafb; }
+.catalog-lifecycle-grid span { color: #627d98; font-size: 12px; }
+.catalog-lifecycle-grid strong { color: #243b53; font-size: 14px; overflow-wrap: anywhere; }
+.catalog-lifecycle-field { display: grid; gap: 7px; margin: 16px 24px 0; color: #334e68; font-size: 13px; font-weight: 700; }
+.catalog-lifecycle-field input { width: 100%; box-sizing: border-box; min-height: 40px; border: 1px solid #bcccdc; border-radius: 6px; padding: 0 11px; font: inherit; font-weight: 400; }
+.catalog-lifecycle-dialog > .catalog-lifecycle-error { margin: 16px 24px 0; }
+.catalog-lifecycle-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 22px 24px; margin-top: 20px; border-top: 1px solid #e7eef1; }
+@media (max-width: 640px) { .catalog-lifecycle-backdrop { padding: 10px; align-items: end; } .catalog-lifecycle-dialog { max-height: 92vh; } .catalog-lifecycle-grid { grid-template-columns: 1fr; } .catalog-lifecycle-dialog > footer { flex-direction: column-reverse; } .catalog-lifecycle-dialog > footer button { width: 100%; } }

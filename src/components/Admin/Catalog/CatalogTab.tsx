@@ -37,6 +37,7 @@ import './CatalogTab.css';
 import CategorySidebar, { type CategorySelection } from './CategorySidebar';
 import CategoryManagerDialog from './CategoryManagerDialog';
 import CatalogImportDialog from './CatalogImportDialog';
+import { CatalogLifecycleControls } from './CatalogLifecycleControls';
 
 interface CatalogTabProps {
   searchQuery: string;
@@ -177,6 +178,7 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
           <div className="catalog-heading-actions">
             <button type="button" className="catalog-secondary-button" onClick={() => setImportOpen(true)}><TableProperties size={16} /> Nhập nhanh từ Sheet</button>
             <button type="button" className="catalog-secondary-button" disabled={Boolean(selectedCategory && !selectedLeaf)} title={selectedCategory && !selectedLeaf ? 'Hãy chọn một danh mục con' : undefined} onClick={() => setWizard({ mode: 'create', initialCategoryId: selectedLeaf?.id })}><Plus size={16} /> Tạo sản phẩm</button>
+            <CatalogLifecycleControls onChanged={() => { void loadProducts(); void loadCategories(); }} />
             <button type="button" className="catalog-icon-button" onClick={() => void loadProducts()} aria-label="Làm mới danh mục" title="Làm mới"><RefreshCw size={17} /></button>
           </div>
         </div>

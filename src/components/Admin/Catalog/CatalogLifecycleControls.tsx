@@ -1,0 +1,77 @@
+import { useState } from 'react';
+import { AlertTriangle, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
+import { catalogLifecycleApi, CatalogLifecycleApiError } from '../../../services/catalogLifecycleApi';
+import type { CatalogResetPreview } from '../../../types/catalogLifecycle';
+import type { CatalogSheetSyncBatch } from '../../../types/catalogSheetSync';
+import './CatalogLifecycleControls.css';
+
+type Mode = 'reset' | 'full' | null;
+
+const errorText = (error: unknown) => error instanceof CatalogLifecycleApiError ? `${error.message}${error.code ? ` (${error.code})` : ''}` : 'Không thể xử lý thao tác catalog.';
+const idempotencyKey = () => (globalThis.crypto?.randomUUID?.() ?? `catalog-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+
+export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void }) => {
+  const [mode, setMode] = useState<Mode>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [resetPreview, setResetPreview] = useState<CatalogResetPreview | null>(null);
+  const [fullBatch, setFullBatch] = useState<CatalogSheetSyncBatch | null>(null);
+  const [password, setPassword] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+
+  const openReset = async () => {
+    setBusy(true); setError(''); setMessage('');
+    try { setResetPreview(await catalogLifecycleApi.resetPreview()); setMode('reset'); } catch (loadError) { setError(errorText(loadError)); }
+    finally { setBusy(false); }
+  };
+  const openFull = async () => {
+    setBusy(true); setError(''); setMessage('');
+    try { const result = await catalogLifecycleApi.fullPreview(); setFullBatch(result.batch); setMode('full'); } catch (loadError) { setError(errorText(loadError)); }
+    finally { setBusy(false); }
+  };
+  const close = () => { if (busy) return; setMode(null); setPassword(''); setConfirmation(''); setError(''); };
+  const reset = async () => {
+    if (!resetPreview?.currentVersionId) return;
+    setBusy(true); setError('');
+    try {
+      const result = await catalogLifecycleApi.reset({ catalogVersionId: resetPreview.currentVersionId, confirmation, currentPassword: password, idempotencyKey: idempotencyKey() });
+      setMessage(`Đã tạo catalog rỗng ${result.catalogVersionId}. Media và version cũ vẫn được giữ.`); close(); onChanged?.();
+    } catch (resetError) { setError(errorText(resetError)); }
+    finally { setBusy(false); }
+  };
+  const fullApply = async () => {
+    if (!fullBatch) return;
+    setBusy(true); setError('');
+    try { const result = await catalogLifecycleApi.fullApply(fullBatch.id, password); setMessage(`Đã tạo catalog draft ${result.versionId}. Các variant cần review trước khi publish.`); close(); onChanged?.(); }
+    catch (applyError) { setError(errorText(applyError)); }
+    finally { setBusy(false); }
+  };
+  const summary = fullBatch?.summary ?? {};
+  return <>
+    <div className="catalog-lifecycle-actions" aria-label="Thao tác toàn bộ catalog">
+      <button type="button" className="catalog-secondary-button" onClick={() => void openFull()} disabled={busy}><RefreshCw size={16} /> Đồng bộ lại toàn bộ HICO GỐC</button>
+      <button type="button" className="catalog-danger-button" onClick={() => void openReset()} disabled={busy}><Trash2 size={16} /> Xóa toàn bộ sản phẩm</button>
+    </div>
+    {message && <p className="catalog-lifecycle-message" role="status">{message}</p>}
+    {error && !mode && <p className="catalog-lifecycle-error" role="alert">{error}</p>}
+    {mode && <div className="catalog-lifecycle-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+      <section className="catalog-lifecycle-dialog" role="dialog" aria-modal="true" aria-labelledby="catalog-lifecycle-title">
+        <header><div><p className="catalog-lifecycle-eyebrow">CATALOG SAFETY</p><h2 id="catalog-lifecycle-title">{mode === 'reset' ? 'Xóa toàn bộ sản phẩm' : 'Đồng bộ lại toàn bộ HICO GỐC'}</h2></div><button type="button" className="catalog-lifecycle-close" onClick={close} aria-label="Đóng"><X size={20} /></button></header>
+        {mode === 'reset' && resetPreview && <>
+          <div className="catalog-lifecycle-warning"><AlertTriangle size={20} /><div><strong>Thao tác này chỉ tạo version catalog rỗng.</strong><span>Không xóa Media Library, order, eSIM, QR, payment hoặc catalog version cũ.</span></div></div>
+          <div className="catalog-lifecycle-grid"><div><span>Hiện tại</span><strong>{resetPreview.products.toLocaleString('vi-VN')} Product · {resetPreview.variants.toLocaleString('vi-VN')} Variant</strong></div><div><span>Sau reset</span><strong>0 Product · 0 Variant</strong></div><div><span>Media sẽ giữ lại</span><strong>{resetPreview.linkedMedia.toLocaleString('vi-VN')} asset</strong></div><div><span>Version hiện tại</span><strong>{resetPreview.currentVersionId}</strong></div></div>
+          <label className="catalog-lifecycle-field">Nhập đúng nội dung xác nhận<input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder={resetPreview.confirmation} autoComplete="off" /></label>
+        </>}
+        {mode === 'full' && fullBatch && <>
+          <div className="catalog-lifecycle-safe"><ShieldCheck size={20} /><span>Preview đã đọc tab HICO GỐC. Apply atomic, tạo draft/inactive và không xóa version cũ.</span></div>
+          <div className="catalog-lifecycle-grid"><div><span>Dòng hợp lệ</span><strong>{(summary.valid ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Dòng lỗi</span><strong>{(summary.invalid ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Product candidate</span><strong>{(summary.products ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Variant candidate</span><strong>{(summary.variants ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh giữ lại</span><strong>{(summary.imagesReused ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh fallback</span><strong>{(summary.imagesFallback ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả từ Sheet</span><strong>{(summary.descriptionsFromSheet ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Hướng dẫn giữ lại</span><strong>{(summary.installationGuideReused ?? 0).toLocaleString('vi-VN')}</strong></div></div>
+          {(summary.invalid ?? 0) > 0 && <p className="catalog-lifecycle-error">Full Sync bị chặn vì còn dòng lỗi. Hãy sửa mapping/provider rồi tạo preview mới.</p>}
+        </>}
+        <label className="catalog-lifecycle-field">Mật khẩu Admin để xác nhận<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>
+        {error && <p className="catalog-lifecycle-error" role="alert">{error}</p>}
+        <footer><button type="button" className="catalog-secondary-button" onClick={close} disabled={busy}>Hủy</button>{mode === 'reset' ? <button type="button" className="catalog-danger-button" onClick={() => void reset()} disabled={busy || confirmation !== resetPreview?.confirmation || !password}>Xác nhận xóa catalog</button> : <button type="button" className="catalog-primary-button" onClick={() => void fullApply()} disabled={busy || !password || (summary.invalid ?? 0) > 0}>Xác nhận và rebuild</button>}</footer>
+      </section>
+    </div>}
+  </>;
+};
