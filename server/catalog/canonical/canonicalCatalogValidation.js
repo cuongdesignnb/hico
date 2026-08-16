@@ -20,6 +20,7 @@ const COVERAGE_TYPES = new Set([
 const CATALOG_STATUSES = new Set(['active', 'draft', 'archived']);
 const CURRENCIES = new Set(['VND', 'USD']);
 const MEDIUMS = new Set(['esim', 'physical_sim', null]);
+const DATA_POLICIES = new Set(['daily', 'total']);
 const SUPPLIERS = new Set(['worldmove', 'local_carrier', 'hico', 'other']);
 const FULFILLMENT_METHODS = new Set([
   'WORLDMOVE_ESIM_REDEEM',
@@ -137,6 +138,7 @@ export const validateCanonicalCatalog = ({
     if (!isNonEmptyString(product?.id)) errors.push(`${label} has invalid id.`);
     if (!isNonEmptyString(product?.slug)) errors.push(`${label} has invalid slug.`);
     if (!isNonEmptyString(product?.name)) errors.push(`${label} has invalid name.`);
+    if (product?.dataPolicy !== undefined && !DATA_POLICIES.has(product.dataPolicy)) errors.push(`${label} has invalid dataPolicy.`);
     if (!PRODUCT_OPERATIONS.has(product?.operation)) {
       errors.push(`${label} has invalid operation.`);
     }
@@ -202,6 +204,10 @@ export const validateCanonicalCatalog = ({
     if (!isNonNegativeNumber(variant?.price)) {
       errors.push(`${label} has invalid price.`);
     }
+    if (variant?.tripDayOptions !== undefined && (!Array.isArray(variant.tripDayOptions) || variant.tripDayOptions.some((value) => !Number.isInteger(value) || value < 1))) {
+      errors.push(`${label} has invalid tripDayOptions.`);
+    }
+    if (variant?.cancellable !== undefined && typeof variant.cancellable !== 'boolean') errors.push(`${label} has invalid cancellable.`);
     if (
       variant?.compareAtPrice !== null
       && variant?.compareAtPrice !== undefined

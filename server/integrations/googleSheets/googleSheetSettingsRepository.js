@@ -16,6 +16,9 @@ const mapSettings = (row) => row ? ({
   sheetName: row.sheet_name ?? null,
   sheetRange: row.sheet_range ?? null,
   headerRow: row.header_row,
+  fieldMapping: row.field_mapping ?? null,
+  priceMapping: row.price_mapping ?? null,
+  headerHash: row.header_hash ?? null,
   timezone: row.timezone,
   referenceOnly: row.reference_only,
   requireApproval: row.require_approval,
@@ -38,6 +41,7 @@ const defaultSettings = () => ({
   id: ID, enabled: false, credentialType: 'SERVICE_ACCOUNT', encryptedCredential: null,
   credentialMasked: null, credentialFingerprint: null, encryptionKeyVersion: null,
   spreadsheetId: null, sheetName: null, sheetRange: null, headerRow: 1,
+  fieldMapping: null, priceMapping: null, headerHash: null,
   timezone: 'Asia/Ho_Chi_Minh', referenceOnly: true, requireApproval: true,
   allowClearToken: true, clearToken: '__CLEAR__', maxRowsPerBatch: 5000,
   syncTimeoutSeconds: 30, scheduleEnabled: false, status: 'DISABLED',
@@ -111,11 +115,12 @@ export const createGoogleSheetSettingsRepository = ({ pool, id = ID } = {}) => {
     async saveSettings({ changes, expectedVersion, actorId }) {
       return updateWithVersion({ expectedVersion, values: [], query: `UPDATE catalog_sheet_integration_settings
         SET enabled=$1, spreadsheet_id=$2, sheet_name=$3, sheet_range=$4, header_row=$5,
-            timezone=$6, allow_clear_token=$7, max_rows_per_batch=$8, sync_timeout_seconds=$9,
-            updated_at=NOW(), updated_by=$10, version=version+1,
+            timezone=$6, field_mapping=$7::jsonb, price_mapping=$8::jsonb, header_hash=$9,
+            allow_clear_token=$10, max_rows_per_batch=$11, sync_timeout_seconds=$12,
+            updated_at=NOW(), updated_by=$13, version=version+1,
             status=CASE WHEN $1 THEN CASE WHEN encrypted_credential IS NULL THEN 'DISABLED' ELSE 'CONFIGURED' END ELSE 'DISABLED' END
-        WHERE id='${id}' AND ($11::int IS NULL OR version=$11)
-        RETURNING *`, values: [changes.enabled, changes.spreadsheetId, changes.sheetName, changes.sheetRange, changes.headerRow, changes.timezone, changes.allowClearToken, changes.maxRowsPerBatch, changes.syncTimeoutSeconds, actorId ?? null, expectedVersion ?? null] });
+        WHERE id='${id}' AND ($14::int IS NULL OR version=$14)
+        RETURNING *`, values: [changes.enabled, changes.spreadsheetId, changes.sheetName, changes.sheetRange, changes.headerRow, changes.timezone, JSON.stringify(changes.fieldMapping ?? {}), JSON.stringify(changes.priceMapping ?? {}), changes.headerHash ?? null, changes.allowClearToken, changes.maxRowsPerBatch, changes.syncTimeoutSeconds, actorId ?? null, expectedVersion ?? null] });
     },
     async replaceCredential({ encryptedCredential, credentialMasked, credentialFingerprint, encryptionKeyVersion, expectedVersion, actorId }) {
       return updateWithVersion({ expectedVersion, values: [JSON.stringify(encryptedCredential), credentialMasked, credentialFingerprint, encryptionKeyVersion, actorId ?? null, expectedVersion ?? null], query: `UPDATE catalog_sheet_integration_settings

@@ -22,6 +22,11 @@ export const GoogleSheetSettings: React.FC = () => {
   const [sheetName, setSheetName] = useState('');
   const [range, setRange] = useState('A1:K5000');
   const [headerRow, setHeaderRow] = useState('1');
+  const [physicalPrice, setPhysicalPrice] = useState('pricePhysical');
+  const [esimPrice, setEsimPrice] = useState('priceEsim');
+  const [physicalCompare, setPhysicalCompare] = useState('');
+  const [esimCompare, setEsimCompare] = useState('');
+  const [headerHash, setHeaderHash] = useState('');
   const [enabled, setEnabled] = useState(false);
   const [testResult, setTestResult] = useState<GoogleSheetConnectionTestResult | null>(null);
   const [discovery, setDiscovery] = useState<GoogleSheetDiscoveryResult | null>(null);
@@ -31,7 +36,7 @@ export const GoogleSheetSettings: React.FC = () => {
     setLoading(true); setError('');
     try {
       const next = await googleSheetSettingsApi.get();
-      setSettings(next); setEnabled(next.enabled); setSheetName(next.sheetName ?? ''); setRange(next.range ?? 'A1:K5000'); setHeaderRow(String(next.headerRow ?? 1));
+      setSettings(next); setEnabled(next.enabled); setSheetName(next.sheetName ?? ''); setRange(next.range ?? 'A1:K5000'); setHeaderRow(String(next.headerRow ?? 1)); setPhysicalPrice(next.priceMapping?.physical ?? 'pricePhysical'); setEsimPrice(next.priceMapping?.esim ?? 'priceEsim'); setPhysicalCompare(next.priceMapping?.comparePhysical ?? ''); setEsimCompare(next.priceMapping?.compareEsim ?? ''); setHeaderHash(next.headerHash ?? '');
     } catch (loadError) { setError(errorText(loadError)); } finally { setLoading(false); }
   };
   useEffect(() => { queueMicrotask(() => { void load(); }); }, []);
@@ -39,7 +44,7 @@ export const GoogleSheetSettings: React.FC = () => {
   const saveSettings = async () => {
     setBusy(true); setMessage(''); setError('');
     try {
-      const next = await googleSheetSettingsApi.save({ enabled, spreadsheetId: spreadsheetId.trim() || undefined, sheetName: sheetName.trim() || undefined, sheetRange: range.trim() || undefined, headerRow: Number(headerRow), referenceOnly: true, requireApproval: true, allowClearToken: true, scheduleEnabled: false });
+      const next = await googleSheetSettingsApi.save({ enabled, spreadsheetId: spreadsheetId.trim() || undefined, sheetName: sheetName.trim() || undefined, sheetRange: range.trim() || undefined, headerRow: Number(headerRow), referenceOnly: true, requireApproval: true, allowClearToken: true, scheduleEnabled: false, priceMapping: { physical: physicalPrice, esim: esimPrice, comparePhysical: physicalCompare || null, compareEsim: esimCompare || null }, ...(headerHash ? { headerHash } : {}) });
       setSettings(next); setMessage('Đã lưu cấu hình kết nối.');
     } catch (saveError) { setError(errorText(saveError)); } finally { setBusy(false); }
   };
@@ -66,7 +71,7 @@ export const GoogleSheetSettings: React.FC = () => {
     const selected = discovery?.sheets.find((sheet) => sheet.title === sheetName);
     if (!selected || !spreadsheetId.trim()) return;
     setBusy(true); setMessage(''); setError('');
-    try { const result = await googleSheetSettingsApi.discoverHeader({ spreadsheetId: spreadsheetId.trim(), sheetId: selected.sheetId, sheetTitle: selected.title, headerRow: Number(headerRow) }); setHeaderDiscovery(result); setRange(result.suggestedRange); setMessage('Đã đọc header. Hãy kiểm tra và xác nhận range trước khi lưu.'); }
+    try { const result = await googleSheetSettingsApi.discoverHeader({ spreadsheetId: spreadsheetId.trim(), sheetId: selected.sheetId, sheetTitle: selected.title, headerRow: Number(headerRow) }); setHeaderDiscovery(result); setHeaderHash(result.headerHash ?? ''); setRange(result.suggestedRange); setMessage('Đã đọc header. Hãy kiểm tra và xác nhận range trước khi lưu.'); }
     catch (headerError) { setError(errorText(headerError)); } finally { setBusy(false); }
   };
   const validateRange = async () => {
@@ -96,10 +101,17 @@ export const GoogleSheetSettings: React.FC = () => {
       <div className="google-sheet-form-grid">
         <label className="google-sheet-toggle"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /><span>Bật tích hợp Google Sheet</span></label>
         <label className="google-sheet-field">Spreadsheet ID<input value={spreadsheetId} onChange={(event) => setSpreadsheetId(event.target.value)} placeholder={settings?.spreadsheetIdMasked ?? 'Nhập Spreadsheet ID'} /></label>
-        <label className="google-sheet-field">Tên sheet<input value={sheetName} onChange={(event) => setSheetName(event.target.value)} placeholder="HICO_SYNC" /></label>
+        <label className="google-sheet-field">Tên sheet<input value={sheetName} onChange={(event) => { const value = event.target.value; setSheetName(value); if (value.trim() === 'HICO GỐC' && range === 'A1:K5000') setRange('A1:AT5000'); }} placeholder="HICO GỐC" /></label>
         {discovery && <div className="google-sheet-discovery-result"><strong>{discovery.title ?? 'Spreadsheet'}</strong><span>{discovery.sheets.length} tab GRID · {discovery.timeZone ?? 'Không rõ múi giờ'}</span>{headerDiscovery && <span>Header: {headerDiscovery.headers.join(', ')} · Suggested: {headerDiscovery.suggestedRange}</span>}</div>}
         <label className="google-sheet-field">Range<input value={range} onChange={(event) => setRange(event.target.value)} placeholder="A1:K5000" /></label>
         <label className="google-sheet-field">Header row<input type="number" min="1" value={headerRow} onChange={(event) => setHeaderRow(event.target.value)} /></label>
+        {sheetName.trim() === 'HICO GỐC' && <div className="google-sheet-price-mapping">
+          <div><strong>Giá bán đồng bộ</strong><p>Giá đã chọn sẽ dùng chung cho Catalog, giỏ hàng và checkout.</p></div>
+          <label className="google-sheet-field">Giá SIM<select value={physicalPrice} onChange={(event) => setPhysicalPrice(event.target.value)}><option value="pricePhysical">Giá Sim</option><option value="priceWholesalePhysical">Giá sỉ Sim</option><option value="priceCtvPhysical">Giá CTV SIM</option></select></label>
+          <label className="google-sheet-field">Giá eSIM<select value={esimPrice} onChange={(event) => setEsimPrice(event.target.value)}><option value="priceEsim">Giá eSim</option><option value="priceWholesaleEsim">Giá sỉ eSim</option><option value="priceCtvEsim">Giá CTV eSIM</option></select></label>
+          <label className="google-sheet-field">Giá so sánh SIM (tuỳ chọn)<select value={physicalCompare} onChange={(event) => setPhysicalCompare(event.target.value)}><option value="">Không dùng</option><option value="pricePhysical">Giá Sim</option><option value="priceWholesalePhysical">Giá sỉ Sim</option><option value="priceCtvPhysical">Giá CTV SIM</option></select></label>
+          <label className="google-sheet-field">Giá so sánh eSIM (tuỳ chọn)<select value={esimCompare} onChange={(event) => setEsimCompare(event.target.value)}><option value="">Không dùng</option><option value="priceEsim">Giá eSim</option><option value="priceWholesaleEsim">Giá sỉ eSim</option><option value="priceCtvEsim">Giá CTV eSIM</option></select></label>
+        </div>}
         <div className="google-sheet-guardrails"><span><CheckCircle2 size={16} /> referenceOnly = true</span><span><CheckCircle2 size={16} /> requireApproval = true</span><span><KeyRound size={16} /> APN/LPA/PIN/PUK không bị ghi đè</span></div>
       </div>
       <div className="google-sheet-discovery-actions"><button type="button" className="admin-create-btn" disabled={busy || loading || !spreadsheetId.trim()} onClick={discoverSpreadsheet}>Đọc thông tin Sheet</button><button type="button" className="admin-create-btn" disabled={busy || loading || !discovery || !sheetName.trim()} onClick={discoverHeader}>Đọc header</button><button type="button" className="admin-create-btn" disabled={busy || loading || !headerDiscovery} onClick={validateRange}>Kiểm tra range</button></div>\r\n      <div className="google-sheet-action-row"><button type="button" className="admin-submit-btn" disabled={busy || loading} onClick={saveSettings}>Lưu cấu hình</button><button type="button" className="admin-create-btn" disabled={busy || loading || settings?.source === 'NONE'} onClick={testConnection}><TestTube2 size={16} /> Test connection</button><button type="button" className="admin-create-btn" disabled={busy || loading || settings?.source === 'NONE'} onClick={preview}><RefreshCw size={16} /> Chạy preview</button></div>

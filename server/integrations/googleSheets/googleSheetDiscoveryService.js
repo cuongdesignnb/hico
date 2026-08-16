@@ -1,5 +1,6 @@
 import { GoogleSheetSettingsError, maskSpreadsheetId } from './googleSheetSecretCrypto.js';
 import { validateSimHicoHeader } from '../../catalog/sheetSync/simHicoHeaderAliases.js';
+import { HICO_GOC_SHEET, hicoGocHeaderHash } from '../../catalog/sheetSync/hicoGocMapping.js';
 
 const MAX_HEADER_ROW = 100;
 const MAX_HEADER_COLUMNS = 52;
@@ -51,13 +52,14 @@ const headerResult = ({ metadata, sheet, headerRow, values }) => {
   const warnings = [];
   const duplicates = normalized.filter((header, index) => header && normalized.indexOf(header) !== index);
   if (duplicates.length) warnings.push({ code: 'DUPLICATE_HEADERS', headers: [...new Set(duplicates)] });
+  const isHicoGoc = sheet.title === HICO_GOC_SHEET;
   const simHico = validateSimHicoHeader(headers);
   const legacy = MATCH_HEADERS.some((group) => group.every((header) => normalized.includes(header)));
-  if (!simHico.valid && !legacy) throw new GoogleSheetSettingsError('Google Sheet headers are invalid.', { code: 'SHEET_HEADER_CONTRACT_INVALID', status: 422, details: { missing: simHico.missing, required: MATCH_HEADERS } });
-  const missing = simHico.valid ? [] : REQUIRED_HEADERS.filter((header) => !normalized.includes(header) && !(header === 'network_label' && normalized.includes('network')));
+  if (!isHicoGoc && !simHico.valid && !legacy) throw new GoogleSheetSettingsError('Google Sheet headers are invalid.', { code: 'SHEET_HEADER_CONTRACT_INVALID', status: 422, details: { missing: simHico.missing, required: MATCH_HEADERS } });
+  const missing = isHicoGoc || simHico.valid ? [] : REQUIRED_HEADERS.filter((header) => !normalized.includes(header) && !(header === 'network_label' && normalized.includes('network')));
   if (missing.length) warnings.push({ code: 'MISSING_OPTIONAL_HEADERS', headers: missing });
   const endRow = simHico.valid ? Math.min(20, sheet.rowCount || 20) : Math.min(5000, sheet.rowCount || 5000);
-  return { sheetId: sheet.sheetId, sheetTitle: sheet.title, headerRow, headers: headers.filter(Boolean), suggestedRange: `A${headerRow}:${columnName(Math.max(1, headers.length))}${endRow}`, warnings, spreadsheetIdMasked: metadata.spreadsheetIdMasked, contract: simHico.valid ? 'SIM_HICO_NATIVE' : 'LEGACY', detectedAliases: simHico.valid ? simHico.detectedAliases : {} };
+  return { sheetId: sheet.sheetId, sheetTitle: sheet.title, headerRow, headers: headers.filter(Boolean), headerHash: hicoGocHeaderHash(headers), suggestedRange: `A${headerRow}:${columnName(Math.max(1, headers.length))}${endRow}`, warnings, spreadsheetIdMasked: metadata.spreadsheetIdMasked, contract: isHicoGoc ? 'HICO_GOC_QUICK_SYNC' : simHico.valid ? 'SIM_HICO_NATIVE' : 'LEGACY', detectedAliases: simHico.valid ? simHico.detectedAliases : {} };
 };
 
 export const createGoogleSheetDiscoveryService = ({ clientFactory, resolveCredential, now = () => new Date() } = {}) => ({

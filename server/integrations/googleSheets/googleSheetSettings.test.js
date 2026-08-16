@@ -63,3 +63,21 @@ test('settings changes reject non-reference or scheduled modes', async () => {
   await assert.rejects(() => service.saveSettings({ input: { referenceOnly: false } }), (error) => error.code === 'GOOGLE_SHEET_GUARDRAIL_REQUIRED');
   await assert.rejects(() => service.saveSettings({ input: { scheduleEnabled: true } }), (error) => error.code === 'GOOGLE_SHEET_SCHEDULE_UNAVAILABLE');
 });
+
+test('HICO GỐC settings keep selling price mapping separate from internal cost columns', async () => {
+  const repository = createInMemoryGoogleSheetSettingsRepository();
+  const service = createGoogleSheetConnectionService({ settingsRepository: repository, env: {} });
+  const saved = await service.saveSettings({ input: {
+    enabled: false,
+    spreadsheetId: 'sheet-id-123456',
+    sheetName: 'HICO GỐC',
+    sheetRange: 'A1:AT5000',
+    priceMapping: { physical: 'priceWholesalePhysical', esim: 'priceCtvEsim', comparePhysical: null, compareEsim: null },
+  } });
+  assert.equal(saved.priceMapping.physical, 'priceWholesalePhysical');
+  assert.equal(saved.priceMapping.esim, 'priceCtvEsim');
+  await assert.rejects(() => service.saveSettings({ input: {
+    sheetName: 'HICO GỐC',
+    priceMapping: { physical: 'pricePhysical', comparePhysical: 'pricePhysical' },
+  } }), (error) => error.code === 'SHEET_PRICE_MAPPING_INVALID');
+});

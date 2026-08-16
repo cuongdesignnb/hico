@@ -14,6 +14,8 @@ const request = async <T>(path: string, init: RequestInit = {}) => {
 };
 export const catalogSheetSyncApi = {
   preview: () => request<{ batch: CatalogSheetSyncBatch; rows: CatalogSheetSyncRow[] }>('/preview', { method: 'POST' }),
+  quickPreview: () => request<{ batch: CatalogSheetSyncBatch; rows: CatalogSheetSyncRow[] }>('/quick-preview', { method: 'POST', body: '{}' }),
   apply: (batchId: string, selection: { rowIds?: string[]; fields?: CatalogSheetSyncField[] }) => request<{ batch: CatalogSheetSyncBatch; rows: CatalogSheetSyncRow[] }>(`/${encodeURIComponent(batchId)}/apply`, { method: 'POST', body: JSON.stringify({ selection }) }),
+  quickApply: (batchId: string, rowIds?: string[]) => request<{ batch: CatalogSheetSyncBatch; rows: CatalogSheetSyncRow[] }>(`/${encodeURIComponent(batchId)}/quick-apply`, { method: 'POST', body: JSON.stringify({ rowIds }) }),
   reject: (batchId: string) => request<{ batch: CatalogSheetSyncBatch }>(`/${encodeURIComponent(batchId)}/reject`, { method: 'POST', body: '{}' }),
 };

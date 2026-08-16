@@ -11,3 +11,4 @@
 .sheet-sync-table th, .sheet-sync-table td { padding: 10px; border-bottom: 1px solid #e8ecf1; text-align: left; vertical-align: top; }
 .sheet-sync-table th { background: #f8fafc; }
 .sheet-sync-actions { justify-content: flex-end; }
+.sheet-sync-header-actions { display: flex; flex-wrap: wrap; gap: 10px; }

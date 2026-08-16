@@ -37,6 +37,8 @@ export type CatalogStatus =
   | 'draft'
   | 'archived';
 
+export type CatalogDataPolicy = 'daily' | 'total';
+
 export type SimMedium =
   | 'esim'
   | 'physical_sim'
@@ -63,6 +65,7 @@ export interface CoverageDestination {
   isoCode: string;
   mcc?: string;
   name: string;
+  dataPolicy?: CatalogDataPolicy;
   flag: string;
   regionId?: string;
   image?: string;
@@ -128,6 +131,8 @@ export interface CatalogVariant {
   publicSku?: string;
   dataLimit?: string;
   duration?: string;
+  tripDayOptions?: number[];
+  cancellable?: boolean;
   price: number;
   compareAtPrice?: number | null;
   currency: 'VND' | 'USD';

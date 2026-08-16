@@ -1,6 +1,7 @@
 import { createSheetReferenceClient } from '../../catalog/sheetSync/sheetReferenceClient.js';
 import { GoogleSheetSettingsError, maskSpreadsheetId, validateServiceAccountCredential } from './googleSheetSecretCrypto.js';
 import { createGoogleSheetDiscoveryService } from './googleSheetDiscoveryService.js';
+import { HICO_GOC_SHEET, normalizeHicoGocSettings } from '../../catalog/sheetSync/hicoGocMapping.js';
 
 const ENV_KEYS = ['CATALOG_SHEET_ID', 'CATALOG_SHEET_TAB', 'CATALOG_SHEET_RANGE', 'GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON'];
 const envConfigured = (env) => ENV_KEYS.every((key) => typeof env[key] === 'string' && env[key].trim());
@@ -12,6 +13,7 @@ const normalizedSettings = (value) => ({
   credentialFingerprint: value?.credentialFingerprint ?? null, encryptionKeyVersion: value?.encryptionKeyVersion ?? null,
   spreadsheetId: value?.spreadsheetId ?? null, sheetName: value?.sheetName ?? null, sheetRange: value?.sheetRange ?? null,
   headerRow: Number(value?.headerRow ?? 1), timezone: value?.timezone ?? 'Asia/Ho_Chi_Minh', referenceOnly: true,
+  fieldMapping: value?.fieldMapping ?? null, priceMapping: value?.priceMapping ?? null, headerHash: value?.headerHash ?? null,
   requireApproval: true, allowClearToken: value?.allowClearToken !== false, clearToken: '__CLEAR__',
   maxRowsPerBatch: Math.min(5000, Math.max(1, Number(value?.maxRowsPerBatch ?? 5000))), syncTimeoutSeconds: Math.min(120, Math.max(1, Number(value?.syncTimeoutSeconds ?? 30))),
   scheduleEnabled: false, status: value?.status ?? 'DISABLED', lastTestStatus: value?.lastTestStatus ?? 'NOT_TESTED',
@@ -33,6 +35,9 @@ const publicSettings = (settings, { source = 'NONE', env = process.env } = {}) =
     sheetName: current.sheetName ?? (source === 'ENVIRONMENT' ? env.CATALOG_SHEET_TAB : null),
     range: current.sheetRange ?? (source === 'ENVIRONMENT' ? env.CATALOG_SHEET_RANGE : null),
     headerRow: current.headerRow,
+    fieldMapping: current.fieldMapping,
+    priceMapping: current.priceMapping,
+    headerHash: current.headerHash,
     timezone: current.timezone,
     referenceOnly: true,
     requireApproval: true,
@@ -67,7 +72,10 @@ const assertConnectionSettings = (input) => {
   if (input.referenceOnly !== undefined && input.referenceOnly !== true) throw new GoogleSheetSettingsError('Sheet integration must remain reference-only.', { code: 'GOOGLE_SHEET_GUARDRAIL_REQUIRED' });
   if (input.requireApproval !== undefined && input.requireApproval !== true) throw new GoogleSheetSettingsError('Sheet integration must require Admin approval.', { code: 'GOOGLE_SHEET_GUARDRAIL_REQUIRED' });
   if (input.scheduleEnabled === true) throw new GoogleSheetSettingsError('Scheduled Sheet sync is not enabled.', { code: 'GOOGLE_SHEET_SCHEDULE_UNAVAILABLE' });
-  return { enabled, spreadsheetId: spreadsheetId || null, sheetName: sheetName || null, sheetRange: sheetRange || null, headerRow, timezone: String(input.timezone ?? 'Asia/Ho_Chi_Minh').trim() || 'Asia/Ho_Chi_Minh', allowClearToken: input.allowClearToken !== false, maxRowsPerBatch, syncTimeoutSeconds };
+  const mapping = sheetName === HICO_GOC_SHEET
+    ? normalizeHicoGocSettings({ fieldMapping: input.fieldMapping, priceMapping: input.priceMapping, headerHash: input.headerHash })
+    : { fieldMapping: input.fieldMapping ?? null, priceMapping: input.priceMapping ?? null, headerHash: input.headerHash ?? null };
+  return { enabled, spreadsheetId: spreadsheetId || null, sheetName: sheetName || null, sheetRange: sheetRange || null, headerRow, timezone: String(input.timezone ?? 'Asia/Ho_Chi_Minh').trim() || 'Asia/Ho_Chi_Minh', ...mapping, allowClearToken: input.allowClearToken !== false, maxRowsPerBatch, syncTimeoutSeconds };
 };
 
 export const createGoogleSheetConnectionService = ({ settingsRepository, credentialRepository, clientFactory, env = process.env, audit = () => {}, now = () => new Date() } = {}) => {
@@ -99,7 +107,7 @@ export const createGoogleSheetConnectionService = ({ settingsRepository, credent
     async getPublicSettings() { return readPublicSettings(); },
     async saveSettings({ input, expectedVersion, actorId, requestId }) {
       const current = await getSettings();
-      const changes = assertConnectionSettings({ ...current, ...(input ?? {}), spreadsheetId: input?.spreadsheetId ?? current.spreadsheetId, sheetName: input?.sheetName ?? current.sheetName, sheetRange: input?.sheetRange ?? current.sheetRange });
+      const changes = assertConnectionSettings({ ...current, ...(input ?? {}), spreadsheetId: input?.spreadsheetId ?? current.spreadsheetId, sheetName: input?.sheetName ?? current.sheetName, sheetRange: input?.sheetRange ?? current.sheetRange, fieldMapping: input?.fieldMapping ?? current.fieldMapping, priceMapping: input?.priceMapping ?? current.priceMapping, headerHash: input?.headerHash ?? current.headerHash });
       const saved = await settingsRepository.saveSettings({ changes, expectedVersion, actorId });
       await record({ eventType: 'GOOGLE_SHEET_SETTINGS_UPDATED', actorId, requestId, metadata: { version: saved.version, enabled: saved.enabled, source: 'ADMIN_SETTINGS' } });
       return publicSettings(saved, { source: sourceFor(saved, env), env });
@@ -156,8 +164,10 @@ export const createGoogleSheetConnectionService = ({ settingsRepository, credent
     },
     async readRows() {
       const resolved = await resolve();
-      if (resolved.source === 'ENVIRONMENT') return resolved.referenceClient.readRows();
-      return clientFactory.readRows({ credential: resolved.credential, settings: resolved.settings });
+      const reference = resolved.source === 'ENVIRONMENT'
+        ? await resolved.referenceClient.readRows()
+        : await clientFactory.readRows({ credential: resolved.credential, settings: resolved.settings });
+      return { ...reference, syncSettings: { fieldMapping: resolved.settings.fieldMapping, priceMapping: resolved.settings.priceMapping, headerHash: resolved.settings.headerHash } };
     },
     publicSettings,
   };

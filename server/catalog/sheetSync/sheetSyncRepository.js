@@ -8,7 +8,7 @@ const mapBatch = (row) => ({
   validatedAt: row.validated_at?.toISOString?.() ?? row.validated_at, appliedAt: row.applied_at?.toISOString?.() ?? row.applied_at,
   rejectedAt: row.rejected_at?.toISOString?.() ?? row.rejected_at, rejectedBy: row.rejected_by, catalogVersionId: row.catalog_version_id,
   approvedBy: row.approved_by,
-  summary: parseJson(row.summary, {}),
+  summary: parseJson(row.summary, {}), mode: row.mode ?? 'legacy', fieldMapping: parseJson(row.field_mapping, null), priceMapping: parseJson(row.price_mapping, null), headerHash: row.header_hash ?? null, providerSnapshotHash: row.provider_snapshot_hash ?? null,
 });
 const mapRow = (row) => ({
   id: row.id, batchId: row.batch_id, sheetRowNumber: row.sheet_row_number, rowHash: row.row_hash, variantId: row.variant_id,
@@ -48,8 +48,8 @@ export const createSheetSyncRepository = ({ pool = null, idFactory = () => rando
       const client = await pool.connect();
       await client.query('BEGIN');
       try {
-        await client.query(`INSERT INTO catalog_sheet_sync_batches (id, source_hash, spreadsheet_id, sheet_tab, sheet_range, status, created_by, created_at, validated_at, catalog_version_id, summary)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [batch.id, batch.sourceHash, batch.spreadsheetId, batch.sheetTab, batch.sheetRange, batch.status, batch.createdBy ?? null, batch.createdAt, batch.validatedAt ?? null, batch.catalogVersionId ?? null, JSON.stringify(batch.summary ?? {})]);
+        await client.query(`INSERT INTO catalog_sheet_sync_batches (id, source_hash, spreadsheet_id, sheet_tab, sheet_range, status, created_by, created_at, validated_at, catalog_version_id, summary, mode, field_mapping, price_mapping, header_hash, provider_snapshot_hash)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16)`, [batch.id, batch.sourceHash, batch.spreadsheetId, batch.sheetTab, batch.sheetRange, batch.status, batch.createdBy ?? null, batch.createdAt, batch.validatedAt ?? null, batch.catalogVersionId ?? null, JSON.stringify(batch.summary ?? {}), batch.mode ?? 'legacy', JSON.stringify(batch.fieldMapping ?? null), JSON.stringify(batch.priceMapping ?? null), batch.headerHash ?? null, batch.providerSnapshotHash ?? null]);
         for (const row of batchRows) await client.query(`INSERT INTO catalog_sheet_sync_rows (id,batch_id,sheet_row_number,row_hash,variant_id,status,normalized_data,raw_data,diff,errors,applied_fields,created_at)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [row.id, batch.id, row.sheetRowNumber, row.rowHash, row.variantId ?? null, row.status, JSON.stringify(row.normalizedData ?? {}), JSON.stringify(row.raw ?? {}), JSON.stringify(row.diff ?? {}), JSON.stringify(row.errors ?? []), JSON.stringify(row.appliedFields ?? []), row.createdAt]);
         await client.query('COMMIT'); return batch;

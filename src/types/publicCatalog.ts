@@ -50,6 +50,8 @@ export interface PublicVariant {
   active: boolean;
   dataLimit: string | null;
   duration: string | null;
+  tripDayOptions?: number[];
+  cancellable?: boolean;
   medium: PublicMedium;
   supplier: string;
   fulfillmentMethod: string;
@@ -97,6 +99,7 @@ export interface PublicProduct {
   id: string;
   slug: string;
   name: string;
+  dataPolicy?: 'daily' | 'total';
   operation: PublicOperation;
   categoryId: string | null;
   categoryPath: Array<{ id: string; slug: string; name: string }>;

@@ -13,9 +13,11 @@ export const createSheetSyncRouter = ({ sheetSyncService = createSheetSyncServic
   const router = express.Router();
   router.use('/admin/catalog-sheet-sync', catalogGuard);
   router.post('/admin/catalog-sheet-sync/preview', async (req, res) => { try { res.json(await sheetSyncService.preview({ actor: actor(req) })); } catch (error) { sendError(res, error); } });
+  router.post('/admin/catalog-sheet-sync/quick-preview', async (req, res) => { try { res.json(await sheetSyncService.preview({ actor: actor(req), mode: 'quick' })); } catch (error) { sendError(res, error); } });
   router.get('/admin/catalog-sheet-sync/:batchId', async (req, res) => { try { res.json(await sheetSyncService.getBatch(req.params.batchId)); } catch (error) { sendError(res, error); } });
   router.get('/admin/catalog-sheet-sync/:batchId/rows', async (req, res) => { try { res.json({ items: await sheetSyncService.listRows(req.params.batchId) }); } catch (error) { sendError(res, error); } });
   router.post('/admin/catalog-sheet-sync/:batchId/apply', async (req, res) => { try { res.json(await sheetSyncService.apply(req.params.batchId, { selection: req.body?.selection, actor: actor(req) })); } catch (error) { sendError(res, error); } });
+  router.post('/admin/catalog-sheet-sync/:batchId/quick-apply', async (req, res) => { try { res.json(await sheetSyncService.apply(req.params.batchId, { selection: { rowIds: req.body?.rowIds }, actor: actor(req) })); } catch (error) { sendError(res, error); } });
   router.post('/admin/catalog-sheet-sync/:batchId/reject', async (req, res) => { try { res.json(await sheetSyncService.reject(req.params.batchId, { actor: actor(req) })); } catch (error) { sendError(res, error); } });
   return router;
 };

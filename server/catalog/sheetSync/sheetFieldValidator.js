@@ -10,9 +10,9 @@ const expectedMethod = (offer) => {
   return null;
 };
 
-export const resolveProviderOffer = ({ wmproductId, variant, product, offers, fulfillmentProfile = null }) => {
+export const resolveProviderOffer = ({ wmproductId, variant, product, offers, fulfillmentProfile = null, requireExactProvider = false }) => {
   const matches = offers.filter((offer) => offer.wmproductId === wmproductId);
-  if (matches.length === 0 && fulfillmentProfile) {
+  if (matches.length === 0 && fulfillmentProfile && !requireExactProvider) {
     const resolution = resolveFulfillmentOffer({
       variant,
       offers,
@@ -43,17 +43,22 @@ export const resolveProviderOffer = ({ wmproductId, variant, product, offers, fu
   return { offer, resolution: null };
 };
 
-export const validateSheetRow = ({ row, product, variant, offers, fulfillmentProfile = null }) => {
+export const validateSheetRow = ({ row, product, variant, offers, fulfillmentProfile = null, requireExactProvider = row.mode === 'quick' }) => {
   const errors = [...row.errors];
   let offer = null;
   const wmproductId = row.normalizedData.wmproductId;
   if (wmproductId !== undefined) {
-    const resolved = resolveProviderOffer({ wmproductId, variant, product, offers, fulfillmentProfile });
+    const resolved = resolveProviderOffer({ wmproductId, variant, product, offers, fulfillmentProfile, requireExactProvider });
     if (resolved.error) errors.push(resolved.error);
     else offer = resolved.offer;
   }
   if (row.normalizedData.currency !== undefined && row.normalizedData.currency !== variant.currency) errors.push({ code: 'CURRENCY_MISMATCH', field: 'currency' });
   if (row.normalizedData.price !== undefined && variant.currency !== 'VND') errors.push({ code: 'CURRENCY_MISMATCH', field: 'price' });
+  if (row.mode === 'quick') {
+    if (!['daily', 'total'].includes(row.normalizedData.dataPolicy)) errors.push({ code: 'DATA_POLICY_INVALID', field: 'dataPolicy' });
+    if (row.normalizedData.cancellable !== undefined && typeof row.normalizedData.cancellable !== 'boolean') errors.push({ code: 'CANCELLABLE_INVALID', field: 'cancellable' });
+    if (row.normalizedData.compareAtPrice !== undefined && (row.normalizedData.compareAtPrice <= row.normalizedData.price || row.normalizedData.compareAtPrice < 0)) errors.push({ code: 'COMPARE_PRICE_INVALID', field: 'compareAtPrice' });
+  }
   return { valid: errors.length === 0, errors, offer };
 };
 
