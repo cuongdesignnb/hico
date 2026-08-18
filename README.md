@@ -34,6 +34,19 @@ security check. Operational commands live under `server/package.json`:
 
 See `docs/operations/PRODUCTION_LAUNCH_CHECKLIST.md` before a rollout.
 
+### Catalog Maintenance Mode
+
+`CATALOG_MAINTENANCE_WRITES_ENABLED=false` is the default. Set it to the exact
+value `true` only for a short, approved maintenance window when a Super Admin
+must run Catalog Reset or Full Sync from `HICO GỐC`. The dedicated gate still
+requires the normal Admin session, CSRF, re-authentication, a healthy canonical
+catalog, and the existing preview/freshness checks. It does not make the
+global production readiness state ready and does not enable Quick Apply,
+Product CRUD, publish, rollback, fulfillment, checkout, customer, payment, or
+provider writes. There is no browser endpoint for enabling this mode; disable
+the environment flag and restart the backend after the operation. See
+`docs/operations/CATALOG_MAINTENANCE_RUNBOOK.md`.
+
 ## Customer authentication
 
 Customer identity is separate from Admin identity. Customer routes use

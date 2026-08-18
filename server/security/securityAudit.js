@@ -17,6 +17,7 @@ export const createAdminRequestAudit = ({ securityAudit = () => {} } = {}) => (r
       method: req.method,
       path: req.originalUrl?.split('?')[0],
       statusCode: res.statusCode,
+      ...(req.catalogMaintenance ? { ...req.catalogMaintenance } : {}),
     });
   });
   return next();

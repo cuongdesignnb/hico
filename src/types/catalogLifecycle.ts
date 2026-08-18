@@ -18,6 +18,14 @@ export interface CatalogResetResult {
   mediaDeleted: number;
 }
 
+export interface CatalogMaintenanceStatus {
+  enabled: boolean;
+  globalProductionReady: boolean;
+  resetAllowed: boolean;
+  fullSyncAllowed: boolean;
+  blockers: string[];
+}
+
 export interface CatalogFullSyncSummary {
   total?: number;
   valid?: number;

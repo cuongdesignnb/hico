@@ -1,4 +1,4 @@
-import type { CatalogResetPreview, CatalogResetResult } from '../types/catalogLifecycle';
+import type { CatalogMaintenanceStatus, CatalogResetPreview, CatalogResetResult } from '../types/catalogLifecycle';
 import type { CatalogSheetSyncBatch, CatalogSheetSyncRow } from '../types/catalogSheetSync';
 
 export class CatalogLifecycleApiError extends Error {
@@ -16,6 +16,7 @@ const request = async <T>(path: string, init: RequestInit = {}) => {
 };
 
 export const catalogLifecycleApi = {
+  maintenanceStatus: () => request<CatalogMaintenanceStatus>('/admin/catalog/maintenance/status'),
   resetPreview: () => request<CatalogResetPreview>('/admin/catalog/reset/preview'),
   reset: (input: { catalogVersionId: string; confirmation: string; currentPassword: string; idempotencyKey: string }) => request<CatalogResetResult>('/admin/catalog/reset', { method: 'POST', body: JSON.stringify(input) }),
   fullPreview: () => request<{ batch: CatalogSheetSyncBatch; rows: CatalogSheetSyncRow[] }>('/admin/catalog-sheet-sync/full-preview', { method: 'POST', body: '{}' }),

@@ -1,3 +1,5 @@
+import { isCatalogMaintenanceMutation } from '../catalog/maintenance/catalogMaintenancePolicy.js';
+
 const safeMutationKeys = new Set([
   'PUT /settings/integrations/google-sheet',
   'PUT /settings/integrations/google-sheet/credential',
@@ -23,3 +25,5 @@ export const SAFE_ADMIN_MUTATIONS = Object.freeze([...safeMutationKeys]);
 export const isProductionSafeAdminMutation = (request) => (
   safeMutationKeys.has(`${request.method} ${pathWithoutAdminPrefix(request)}`)
 );
+
+export { isCatalogMaintenanceMutation };

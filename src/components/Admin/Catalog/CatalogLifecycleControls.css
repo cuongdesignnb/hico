@@ -1,4 +1,8 @@
 .catalog-lifecycle-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.catalog-maintenance-status { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 10px; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; color: #334e68; background: #f8fafc; font-size: 13px; }
+.catalog-maintenance-status span { color: #627d98; }
+.catalog-maintenance-status.is-enabled { border-color: #99f6e4; color: #115e59; background: #f0fdfa; }
+.catalog-maintenance-status.is-disabled { border-color: #cbd5e1; color: #475569; background: #f8fafc; }
 .catalog-danger-button, .catalog-primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; border: 1px solid transparent; border-radius: 6px; padding: 0 14px; font: inherit; font-weight: 700; cursor: pointer; }
 .catalog-danger-button { color: #9b1c1c; background: #fff5f5; border-color: #e7aaaa; }
 .catalog-primary-button { color: #fff; background: #116b70; border-color: #116b70; }

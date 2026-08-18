@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createProductionWriteGuard } from './productionWriteGuard.js';
-import { isProductionSafeAdminMutation } from './adminWritePolicy.js';
+import { isCatalogMaintenanceMutation, isProductionSafeAdminMutation } from './adminWritePolicy.js';
 
-const runGuard = async (request) => new Promise((resolve) => {
+const runGuard = async (request, { maintenance = false } = {}) => new Promise((resolve) => {
   let readinessCalls = 0;
   const response = {
     statusCode: 200,
@@ -17,8 +17,18 @@ const runGuard = async (request) => new Promise((resolve) => {
       async evaluate() { return { failedChecks: ['CHECKOUT_HEALTHY'] }; },
     },
     allowWhenNotReady: isProductionSafeAdminMutation,
+    isMaintenanceMutation: maintenance ? isCatalogMaintenanceMutation : undefined,
   });
   guard(request, response, () => resolve({ next: true, readinessCalls }));
+});
+
+test('maintenance mutations reach the dedicated maintenance gate before readiness', async () => {
+  for (const originalUrl of [
+    '/api/admin/catalog/reset',
+    '/api/admin/catalog-sheet-sync/batch-1/full-apply',
+  ]) {
+    assert.deepEqual(await runGuard({ method: 'POST', originalUrl }, { maintenance: true }), { next: true, readinessCalls: 0 });
+  }
 });
 
 test('safe Google Sheet write proceeds while production readiness is not ready', async () => {

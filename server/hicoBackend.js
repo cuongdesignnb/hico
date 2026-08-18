@@ -26,6 +26,8 @@ import { createSheetSyncService } from './catalog/sheetSync/sheetSyncService.js'
 import { createSheetSyncRepository } from './catalog/sheetSync/sheetSyncRepository.js';
 import { createCatalogResyncService } from './catalog/sheetSync/catalogResyncService.js';
 import { createCatalogResetRouter } from './catalog/reset/catalogResetRouter.js';
+import { createCatalogMaintenanceRouter } from './catalog/maintenance/catalogMaintenanceRouter.js';
+import { createCatalogMaintenanceGuard } from './catalog/maintenance/catalogMaintenanceGuard.js';
 import { createCatalogResetService } from './catalog/reset/catalogResetService.js';
 import { createVariantAliasRepository } from './catalog/variantAliases/variantAliasRepository.js';
 import { createVariantAliasService } from './catalog/variantAliases/variantAliasService.js';
@@ -142,7 +144,7 @@ import { createProductionReadinessChecks } from './production/productionReadines
 import { createProductionReadinessService } from './production/productionReadinessService.js';
 import { createProductionWriteGuard } from './production/productionWriteGuard.js';
 import { createProductionReadinessRouter } from './production/productionReadinessRouter.js';
-import { isProductionSafeAdminMutation } from './production/adminWritePolicy.js';
+import { isCatalogMaintenanceMutation, isProductionSafeAdminMutation } from './production/adminWritePolicy.js';
 import { createMediaAssetRepository } from './media/mediaAssetRepository.js';
 import { createMediaReferenceService } from './media/mediaReferenceService.js';
 import { createLogger } from './logging/logger.js';
@@ -383,6 +385,11 @@ const readinessDelegate = {
   evaluate: (...args) => productionReadinessService?.evaluate(...args) ?? Promise.resolve({ status: 'not_ready', adminWritesAllowed: false, writesEnabled: false, criticalChecksPassed: 0, criticalChecksTotal: 0, failedChecks: ['READINESS_INITIALIZING'], checkedAt: new Date().toISOString() }),
   assertWriteReady: (...args) => productionReadinessService?.assertWriteReady(...args) ?? Promise.resolve(null),
 };
+const catalogMaintenanceGuard = createCatalogMaintenanceGuard({
+  env: process.env,
+  catalogHealthService,
+  readinessService: readinessDelegate,
+});
 
 // Dynamic config store
 const CONFIG_FILE = 'uploads/api_config.json';
@@ -558,7 +565,8 @@ app.use('/api/admin',
     audit: securityAudit,
   }),
   createAdminAuthorization({ securityReady: () => true, securityAudit }),
-  createProductionWriteGuard({ readinessService: readinessDelegate, env: process.env, allowWhenNotReady: isProductionSafeAdminMutation }),
+  createProductionWriteGuard({ readinessService: readinessDelegate, env: process.env, allowWhenNotReady: isProductionSafeAdminMutation, isMaintenanceMutation: isCatalogMaintenanceMutation }),
+  catalogMaintenanceGuard,
   createAdminRequestAudit({ securityAudit }),
 );
 app.use('/api/admin/auth', createAdminSecurityRouter({ sessionService, securityAudit }));
@@ -568,6 +576,7 @@ app.use('/api/admin', createVariantAliasRouter({ service: variantAliasService })
 app.use('/api/admin', createFulfillmentProfileRouter({ service: fulfillmentProfileService }));
 app.use('/api/admin', createFulfillmentBindingRouter({ service: fulfillmentBindingService }));
 app.use('/api', createCatalogHealthRouter({ catalogHealthService }));
+app.use('/api', createCatalogMaintenanceRouter({ env: process.env, catalogHealthService, readinessService: readinessDelegate }));
 app.use('/api', createCatalogRouter({ catalogGuard, mediaAssetRepository, providerRepository: providerOfferRepository }));
 app.use('/api', createSheetSyncRouter({ sheetSyncService, resyncService: catalogResyncService, catalogGuard }));
 app.use('/api', createCatalogResetRouter({ catalogResetService, catalogGuard }));
