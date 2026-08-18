@@ -142,6 +142,7 @@ import { createProductionReadinessChecks } from './production/productionReadines
 import { createProductionReadinessService } from './production/productionReadinessService.js';
 import { createProductionWriteGuard } from './production/productionWriteGuard.js';
 import { createProductionReadinessRouter } from './production/productionReadinessRouter.js';
+import { isProductionSafeAdminMutation } from './production/adminWritePolicy.js';
 import { createMediaAssetRepository } from './media/mediaAssetRepository.js';
 import { createMediaReferenceService } from './media/mediaReferenceService.js';
 import { createLogger } from './logging/logger.js';
@@ -557,7 +558,7 @@ app.use('/api/admin',
     audit: securityAudit,
   }),
   createAdminAuthorization({ securityReady: () => true, securityAudit }),
-  createProductionWriteGuard({ readinessService: readinessDelegate, env: process.env }),
+  createProductionWriteGuard({ readinessService: readinessDelegate, env: process.env, allowWhenNotReady: isProductionSafeAdminMutation }),
   createAdminRequestAudit({ securityAudit }),
 );
 app.use('/api/admin/auth', createAdminSecurityRouter({ sessionService, securityAudit }));

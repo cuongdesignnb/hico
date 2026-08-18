@@ -18,7 +18,6 @@ export const GoogleSheetSettings: React.FC = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [credentialText, setCredentialText] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('');
   const [spreadsheetId, setSpreadsheetId] = useState('');
   const [sheetName, setSheetName] = useState('');
   const [range, setRange] = useState('A1:K5000');
@@ -58,8 +57,8 @@ export const GoogleSheetSettings: React.FC = () => {
     if (!settings || !credentialText.trim()) return;
     setBusy(true); setMessage(''); setError('');
     try {
-      const result = await googleSheetSettingsApi.replaceCredential({ credential: credentialText, currentPassword, version: settings.version });
-      setSettings(result.settings); setTestResult(result.test); setCredentialText(''); setCurrentPassword(''); setMessage('Credential đã được kiểm tra và lưu an toàn.');
+      const result = await googleSheetSettingsApi.replaceCredential({ credential: credentialText, version: settings.version });
+      setSettings(result.settings); setTestResult(result.test); setCredentialText(''); setMessage('Credential đã được kiểm tra và lưu an toàn.');
     } catch (credentialError) { setError(errorText(credentialError)); } finally { setBusy(false); }
   };
   const testConnection = async () => {
@@ -89,7 +88,7 @@ export const GoogleSheetSettings: React.FC = () => {
   const revokeCredential = async () => {
     if (!settings || !window.confirm('Thu hồi credential sẽ dừng Sheet Sync từ Admin Settings. Tiếp tục?')) return;
     setBusy(true); setMessage(''); setError('');
-    try { const next = await googleSheetSettingsApi.revoke({ currentPassword, version: settings.version }); setSettings(next); setCurrentPassword(''); setMessage('Credential đã được thu hồi. Sheet Sync đã fail-closed.'); }
+    try { const next = await googleSheetSettingsApi.revoke({ version: settings.version }); setSettings(next); setMessage('Credential đã được thu hồi. Sheet Sync đã fail-closed.'); }
     catch (revokeError) { setError(errorText(revokeError)); } finally { setBusy(false); }
   };
   const preview = async () => {
@@ -123,7 +122,7 @@ export const GoogleSheetSettings: React.FC = () => {
       </div>
       <div className="google-sheet-discovery-actions"><button type="button" className="admin-create-btn" disabled={busy || loading || !spreadsheetId.trim()} onClick={discoverSpreadsheet}>Đọc thông tin Sheet</button><button type="button" className="admin-create-btn" disabled={busy || loading || !discovery || !sheetName.trim()} onClick={discoverHeader}>Đọc header</button><button type="button" className="admin-create-btn" disabled={busy || loading || !headerDiscovery} onClick={validateRange}>Kiểm tra range</button></div>\r\n      <div className="google-sheet-action-row"><button type="button" className="admin-submit-btn" disabled={busy || loading} onClick={saveSettings}>Lưu cấu hình</button><button type="button" className="admin-create-btn" disabled={busy || loading || settings?.source === 'NONE'} onClick={testConnection}><TestTube2 size={16} /> Test connection</button><button type="button" className="admin-create-btn" disabled={busy || loading || settings?.source === 'NONE'} onClick={preview}><RefreshCw size={16} /> Chạy preview</button></div>
     </div>
-    {settings && <GoogleSheetCredentialForm credentialText={credentialText} currentPassword={currentPassword} busy={busy} configured={settings.credentialConfigured} canRevoke={settings.source === 'ADMIN_SETTINGS' && settings.credentialConfigured} onCredentialChange={setCredentialText} onPasswordChange={setCurrentPassword} onFileChange={(file) => { if (file) void file.text().then(setCredentialText); }} onReplace={replaceCredential} onRevoke={revokeCredential} />}
+    {settings && <GoogleSheetCredentialForm credentialText={credentialText} busy={busy} configured={settings.credentialConfigured} canRevoke={settings.source === 'ADMIN_SETTINGS' && settings.credentialConfigured} onCredentialChange={setCredentialText} onFileChange={(file) => { if (file) void file.text().then(setCredentialText); }} onReplace={replaceCredential} onRevoke={revokeCredential} />}
     <GoogleSheetTestResult result={testResult} />
     {message && <p className="google-sheet-settings-message" role="status">{message}</p>}
     {error && <p className="google-sheet-settings-error" role="alert">{error}</p>}

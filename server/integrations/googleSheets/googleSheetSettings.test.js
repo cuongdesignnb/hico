@@ -51,8 +51,7 @@ test('settings API surface is masked and rotates atomically after connection tes
   assert.equal(rotated.settings.credentialMasked, 'hico…@…');
   assert.equal(JSON.stringify(rotated).includes('private_key'), false);
   assert.equal((await service.testConnection({ actorId: 'admin-1' })).status, 'SUCCESS');
-  await assert.rejects(() => service.revokeCredential({ expectedVersion: rotated.settings.version, actorId: 'admin-1' }), (error) => error.code === 'ADMIN_REAUTH_REQUIRED');
-  const revoked = await service.revokeCredential({ expectedVersion: rotated.settings.version, actorId: 'admin-1', currentPasswordVerified: true });
+  const revoked = await service.revokeCredential({ expectedVersion: rotated.settings.version, actorId: 'admin-1' });
   assert.equal(revoked.credentialConfigured, false);
   await assert.rejects(() => service.readRows(), (error) => error.code === 'GOOGLE_SHEET_NOT_CONFIGURED');
 });

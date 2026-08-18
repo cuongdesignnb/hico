@@ -41,21 +41,21 @@ test('settings GET is masked, private, and no-store', async () => {
   });
 });
 
-test('credential rotation and revoke require current password re-authentication', async () => {
+test('credential rotation and revoke use the authenticated Admin session without password re-authentication', async () => {
   let replaceCalls = 0;
   let revokeCalls = 0;
   const settingsService = {
-    replaceCredential: async () => { replaceCalls += 1; return {}; },
-    revokeCredential: async () => { revokeCalls += 1; return {}; },
+    replaceCredential: async ({ input }) => { replaceCalls += 1; assert.equal(input.currentPassword, undefined); return { credentialConfigured: true }; },
+    revokeCredential: async ({ expectedVersion }) => { revokeCalls += 1; assert.equal(expectedVersion, 1); return { credentialConfigured: false }; },
   };
   await withServer(settingsService, {}, async (baseUrl) => {
     const headers = { 'Content-Type': 'application/json' };
-    const rotate = await fetch(`${baseUrl}/api/admin/settings/integrations/google-sheet/credential`, { method: 'PUT', headers, body: JSON.stringify({ currentPassword: 'wrong-password', credential: { client_email: 'reader@example.test' } }) });
-    const revoke = await fetch(`${baseUrl}/api/admin/settings/integrations/google-sheet/credential`, { method: 'DELETE', headers, body: JSON.stringify({ currentPassword: 'wrong-password', version: 1 }) });
-    assert.equal(rotate.status, 403);
-    assert.equal(revoke.status, 403);
-    assert.equal(replaceCalls, 0);
-    assert.equal(revokeCalls, 0);
+    const rotate = await fetch(`${baseUrl}/api/admin/settings/integrations/google-sheet/credential`, { method: 'PUT', headers, body: JSON.stringify({ credential: { client_email: 'reader@example.test' }, version: 1 }) });
+    const revoke = await fetch(`${baseUrl}/api/admin/settings/integrations/google-sheet/credential`, { method: 'DELETE', headers, body: JSON.stringify({ version: 1 }) });
+    assert.equal(rotate.status, 200);
+    assert.equal(revoke.status, 200);
+    assert.equal(replaceCalls, 1);
+    assert.equal(revokeCalls, 1);
     assert.doesNotMatch(await rotate.text(), /reader@example\.test/);
   });
 });

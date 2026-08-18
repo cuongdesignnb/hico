@@ -156,8 +156,7 @@ export const createGoogleSheetConnectionService = ({ settingsRepository, credent
       const metadata = await discovery.getSpreadsheetMetadata({ spreadsheetId });
       return discovery.validateRange({ metadata, sheetTitle, range, headerRow, maxRowsPerBatch });
     },
-    async revokeCredential({ expectedVersion, actorId, requestId, currentPasswordVerified = false }) {
-      if (!currentPasswordVerified) throw new GoogleSheetSettingsError('Recent Admin re-authentication is required.', { code: 'ADMIN_REAUTH_REQUIRED', status: 403 });
+    async revokeCredential({ expectedVersion, actorId, requestId }) {
       const saved = await settingsRepository.revokeCredential({ expectedVersion, actorId });
       await record({ eventType: 'GOOGLE_SHEET_CREDENTIAL_REVOKED', actorId, requestId, metadata: { version: saved.version } });
       return publicSettings(saved, { source: sourceFor(saved, env), env });

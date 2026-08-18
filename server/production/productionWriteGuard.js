@@ -1,6 +1,7 @@
-export const createProductionWriteGuard = ({ readinessService, env = process.env } = {}) => async (req, res, next) => {
+export const createProductionWriteGuard = ({ readinessService, env = process.env, allowWhenNotReady = () => false } = {}) => async (req, res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
   if (env.NODE_ENV !== 'production') return next();
+  if (allowWhenNotReady(req)) return next();
   const readiness = await readinessService.assertWriteReady();
   if (readiness) return next();
   return res.status(503).json({
