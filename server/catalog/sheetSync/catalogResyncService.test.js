@@ -77,8 +77,72 @@ test('full preview after reset reads the nearest previous non-empty catalog vers
   assert.equal(preview.batch.summary.imagesReused, 1);
   assert.equal(preview.batch.summary.products, 1);
   assert.equal(preview.batch.summary.variants, 1);
+  assert.equal(preview.batch.summary.diagnostics.source.rowsRead, 1);
+  assert.equal(preview.batch.summary.diagnostics.parser.rowsParsed, 1);
+  assert.equal(preview.batch.summary.diagnostics.candidate.products, 1);
+  assert.equal(preview.batch.summary.diagnostics.candidate.variants, 1);
   const applied = await service.fullApply(preview.batch.id, { actor: { id: 'admin-1' } });
   assert.equal(applied.versionId, committedInput.versionId);
   assert.equal(committedInput.products[0].primaryMediaId, 'media-old');
   assert.equal(committedInput.products[0].description, 'Mô tả cũ');
+});
+
+const fullSyncReference = ({ range = 'A1:Y2', row = null } = {}) => ({
+  spreadsheetId: 'sheet-1', sheetTab: 'HICO GỐC', sheetRange: range, syncSettings: {},
+  values: [Array(25).fill('header'), ...(row ? [row] : [])],
+});
+
+const emptyCanonical = () => ({ products: [], variants: [], categories: cloneSeedCategories(), manifest: { versionId: 'catalog-current' } });
+
+test('full preview blocks rows with no candidates and does not create a batch', async () => {
+  const repository = createInMemorySheetSyncRepository();
+  const row = Array(25).fill(''); row[1] = 'Trung Quốc 500MB/ngày'; row[3] = 'Chia ngày';
+  const service = createCatalogResyncService({
+    repository,
+    referenceClient: { readRows: async () => fullSyncReference({ row }) },
+    canonicalRepository: { readCatalog: async () => emptyCanonical() },
+    providerRepository: { listOffers: async () => [] },
+    logger: { info() {} },
+  });
+  await assert.rejects(() => service.fullPreview(), (error) => error.code === 'FULL_SYNC_EMPTY_CANDIDATE' && error.details.rowsRead === 1 && error.details.products === 0 && error.details.variants === 0);
+  assert.equal((await repository.listBatches()).length, 0);
+});
+
+test('full preview blocks an empty Sheet and keeps the canonical repository untouched', async () => {
+  const repository = createInMemorySheetSyncRepository();
+  const service = createCatalogResyncService({
+    repository,
+    referenceClient: { readRows: async () => fullSyncReference() },
+    canonicalRepository: { readCatalog: async () => emptyCanonical() },
+    providerRepository: { listOffers: async () => [] },
+    logger: { info() {} },
+  });
+  await assert.rejects(() => service.fullPreview(), (error) => error.code === 'FULL_SYNC_SOURCE_EMPTY' && error.details.rowsRead === 0);
+  assert.equal((await repository.listBatches()).length, 0);
+});
+
+test('full preview rejects an HICO GỐC range that cannot reach SKU and WMID', async () => {
+  const repository = createInMemorySheetSyncRepository();
+  const row = Array(11).fill(''); row[1] = 'Trung Quốc 500MB/ngày';
+  const service = createCatalogResyncService({
+    repository,
+    referenceClient: { readRows: async () => fullSyncReference({ range: 'A1:K17666', row: row.slice(0, 11) }) },
+    canonicalRepository: { readCatalog: async () => emptyCanonical() },
+    providerRepository: { listOffers: async () => [] },
+    logger: { info() {} },
+  });
+  await assert.rejects(() => service.fullPreview(), (error) => error.code === 'SHEET_RANGE_INCOMPLETE' && error.details.requiredLastColumn === 'Y');
+});
+
+test('full apply rejects a persisted empty batch before calling the commit service', async () => {
+  const repository = createInMemorySheetSyncRepository();
+  await repository.createBatch({ id: 'batch-empty', mode: 'full', status: 'READY_FOR_REVIEW', summary: { total: 1, products: 0, variants: 0 } }, []);
+  let commitCalled = false;
+  const service = createCatalogResyncService({
+    repository,
+    commitService: { commit: async () => { commitCalled = true; throw new Error('must not commit'); } },
+    referenceClient: { readRows: async () => fullSyncReference() },
+  });
+  await assert.rejects(() => service.fullApply('batch-empty'), (error) => error.code === 'FULL_SYNC_EMPTY_CANDIDATE');
+  assert.equal(commitCalled, false);
 });

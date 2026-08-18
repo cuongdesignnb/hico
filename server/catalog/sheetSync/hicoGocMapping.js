@@ -99,6 +99,71 @@ export const hicoGocHeaderHash = (headers = []) => {
   return createHash('sha256').update(JSON.stringify(normalized), 'utf8').digest('hex');
 };
 
+export const hicoGocColumnName = (index) => {
+  let result = '';
+  for (let value = Number(index) + 1; value > 0; value = Math.floor((value - 1) / 26)) {
+    result = String.fromCharCode(65 + ((value - 1) % 26)) + result;
+  }
+  return result;
+};
+
+const columnIndex = (value) => String(value).toUpperCase().split('').reduce((total, char) => total * 26 + char.charCodeAt(0) - 64, 0) - 1;
+
+export const parseHicoGocRange = (range) => {
+  const match = /^([A-Z]{1,3})\d+:([A-Z]{1,3})\d+$/i.exec(String(range ?? '').trim());
+  if (!match) throw new SheetSyncError('Google Sheet range is invalid.', { code: 'GOOGLE_SHEET_RANGE_INVALID', status: 422 });
+  const startColumn = columnIndex(match[1]);
+  const endColumn = columnIndex(match[2]);
+  if (startColumn < 0 || endColumn < startColumn || endColumn >= HICO_GOC_MAX_COLUMN) {
+    throw new SheetSyncError('Google Sheet range is outside the HICO GỐC column limit.', { code: 'GOOGLE_SHEET_RANGE_INVALID', status: 422 });
+  }
+  return { startColumn, endColumn };
+};
+
+export const validateHicoGocRange = ({ sheetRange, headers = [], fieldMapping } = {}) => {
+  const range = parseHicoGocRange(sheetRange);
+  const mappingEntries = Object.entries(fieldMapping ?? {}).filter(([, value]) => value !== null && value !== undefined);
+  const missingMapping = mappingEntries.find(([, value]) => !Number.isInteger(value) || value < 0 || value >= HICO_GOC_MAX_COLUMN);
+  if (missingMapping) {
+    throw new SheetSyncError('HICO GỐC mapping trỏ tới cột không hợp lệ.', {
+      code: 'MAPPING_COLUMN_OUT_OF_RANGE',
+      status: 422,
+      details: { field: missingMapping[0], columnIndex: missingMapping[1], headerColumns: headers.length },
+    });
+  }
+  const requiredLastIndex = mappingEntries.reduce((last, [, value]) => Math.max(last, value), -1);
+  if (range.endColumn < requiredLastIndex) {
+    throw new SheetSyncError('Range hiện tại không bao phủ đủ các cột cần thiết của HICO GỐC.', {
+      code: 'SHEET_RANGE_INCOMPLETE',
+      status: 422,
+      details: {
+        configuredRange: sheetRange,
+        requiredLastColumn: hicoGocColumnName(requiredLastIndex),
+        configuredLastColumn: hicoGocColumnName(range.endColumn),
+      },
+    });
+  }
+  const headerLastIndex = headers.reduce((last, value, index) => String(value ?? '').trim() ? index : last, -1);
+  if (headerLastIndex < requiredLastIndex) {
+    const missing = mappingEntries.find(([, value]) => value > headerLastIndex);
+    throw new SheetSyncError('HICO GỐC header không bao phủ đủ các cột trong mapping.', {
+      code: 'MAPPING_COLUMN_OUT_OF_RANGE',
+      status: 422,
+      details: {
+        field: missing?.[0] ?? null,
+        columnIndex: missing?.[1] ?? requiredLastIndex,
+        headerColumns: headerLastIndex + 1,
+        requiredLastColumn: hicoGocColumnName(requiredLastIndex),
+      },
+    });
+  }
+  return {
+    configuredLastColumn: hicoGocColumnName(range.endColumn),
+    requiredLastColumn: hicoGocColumnName(requiredLastIndex),
+    headerColumns: headerLastIndex + 1,
+  };
+};
+
 export const normalizeHicoGocSettings = ({ fieldMapping, priceMapping, headerHash } = {}) => ({
   fieldMapping: normalizeHicoGocMapping(fieldMapping),
   priceMapping: normalizeHicoGocPriceMapping(priceMapping),

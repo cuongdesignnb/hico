@@ -58,6 +58,9 @@
 .google-sheet-action-row button { display: inline-flex; align-items: center; gap: 7px; }
 .google-sheet-discovery-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .google-sheet-discovery-result { display: grid; gap: 4px; grid-column: 1 / -1; padding: 12px 14px; color: #344563; background: #f4fcf7; border: 1px solid #a7d9bd; border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; }
+.google-sheet-range-warning { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; grid-column: 1 / -1; padding: 12px 14px; color: #694d00; background: #fff8e5; border: 1px solid #f0d58a; border-radius: 6px; font-size: 13px; }
+.google-sheet-range-warning svg { flex: 0 0 auto; }
+.google-sheet-range-warning span { flex: 1 1 240px; }
 .google-sheet-price-mapping { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 14px; border: 1px solid #cfe4e8; border-radius: 6px; background: #f8fbfc; }
 .google-sheet-content-mapping { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 14px; border: 1px solid #d9e2ec; border-radius: 6px; background: #fbfcfe; }
 .google-sheet-content-mapping > div { grid-column: 1 / -1; }

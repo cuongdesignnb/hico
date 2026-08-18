@@ -11,6 +11,7 @@
     "catalog:smoke": "node scripts/smokeCanonicalCatalog.js",
     "catalog:legacy-smoke": "node scripts/smokeLegacyAdapter.js",
     "catalog:write-smoke": "node scripts/smokeCatalogWrite.js",
+    "catalog:sheet:audit": "node scripts/auditHicoGocFullSync.js",
     "catalog:benchmark": "node scripts/benchmarkCatalogPerformance.js",
     "catalog:backup": "node scripts/backupCatalogForCutover.js",
     "catalog:backup:verify": "node scripts/verifyCatalogBackup.js",

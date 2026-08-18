@@ -9,12 +9,13 @@ import { createCatalogVersionCommitService } from '../write/catalogVersionCommit
 import { createCatalogAuditRepository } from '../write/catalogAuditRepository.js';
 import { createProviderOfferRepository } from '../../providers/providerOfferRepository.js';
 import { createSheetReferenceClient } from './sheetReferenceClient.js';
-import { collapseHicoGocRows, parseHicoGocRows } from './hicoGocParser.js';
-import { hicoGocHeaderHash, HICO_GOC_SHEET, normalizeHicoGocSettings } from './hicoGocMapping.js';
+import { collapseHicoGocRows, parseHicoGocRowsWithDiagnostics } from './hicoGocParser.js';
+import { hicoGocHeaderHash, HICO_GOC_SHEET, normalizeHicoGocSettings, validateHicoGocRange } from './hicoGocMapping.js';
 import { createSheetSyncRepository, publicBatch, publicRow } from './sheetSyncRepository.js';
 import { SheetSyncError } from './sheetSyncTypes.js';
 import { createCatalogCommandService } from '../write/catalogCommandService.js';
 import { sanitizeCatalogHtml } from '../write/catalogProductValidation.js';
+import { assertFullSyncCandidate, assertPersistedFullSyncSummary, fullSyncDiagnostics, rejectionReasonsForRows } from './catalogResyncDiagnostics.js';
 
 const PLACEHOLDER_IMAGES = Object.freeze({
   esim: '/images/art_esim_intro.png',
@@ -314,6 +315,9 @@ export const buildFullSyncCandidate = async ({
       products: products.length,
       variants: safeVariants.length,
       invalidRows: preparedRows.filter((row) => row.status === 'INVALID').length,
+      validRows: validRows.length,
+      uniqueProductKeys: groups.size,
+      rejectionReasons: rejectionReasonsForRows(preparedRows),
       ...enrichment,
     },
   };
@@ -362,20 +366,29 @@ export const createCatalogResyncService = ({
     return { products: [], variants: [], categories: current.categories ?? cloneSeedCategories(), manifest: null };
   };
   const validateReference = (reference, settings) => {
-    if (reference.sheetTab !== HICO_GOC_SHEET) throw new SheetSyncError(`Full sync yêu cầu tab ${HICO_GOC_SHEET}.`, { code: 'SHEET_SOURCE_TAB_INVALID', status: 422 });
-    const headerHash = hicoGocHeaderHash(reference.values[0] ?? []);
+    if (String(reference.sheetTab ?? '').normalize('NFC').trim() !== HICO_GOC_SHEET) throw new SheetSyncError(`Full sync yêu cầu tab ${HICO_GOC_SHEET}.`, { code: 'SHEET_SOURCE_TAB_INVALID', status: 422 });
+    const headers = reference.values?.[0];
+    if (!Array.isArray(headers) || headers.length === 0) throw new SheetSyncError('HICO GỐC không có header để đối chiếu mapping.', { code: 'SHEET_HEADER_REQUIRED', status: 422 });
+    const range = validateHicoGocRange({ sheetRange: reference.sheetRange, headers, fieldMapping: settings.fieldMapping });
+    const headerHash = hicoGocHeaderHash(headers);
     if (settings.headerHash && settings.headerHash !== headerHash) throw new SheetSyncError('HICO GỐC header đã thay đổi sau khi lưu mapping.', { code: 'SHEET_HEADER_CHANGED', status: 409 });
-    return headerHash;
+    return { headerHash, range };
   };
   const build = async ({ reference, settings, current, previousCatalog, offers }) => {
-    const parsed = collapseHicoGocRows(parseHicoGocRows(reference.values, settings));
-    return buildFullSyncCandidate({ rows: parsed, categories: current.categories, offers, previousCatalog, now, mediaAssetRepository });
+    const validation = validateReference(reference, settings);
+    const parsed = parseHicoGocRowsWithDiagnostics(reference.values, settings);
+    const collapsed = collapseHicoGocRows(parsed.rows);
+    const candidate = await buildFullSyncCandidate({ rows: collapsed, categories: current.categories, offers, previousCatalog, now, mediaAssetRepository });
+    const diagnostics = fullSyncDiagnostics({ reference, range: validation.range, parser: parsed.diagnostics, candidate, baselineCatalog: current.products.length > 0 ? current : previousCatalog });
+    assertFullSyncCandidate(diagnostics);
+    return { candidate, diagnostics };
   };
   return {
     async fullPreview({ actor = {} } = {}) {
       const reference = await referenceClient.readRows();
-      const settings = normalizeHicoGocSettings(reference.syncSettings ?? {});
-      validateReference(reference, settings);
+      const initialSettings = normalizeHicoGocSettings(reference.syncSettings ?? {});
+      const validation = validateReference(reference, initialSettings);
+      const settings = { ...initialSettings, headerHash: validation.headerHash };
       const [current, offers] = await Promise.all([
         canonicalRepository.readCatalog({ required: true }),
         providerRepository.listOffers(),
@@ -383,15 +396,19 @@ export const createCatalogResyncService = ({
       const previousCatalog = await loadPreviousCatalog({ current });
       const sourceHash = sourceHashFor(reference, settings, offers);
       const existing = await repository.findBySourceHash(sourceHash);
-      if (existing) return { batch: publicBatch(existing), rows: (await repository.listRows(existing.id)).map(publicRow), idempotent: true };
+      if (existing) {
+        if (existing.mode === 'full') assertPersistedFullSyncSummary(existing.summary);
+        return { batch: publicBatch(existing), rows: (await repository.listRows(existing.id)).map(publicRow), idempotent: true };
+      }
       const candidate = await build({ reference, settings, current, previousCatalog, offers });
       const summary = {
-        total: candidate.rows.length,
-        valid: candidate.rows.filter((row) => row.status === 'VALID').length,
-        invalid: candidate.rows.filter((row) => row.status === 'INVALID').length,
+        total: candidate.candidate.rows.length,
+        valid: candidate.candidate.rows.filter((row) => row.status === 'VALID').length,
+        invalid: candidate.candidate.rows.filter((row) => row.status === 'INVALID').length,
         changedFields: 0,
         enrichmentSourceVersionId: currentVersion(previousCatalog.manifest),
-        ...candidate.summary,
+        ...candidate.candidate.summary,
+        diagnostics: candidate.diagnostics,
       };
       const batch = {
         id: idFactory(), mode: 'full', sourceHash, providerSnapshotHash: providerSnapshotHashFor(offers),
@@ -400,7 +417,7 @@ export const createCatalogResyncService = ({
         catalogVersionId: currentVersion(current.manifest), fieldMapping: settings.fieldMapping, priceMapping: settings.priceMapping,
         headerHash: settings.headerHash, summary,
       };
-      const rows = candidate.rows.map((row) => ({ ...row, id: idFactory(), variantId: null, raw: undefined, diff: {}, appliedFields: [], createdAt: now().toISOString() }));
+      const rows = candidate.candidate.rows.map((row) => ({ ...row, id: idFactory(), variantId: null, raw: undefined, diff: {}, appliedFields: [], createdAt: now().toISOString() }));
       await repository.createBatch(batch, rows);
       logger.info?.('[catalog-full-sync] preview', { batchId: batch.id, products: summary.products, variants: summary.variants, invalidRows: summary.invalid });
       return { batch: publicBatch(batch), rows: rows.map(publicRow), idempotent: false };
@@ -409,35 +426,35 @@ export const createCatalogResyncService = ({
     async fullApply(id, { actor = {} } = {}) {
       const batch = await repository.getBatch(id);
       if (!batch || batch.mode !== 'full') throw new SheetSyncError('Full sync batch was not found.', { code: 'SHEET_BATCH_NOT_FOUND', status: 404 });
+      assertPersistedFullSyncSummary(batch.summary);
       if (['APPLIED', 'PARTIALLY_APPLIED'].includes(batch.status)) return { batch: publicBatch(batch), rows: (await repository.listRows(id)).map(publicRow), versionId: batch.catalogVersionId, idempotent: true };
       const reference = await referenceClient.readRows();
       const settings = normalizeHicoGocSettings({ fieldMapping: batch.fieldMapping, priceMapping: batch.priceMapping, headerHash: batch.headerHash });
-      validateReference(reference, settings);
       const [current, offers] = await Promise.all([canonicalRepository.readCatalog({ required: true }), providerRepository.listOffers()]);
       if (currentVersion(current.manifest) !== batch.catalogVersionId) throw new SheetSyncError('Catalog đã thay đổi sau preview. Hãy tạo lại preview.', { code: 'SHEET_SYNC_CONCURRENCY_CONFLICT', status: 409 });
       if (sourceHashFor(reference, settings, offers) !== batch.sourceHash) throw new SheetSyncError('Sheet, mapping hoặc provider snapshot đã thay đổi sau preview.', { code: 'SHEET_SYNC_STALE_PREVIEW', status: 409 });
       if (batch.providerSnapshotHash && providerSnapshotHashFor(offers) !== batch.providerSnapshotHash) throw new SheetSyncError('Provider snapshot đã thay đổi sau preview.', { code: 'PROVIDER_SNAPSHOT_CHANGED', status: 409 });
       const rows = await repository.listRows(id);
       if (rows.some((row) => row.status === 'INVALID')) throw new SheetSyncError('Full sync đang có dòng lỗi; chưa ghi catalog.', { code: 'FULL_SYNC_INVALID_ROWS', status: 422, details: { invalidRows: rows.filter((row) => row.status === 'INVALID').length } });
+      const previousCatalog = await loadPreviousCatalog({ current, requestedVersionId: batch.summary?.enrichmentSourceVersionId });
+      const prepared = await build({ reference: { ...reference }, settings, current, previousCatalog, offers });
       const claimed = await repository.claimForApply(id, actor.id);
       if (!claimed) throw new SheetSyncError('Full sync đang được xử lý hoặc không còn ở trạng thái review.', { code: 'SHEET_SYNC_APPLY_IN_PROGRESS', status: 409 });
-      const previousCatalog = await loadPreviousCatalog({ current, requestedVersionId: batch.summary?.enrichmentSourceVersionId });
-      const candidate = await build({ reference: { ...reference }, settings, current, previousCatalog, offers });
       const manualQrs = await readManualQrs(uploadsDirectory);
       const newVersionId = `catalog-full-${Date.now()}-${randomUUID().slice(0, 8)}`;
       const createdAt = now().toISOString();
       const audit = {
         id: `audit-${randomUUID()}`, actorId: actor.id, actorEmail: actor.email, action: 'CATALOG_FULL_SYNC', entityType: 'catalog', entityId: batch.id,
         sourceSheet: HICO_GOC_SHEET, previousVersionId: currentVersion(current.manifest), enrichmentSourceVersionId: currentVersion(previousCatalog.manifest),
-        newVersionId, products: candidate.summary.products, variants: candidate.summary.variants,
-        imagesReused: candidate.summary.imagesReused, imagesFromSheet: candidate.summary.imagesFromSheet, imagesFallback: candidate.summary.imagesFallback,
-        descriptionsReused: candidate.summary.descriptionsReused, descriptionsFromSheet: candidate.summary.descriptionsFromSheet, descriptionsFallback: candidate.summary.descriptionsFallback,
-        installationGuideReused: candidate.summary.installationGuideReused, installationGuideFromSheet: candidate.summary.installationGuideFromSheet, installationGuideFallback: candidate.summary.installationGuideFallback,
+        newVersionId, products: prepared.candidate.summary.products, variants: prepared.candidate.summary.variants,
+        imagesReused: prepared.candidate.summary.imagesReused, imagesFromSheet: prepared.candidate.summary.imagesFromSheet, imagesFallback: prepared.candidate.summary.imagesFallback,
+        descriptionsReused: prepared.candidate.summary.descriptionsReused, descriptionsFromSheet: prepared.candidate.summary.descriptionsFromSheet, descriptionsFallback: prepared.candidate.summary.descriptionsFallback,
+        installationGuideReused: prepared.candidate.summary.installationGuideReused, installationGuideFromSheet: prepared.candidate.summary.installationGuideFromSheet, installationGuideFallback: prepared.candidate.summary.installationGuideFallback,
         createdAt,
       };
       try {
         const committed = await commitService.commit({
-          versionId: newVersionId, parentVersionId: currentVersion(current.manifest), products: candidate.products, variants: candidate.variants,
+          versionId: newVersionId, parentVersionId: currentVersion(current.manifest), products: prepared.candidate.products, variants: prepared.candidate.variants,
           categories: current.categories, providerOffers: offers, manualQrs, commandType: 'CATALOG_FULL_SYNC', commandId: id,
           requestHash: batch.sourceHash, createdAt,
           beforePointer: () => auditRepository.append(audit),
@@ -445,7 +462,7 @@ export const createCatalogResyncService = ({
         });
         const appliedAt = now().toISOString();
         await repository.updateRows(id, Object.fromEntries(rows.map((row) => [row.id, { status: 'APPLIED', appliedFields: ['fullCatalog'], appliedAt }])));
-        const nextBatch = await repository.updateBatch(id, { status: 'APPLIED', summary: { ...batch.summary, ...candidate.summary }, appliedAt, catalogVersionId: committed.manifest.versionId });
+        const nextBatch = await repository.updateBatch(id, { status: 'APPLIED', summary: { ...batch.summary, ...prepared.candidate.summary, diagnostics: prepared.diagnostics }, appliedAt, catalogVersionId: committed.manifest.versionId });
         return { batch: publicBatch(nextBatch), rows: (await repository.listRows(id)).map(publicRow), versionId: committed.manifest.versionId, idempotent: false };
       } catch (error) {
         await repository.updateBatch(id, { status: 'READY_FOR_REVIEW', summary: batch.summary });

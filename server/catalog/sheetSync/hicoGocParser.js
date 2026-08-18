@@ -148,21 +148,47 @@ const makeCandidate = ({ cells, rowNumber, medium, mapping, priceMapping }) => {
   };
 };
 
-export const parseHicoGocRows = (values = [], { fieldMapping = DEFAULT_HICO_GOC_FIELD_MAPPING, priceMapping = DEFAULT_HICO_GOC_PRICE_MAPPING } = {}) => {
+export const parseHicoGocRowsWithDiagnostics = (values = [], { fieldMapping = DEFAULT_HICO_GOC_FIELD_MAPPING, priceMapping = DEFAULT_HICO_GOC_PRICE_MAPPING } = {}) => {
   if (!Array.isArray(values) || values.length < 1 || !Array.isArray(values[0])) throw new SheetSyncError('HICO GỐC does not contain a header row.', { code: 'SHEET_HEADER_REQUIRED', status: 422 });
   const mapping = normalizeHicoGocMapping(fieldMapping);
   const prices = normalizeHicoGocPriceMapping(priceMapping);
   const rows = [];
+  const rejectionReasons = new Map();
+  let rowsRead = 0;
+  let rowsParsed = 0;
+  let rowsRejected = 0;
+  const addReason = (code) => rejectionReasons.set(code, (rejectionReasons.get(code) ?? 0) + 1);
   values.slice(1).forEach((cells, offset) => {
+    if (!Array.isArray(cells) || !cells.some((value) => String(value ?? '').trim() !== '')) return;
+    rowsRead += 1;
+    let emitted = false;
     const rowNumber = offset + 2;
     for (const medium of ['physical_sim', 'esim']) {
       const skuField = medium === 'physical_sim' ? 'skuPhysical' : 'skuEsim';
       if (clean(valueAt(cells, mapping, skuField), 'sku', []) === undefined) continue;
-      rows.push(makeCandidate({ cells, rowNumber, medium, mapping, priceMapping: prices }));
+      emitted = true;
+      const candidate = makeCandidate({ cells, rowNumber, medium, mapping, priceMapping: prices });
+      rows.push(candidate);
+      rowsParsed += 1;
+      if (candidate.errors.length) {
+        rowsRejected += 1;
+        candidate.errors.forEach((error) => addReason(error.code));
+      }
     }
+    if (!emitted) { rowsRejected += 1; addReason('MISSING_SKU'); }
   });
-  return rows;
+  return {
+    rows,
+    diagnostics: {
+      rowsRead,
+      rowsParsed,
+      rowsRejected,
+      rejectionReasons: Object.fromEntries([...rejectionReasons.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))),
+    },
+  };
 };
+
+export const parseHicoGocRows = (values = [], options = {}) => parseHicoGocRowsWithDiagnostics(values, options).rows;
 
 const logicalKey = (row) => {
   const data = row.normalizedData;

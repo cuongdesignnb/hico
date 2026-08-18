@@ -71,6 +71,31 @@ If the flag is disabled, write calls return the dedicated
   `maintenanceMode: true` and the evaluated global readiness state when the
   request reaches the audit middleware.
 
+## Full Sync safety
+
+Full Preview must read a non-empty HICO GỐC source and produce both at least
+one candidate Product and one candidate Variant before an Admin can apply it.
+The backend re-reads and rebuilds the candidate during Full Apply; it does not
+trust an old persisted 0/0 batch. `FULL_SYNC_EMPTY_CANDIDATE`,
+`FULL_SYNC_GROUPING_FAILED`, `FULL_SYNC_SOURCE_EMPTY`,
+`SHEET_RANGE_INCOMPLETE`, and `MAPPING_COLUMN_OUT_OF_RANGE` stop the operation
+before the catalog commit service is called. The current canonical pointer is
+unchanged. Do not press Reset to work around a parser, mapping, provider, or
+range problem; Reset is only for an owner who intentionally wants an empty
+catalog.
+
+The read-only diagnostic command is available from the backend directory:
+
+```bash
+node scripts/auditHicoGocFullSync.js
+```
+
+It expects the existing read-only Sheet environment configuration. If a local
+credential is not available, it exits with a blocked result rather than
+inventing a pass. It prints only Sheet/range counts, parser rejection codes,
+candidate counts, and size-drop warnings. It never calls Reset, Full Apply,
+publish, or the catalog commit service.
+
 ## Evidence and rollback
 
 Record only redacted evidence: operator, timestamp, route, preview/batch ID,

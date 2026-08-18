@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { collapseHicoGocRows, parseDataLimit, parseHicoGocRows } from './hicoGocParser.js';
+import { collapseHicoGocRows, parseDataLimit, parseHicoGocRows, parseHicoGocRowsWithDiagnostics } from './hicoGocParser.js';
 import { publicRow } from './sheetSyncTypes.js';
 import { createInMemorySheetSyncRepository } from './sheetSyncRepository.js';
 import { createSheetSyncService } from './sheetSyncService.js';
@@ -24,6 +24,17 @@ test('HICO GỐC parser maps daily data and keeps exact identities private in pu
   assert.equal(physical.normalizedData.price, 70000);
   assert.equal(publicRow(physical).normalizedData.sku, undefined);
   assert.equal(publicRow(physical).normalizedData.wmproductId, undefined);
+});
+
+test('HICO GỐC parser reports rows with no identity instead of silently dropping them', () => {
+  const result = parseHicoGocRowsWithDiagnostics([Array(25).fill('header'), cells({ 16: '', 17: '', 23: '', 24: '' })]);
+  assert.equal(result.rows.length, 0);
+  assert.deepEqual(result.diagnostics, {
+    rowsRead: 1,
+    rowsParsed: 0,
+    rowsRejected: 1,
+    rejectionReasons: { MISSING_SKU: 1 },
+  });
 });
 
 test('HICO GỐC parser maps total package duration and collapses trip-day options', () => {

@@ -12,6 +12,9 @@ const errorText = (error: unknown) => error instanceof CatalogLifecycleApiError 
 const maintenanceErrorText = (error: unknown) => error instanceof CatalogLifecycleApiError && error.code === 'CATALOG_MAINTENANCE_DISABLED'
   ? 'Chế độ bảo trì Catalog chưa được bật trên server.'
   : errorText(error);
+const fullSyncErrorText = (error: unknown) => error instanceof CatalogLifecycleApiError && ['FULL_SYNC_EMPTY_CANDIDATE', 'FULL_SYNC_GROUPING_FAILED', 'FULL_SYNC_SOURCE_EMPTY'].includes(error.code)
+  ? 'Không thể tạo catalog từ HICO GỐC: dữ liệu đọc được nhưng không tạo được sản phẩm.'
+  : maintenanceErrorText(error);
 const idempotencyKey = () => (globalThis.crypto?.randomUUID?.() ?? `catalog-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
 export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void }) => {
@@ -44,7 +47,7 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
   };
   const openFull = async () => {
     setBusy(true); setError('');
-    try { const result = await catalogLifecycleApi.fullPreview(); setFullBatch(result.batch); setMode('full'); } catch (loadError) { toast.error(errorText(loadError)); }
+    try { const result = await catalogLifecycleApi.fullPreview(); setFullBatch(result.batch); setMode('full'); } catch (loadError) { toast.error(fullSyncErrorText(loadError)); }
     finally { setBusy(false); }
   };
   const close = () => { if (busy) return; setMode(null); setPassword(''); setConfirmation(''); setError(''); };
@@ -61,10 +64,12 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
     if (!fullBatch) return;
     setBusy(true); setError('');
     try { await catalogLifecycleApi.fullApply(fullBatch.id, password); toast.success('Đã đồng bộ lại toàn bộ catalog từ HICO GỐC.'); close(); onChanged?.(); void loadMaintenanceStatus(); }
-    catch (applyError) { setError(maintenanceErrorText(applyError)); toast.error(maintenanceErrorText(applyError)); }
+    catch (applyError) { setError(fullSyncErrorText(applyError)); toast.error(fullSyncErrorText(applyError)); }
     finally { setBusy(false); }
   };
   const summary = fullBatch?.summary ?? {};
+  const diagnostics = summary.diagnostics;
+  const candidateEmpty = (summary.products ?? 0) <= 0 || (summary.variants ?? 0) <= 0;
   return <>
     <div className={`catalog-maintenance-status ${maintenanceStatus?.enabled ? 'is-enabled' : 'is-disabled'}`} role="status">
       <strong>Catalog Maintenance: {maintenanceStatus ? (maintenanceStatus.enabled ? 'Đã bật' : 'Đang khóa') : 'Đang kiểm tra'}</strong>
@@ -85,12 +90,13 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
         </>}
         {mode === 'full' && fullBatch && <>
           <div className="catalog-lifecycle-safe"><ShieldCheck size={20} /><span>Preview đã đọc tab HICO GỐC. Apply atomic, tạo draft/inactive và không xóa version cũ.</span></div>
-          <div className="catalog-lifecycle-grid"><div><span>Nguồn</span><strong>{fullBatch.sheetTab}</strong></div><div><span>Dòng hợp lệ</span><strong>{(summary.valid ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Dòng lỗi</span><strong>{(summary.invalid ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Products mới</span><strong>{(summary.products ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Variants mới</span><strong>{(summary.variants ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh giữ lại</span><strong>{(summary.imagesReused ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh từ Sheet</span><strong>{(summary.imagesFromSheet ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh fallback</span><strong>{(summary.imagesFallback ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả giữ lại</span><strong>{(summary.descriptionsReused ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả từ Sheet</span><strong>{(summary.descriptionsFromSheet ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả fallback</span><strong>{(summary.descriptionsFallback ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Hướng dẫn giữ lại</span><strong>{(summary.installationGuideReused ?? 0).toLocaleString('vi-VN')}</strong></div></div>
+          <div className="catalog-lifecycle-grid"><div><span>Nguồn</span><strong>{fullBatch.sheetTab}</strong></div><div><span>Rows đọc được</span><strong>{(diagnostics?.source?.rowsRead ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Rows đã parse</span><strong>{(diagnostics?.parser?.rowsParsed ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Rows lỗi</span><strong>{(diagnostics?.parser?.rowsRejected ?? summary.invalid ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Products mới</span><strong>{(summary.products ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Variants mới</span><strong>{(summary.variants ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh giữ lại</span><strong>{(summary.imagesReused ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh từ Sheet</span><strong>{(summary.imagesFromSheet ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh fallback</span><strong>{(summary.imagesFallback ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả giữ lại</span><strong>{(summary.descriptionsReused ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả từ Sheet</span><strong>{(summary.descriptionsFromSheet ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả fallback</span><strong>{(summary.descriptionsFallback ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Hướng dẫn giữ lại</span><strong>{(summary.installationGuideReused ?? 0).toLocaleString('vi-VN')}</strong></div></div>
+          {diagnostics?.sizeDropWarning && <p className="catalog-lifecycle-warning" role="alert">Cảnh báo {diagnostics.sizeDropWarning.code}: candidate giảm mạnh so với catalog hiện tại ({diagnostics.sizeDropWarning.previousProducts} → {diagnostics.sizeDropWarning.candidateProducts} Product, {diagnostics.sizeDropWarning.previousVariants} → {diagnostics.sizeDropWarning.candidateVariants} Variant).</p>}
           {(summary.invalid ?? 0) > 0 && <p className="catalog-lifecycle-error">Full Sync bị chặn vì còn dòng lỗi. Hãy sửa mapping/provider rồi tạo preview mới.</p>}
         </>}
         <label className="catalog-lifecycle-field">Mật khẩu Admin để xác nhận<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>
         {error && <p className="catalog-lifecycle-error" role="alert">{error}</p>}
-        <footer><button type="button" className="catalog-secondary-button" onClick={close} disabled={busy}>Hủy</button>{mode === 'reset' ? <button type="button" className="catalog-danger-button" onClick={() => void reset()} disabled={busy || confirmation !== resetPreview?.confirmation || !password}>Xác nhận xóa catalog</button> : <button type="button" className="catalog-primary-button" onClick={() => void fullApply()} disabled={busy || !password || (summary.invalid ?? 0) > 0}>Xác nhận và rebuild</button>}</footer>
+        <footer><button type="button" className="catalog-secondary-button" onClick={close} disabled={busy}>Hủy</button>{mode === 'reset' ? <button type="button" className="catalog-danger-button" onClick={() => void reset()} disabled={busy || confirmation !== resetPreview?.confirmation || !password}>Xác nhận xóa catalog</button> : <button type="button" className="catalog-primary-button" onClick={() => void fullApply()} disabled={busy || !password || candidateEmpty || (summary.invalid ?? 0) > 0}>Xác nhận và rebuild</button>}</footer>
       </section>
     </div>}
   </>;
