@@ -1,5 +1,6 @@
 import { createSign } from 'node:crypto';
 import { GoogleSheetSettingsError } from './googleSheetSecretCrypto.js';
+import { parseA1Range, sampleA1Range, splitA1RangeIntoBatches } from './googleSheetRangeBatches.js';
 
 export const GOOGLE_SHEETS_READONLY_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
 
@@ -62,21 +63,57 @@ export const createGoogleSheetClientFactory = ({ fetchImpl = globalThis.fetch, n
     return Array.isArray(body.values) ? body.values : [];
   },
   async readRows({ credential, settings }) {
-    const reference = safeRange(settings);
-    const values = await this.getValues({ credential, range: `${settings.spreadsheetId}!${reference.slice(reference.indexOf('!') + 1)}` });
+    safeRange(settings);
+    const parsed = parseA1Range(settings.sheetRange);
+    const batches = splitA1RangeIntoBatches({
+      range: settings.sheetRange,
+      maxRowsPerBatch: settings.maxRowsPerBatch,
+      headerRow: settings.headerRow,
+    });
+    const values = [];
+    for (let index = 0; index < batches.length; index += 1) {
+      const batch = batches[index];
+      try {
+        const batchValues = await this.getValues({ credential, range: `${settings.spreadsheetId}!${quoteSheetTitle(settings.sheetName)}!${batch.range}` });
+        const rows = Array.isArray(batchValues) ? batchValues.slice(0, batch.rowCount) : [];
+        values.push(...rows);
+        while (rows.length < batch.rowCount) {
+          rows.push([]);
+          values.push([]);
+        }
+      } catch (error) {
+        throw new GoogleSheetSettingsError('Google Sheet batch could not be read.', {
+          code: 'SHEET_BATCH_FETCH_FAILED',
+          status: error?.status ?? 502,
+          details: { batchIndex: index + 1, batchCount: batches.length, range: batch.range },
+        });
+      }
+    }
+    const headerOffset = settings.headerRow - parsed.startRow;
     return {
       spreadsheetId: settings.spreadsheetId,
       sheetTab: settings.sheetName,
       sheetRange: settings.sheetRange,
-      values: values.slice(0, settings.maxRowsPerBatch + 1),
+      values: values.slice(headerOffset),
+      batching: {
+        logicalRange: settings.sheetRange,
+        batchCount: batches.length,
+        maxRowsPerBatch: settings.maxRowsPerBatch,
+        rowsFetched: values.length,
+      },
     };
   },
   async testConnection({ credential, settings }) {
+    safeRange(settings);
     const metadata = await this.getSpreadsheet({ credential, spreadsheetId: settings.spreadsheetId });
     const names = Array.isArray(metadata.sheets) ? metadata.sheets.map((sheet) => sheet?.properties?.title).filter(Boolean) : [];
     if (settings.sheetName && names.length && !names.includes(settings.sheetName)) throw new GoogleSheetSettingsError('Google Sheet tab was not found.', { code: 'GOOGLE_SHEET_RANGE_INVALID', status: 422 });
-    const reference = safeRange(settings);
-    const values = (await this.getValues({ credential, range: `${settings.spreadsheetId}!${reference.slice(reference.indexOf('!') + 1)}` })).slice(0, settings.maxRowsPerBatch + 1);
+    const sampleRange = sampleA1Range({
+      range: settings.sheetRange,
+      headerRow: settings.headerRow,
+      maxRows: Math.min(20, settings.maxRowsPerBatch ?? 5000),
+    });
+    const values = await this.getValues({ credential, range: `${settings.spreadsheetId}!${quoteSheetTitle(settings.sheetName)}!${sampleRange}` });
     const headers = Array.isArray(values[0]) ? values[0].map((value) => String(value ?? '').trim()).filter(Boolean).slice(0, 32) : [];
     if (!headers.length) throw new GoogleSheetSettingsError('Google Sheet headers are invalid.', { code: 'GOOGLE_SHEET_HEADER_INVALID', status: 422 });
     return {

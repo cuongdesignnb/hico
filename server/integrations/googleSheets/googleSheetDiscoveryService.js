@@ -1,6 +1,7 @@
 import { GoogleSheetSettingsError, maskSpreadsheetId } from './googleSheetSecretCrypto.js';
 import { validateSimHicoHeader } from '../../catalog/sheetSync/simHicoHeaderAliases.js';
-import { HICO_GOC_SHEET, hicoGocHeaderHash } from '../../catalog/sheetSync/hicoGocMapping.js';
+import { DEFAULT_HICO_GOC_FIELD_MAPPING, HICO_GOC_SHEET, hicoGocColumnName, hicoGocHeaderHash } from '../../catalog/sheetSync/hicoGocMapping.js';
+import { columnName, parseA1Range, splitA1RangeIntoBatches } from './googleSheetRangeBatches.js';
 
 const MAX_HEADER_ROW = 100;
 const MAX_HEADER_COLUMNS = 52;
@@ -10,23 +11,7 @@ const MATCH_HEADERS = [['variant_id'], ['product_slug', 'sku']];
 
 export const quoteSheetTitle = (title) => `'${String(title).replace(/'/g, "''")}'`;
 
-const columnName = (number) => {
-  let result = '';
-  for (let value = number; value > 0; value = Math.floor((value - 1) / 26)) result = String.fromCharCode(65 + ((value - 1) % 26)) + result;
-  return result;
-};
-
-const parseA1 = (value) => {
-  const match = /^([A-Z]{1,3})(\d+):([A-Z]{1,3})(\d+)$/i.exec(String(value ?? '').trim());
-  if (!match) throw new GoogleSheetSettingsError('Google Sheet range is invalid.', { code: 'GOOGLE_SHEET_RANGE_INVALID', status: 422 });
-  const col = (input) => input.toUpperCase().split('').reduce((total, char) => total * 26 + char.charCodeAt(0) - 64, 0);
-  const startColumn = col(match[1]);
-  const endColumn = col(match[3]);
-  const startRow = Number(match[2]);
-  const endRow = Number(match[4]);
-  if (startColumn > endColumn || startRow > endRow || endColumn > MAX_HEADER_COLUMNS || endRow - startRow + 1 > 5000) throw new GoogleSheetSettingsError('Google Sheet range is outside the allowed bounds.', { code: 'GOOGLE_SHEET_RANGE_INVALID', status: 422 });
-  return { startColumn, endColumn, startRow, endRow };
-};
+const parseA1 = (value) => parseA1Range(value, { maxColumns: MAX_HEADER_COLUMNS });
 
 const mapMetadata = (raw) => ({
   spreadsheetIdMasked: maskSpreadsheetId(raw.spreadsheetId),
@@ -58,8 +43,28 @@ const headerResult = ({ metadata, sheet, headerRow, values }) => {
   if (!isHicoGoc && !simHico.valid && !legacy) throw new GoogleSheetSettingsError('Google Sheet headers are invalid.', { code: 'SHEET_HEADER_CONTRACT_INVALID', status: 422, details: { missing: simHico.missing, required: MATCH_HEADERS } });
   const missing = isHicoGoc || simHico.valid ? [] : REQUIRED_HEADERS.filter((header) => !normalized.includes(header) && !(header === 'network_label' && normalized.includes('network')));
   if (missing.length) warnings.push({ code: 'MISSING_OPTIONAL_HEADERS', headers: missing });
-  const endRow = simHico.valid ? Math.min(20, sheet.rowCount || 20) : Math.min(5000, sheet.rowCount || 5000);
-  return { sheetId: sheet.sheetId, sheetTitle: sheet.title, headerRow, headers: headers.filter(Boolean), headerHash: hicoGocHeaderHash(headers), suggestedRange: `A${headerRow}:${columnName(Math.max(1, headers.length))}${endRow}`, warnings, spreadsheetIdMasked: metadata.spreadsheetIdMasked, contract: isHicoGoc ? 'HICO_GOC_QUICK_SYNC' : simHico.valid ? 'SIM_HICO_NATIVE' : 'LEGACY', detectedAliases: simHico.valid ? simHico.detectedAliases : {} };
+  const headerColumn = columnName(Math.max(1, headers.length));
+  const sampleEndRow = headerRow + Math.max(0, values.length - 1);
+  const fullColumn = isHicoGoc
+    ? hicoGocColumnName(Math.max(...Object.values(DEFAULT_HICO_GOC_FIELD_MAPPING)))
+    : headerColumn;
+  const fullEndRow = sheet.rowCount || sampleEndRow;
+  const headerSampleRange = `A${headerRow}:${headerColumn}${sampleEndRow}`;
+  const suggestedFullRange = `A${headerRow}:${fullColumn}${fullEndRow}`;
+  return {
+    sheetId: sheet.sheetId,
+    sheetTitle: sheet.title,
+    headerRow,
+    headers: headers.filter(Boolean),
+    headerHash: hicoGocHeaderHash(headers),
+    headerSampleRange,
+    suggestedFullRange,
+    suggestedRange: suggestedFullRange,
+    warnings,
+    spreadsheetIdMasked: metadata.spreadsheetIdMasked,
+    contract: isHicoGoc ? 'HICO_GOC_QUICK_SYNC' : simHico.valid ? 'SIM_HICO_NATIVE' : 'LEGACY',
+    detectedAliases: simHico.valid ? simHico.detectedAliases : {},
+  };
 };
 
 export const createGoogleSheetDiscoveryService = ({ clientFactory, resolveCredential, now = () => new Date() } = {}) => ({
@@ -74,7 +79,7 @@ export const createGoogleSheetDiscoveryService = ({ clientFactory, resolveCreden
     const sheet = metadata.sheets.find((item) => (sheetId !== undefined && item.sheetId === Number(sheetId)) || item.title === sheetTitle);
     if (!sheet) throw new GoogleSheetSettingsError('Google Sheet tab was not found.', { code: 'GOOGLE_SHEET_TAB_NOT_FOUND', status: 422 });
     const row = Number(headerRow);
-    if (!Number.isInteger(row) || row < 1 || row > MAX_HEADER_ROW || row > sheet.rowCount) throw new GoogleSheetSettingsError('Header row is invalid.', { code: 'GOOGLE_SHEET_HEADER_INVALID', status: 422 });
+    if (!Number.isInteger(row) || row < 1 || row > MAX_HEADER_ROW || (sheet.rowCount > 0 && row > sheet.rowCount)) throw new GoogleSheetSettingsError('Header row is invalid.', { code: 'GOOGLE_SHEET_HEADER_INVALID', status: 422 });
     const end = columnName(Math.min(MAX_HEADER_COLUMNS, Math.max(1, Number(maxColumns) || MAX_HEADER_COLUMNS)));
     const values = await clientFactory.getValues({ credential: await resolveCredential(), range: `${spreadsheetId}!${quoteSheetTitle(sheet.title)}!A${row}:${end}${Math.min(sheet.rowCount || row + MAX_SAMPLE_ROWS, row + MAX_SAMPLE_ROWS - 1)}` });
     return headerResult({ metadata, sheet, headerRow: row, values });
@@ -83,8 +88,21 @@ export const createGoogleSheetDiscoveryService = ({ clientFactory, resolveCreden
     const sheet = metadata.sheets.find((item) => item.title === sheetTitle);
     if (!sheet) throw new GoogleSheetSettingsError('Google Sheet tab was not found.', { code: 'GOOGLE_SHEET_TAB_NOT_FOUND', status: 422 });
     const parsed = parseA1(range);
-    if (parsed.endRow > Math.min(sheet.rowCount || parsed.endRow, headerRow + maxRowsPerBatch - 1) || parsed.startRow > headerRow || parsed.endRow < headerRow || parsed.endColumn > sheet.columnCount) throw new GoogleSheetSettingsError('Google Sheet range is outside the allowed bounds.', { code: 'GOOGLE_SHEET_RANGE_INVALID', status: 422 });
-    return { valid: true, sheetTitle, range, headerRow, checkedAt: now().toISOString() };
+    const batches = splitA1RangeIntoBatches({ range, maxRowsPerBatch, headerRow, maxColumns: MAX_HEADER_COLUMNS });
+    if ((sheet.rowCount > 0 && parsed.endRow > sheet.rowCount) || parsed.startRow > headerRow || parsed.endRow < headerRow || (sheet.columnCount > 0 && parsed.endColumn > sheet.columnCount)) throw new GoogleSheetSettingsError('Google Sheet range is outside the allowed bounds.', { code: 'GOOGLE_SHEET_RANGE_INVALID', status: 422 });
+    return {
+      valid: true,
+      sheetTitle,
+      range,
+      headerRow,
+      batching: {
+        logicalRange: range,
+        batchCount: batches.length,
+        maxRowsPerBatch,
+        rowsFetched: parsed.endRow - parsed.startRow + 1,
+      },
+      checkedAt: now().toISOString(),
+    };
   },
 });
 

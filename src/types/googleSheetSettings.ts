@@ -44,6 +44,6 @@ export interface GoogleSheetConnectionTestResult {
 
 export interface GoogleSheetDiscoveredSheet { sheetId: number; title: string; index: number; sheetType: 'GRID'; rowCount: number; columnCount: number; frozenRowCount: number; frozenColumnCount: number; }
 export interface GoogleSheetDiscoveryResult { spreadsheetIdMasked: string | null; title: string | null; locale: string | null; timeZone: string | null; sheets: GoogleSheetDiscoveredSheet[]; }
-export interface GoogleSheetHeaderDiscoveryResult { spreadsheetIdMasked: string | null; sheetId: number; sheetTitle: string; headerRow: number; headers: string[]; headerHash?: string; suggestedRange: string; warnings: Array<{ code: string; headers?: string[] }>; contract?: string; }
+export interface GoogleSheetHeaderDiscoveryResult { spreadsheetIdMasked: string | null; sheetId: number; sheetTitle: string; headerRow: number; headers: string[]; headerHash?: string; headerSampleRange?: string; suggestedFullRange?: string; suggestedRange: string; warnings: Array<{ code: string; headers?: string[] }>; contract?: string; }
 
 export interface GoogleSheetSettingsErrorBody { error?: string; code?: string; }

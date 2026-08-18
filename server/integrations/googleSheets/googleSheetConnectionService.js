@@ -1,4 +1,3 @@
-import { createSheetReferenceClient } from '../../catalog/sheetSync/sheetReferenceClient.js';
 import { GoogleSheetSettingsError, maskSpreadsheetId, validateServiceAccountCredential } from './googleSheetSecretCrypto.js';
 import { createGoogleSheetDiscoveryService } from './googleSheetDiscoveryService.js';
 import { HICO_GOC_SHEET, normalizeHicoGocSettings } from '../../catalog/sheetSync/hicoGocMapping.js';
@@ -94,7 +93,11 @@ export const createGoogleSheetConnectionService = ({ settingsRepository, credent
     if (source === 'NONE') throw new GoogleSheetSettingsError('Google Sheet is not configured.', { code: 'GOOGLE_SHEET_NOT_CONFIGURED', status: 503 });
     if (source === 'ADMIN_SETTINGS' && requireEnabled && !settings.enabled) throw new GoogleSheetSettingsError('Google Sheet integration is disabled.', { code: 'GOOGLE_SHEET_NOT_CONFIGURED', status: 503 });
     if (source === 'ADMIN_SETTINGS') return { settings, source, credential: await credentialRepository.decrypt(settings) };
-    return { settings: { ...settings, enabled: true, spreadsheetId: env.CATALOG_SHEET_ID, sheetName: env.CATALOG_SHEET_TAB, sheetRange: env.CATALOG_SHEET_RANGE }, source, referenceClient: createSheetReferenceClient({ env }) };
+    return {
+      settings: { ...settings, enabled: true, spreadsheetId: env.CATALOG_SHEET_ID, sheetName: env.CATALOG_SHEET_TAB, sheetRange: env.CATALOG_SHEET_RANGE },
+      source,
+      credential: validateServiceAccountCredential(env.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON),
+    };
   };
   const resolveCredential = async () => {
     const settings = await getSettings();
@@ -163,10 +166,17 @@ export const createGoogleSheetConnectionService = ({ settingsRepository, credent
     },
     async readRows() {
       const resolved = await resolve();
-      const reference = resolved.source === 'ENVIRONMENT'
-        ? await resolved.referenceClient.readRows()
-        : await clientFactory.readRows({ credential: resolved.credential, settings: resolved.settings });
-      return { ...reference, syncSettings: { fieldMapping: resolved.settings.fieldMapping, priceMapping: resolved.settings.priceMapping, headerHash: resolved.settings.headerHash } };
+      const reference = await clientFactory.readRows({ credential: resolved.credential, settings: resolved.settings });
+      return {
+        ...reference,
+        syncSettings: {
+          fieldMapping: resolved.settings.fieldMapping,
+          priceMapping: resolved.settings.priceMapping,
+          headerHash: resolved.settings.headerHash,
+          headerRow: resolved.settings.headerRow,
+          maxRowsPerBatch: resolved.settings.maxRowsPerBatch,
+        },
+      };
     },
     publicSettings,
   };

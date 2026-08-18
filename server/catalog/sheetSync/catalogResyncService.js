@@ -323,7 +323,7 @@ export const buildFullSyncCandidate = async ({
   };
 };
 
-const sourceHashFor = (reference, settings, offers) => createHash('sha256').update(JSON.stringify({
+export const sourceHashFor = (reference, settings, offers) => createHash('sha256').update(JSON.stringify({
   spreadsheetId: reference.spreadsheetId,
   sheetTab: reference.sheetTab,
   sheetRange: reference.sheetRange,
@@ -386,7 +386,10 @@ export const createCatalogResyncService = ({
   return {
     async fullPreview({ actor = {} } = {}) {
       const reference = await referenceClient.readRows();
-      const initialSettings = normalizeHicoGocSettings(reference.syncSettings ?? {});
+      const initialSettings = {
+        ...normalizeHicoGocSettings(reference.syncSettings ?? {}),
+        headerRow: Number(reference.syncSettings?.headerRow ?? 1),
+      };
       const validation = validateReference(reference, initialSettings);
       const settings = { ...initialSettings, headerHash: validation.headerHash };
       const [current, offers] = await Promise.all([
@@ -405,6 +408,7 @@ export const createCatalogResyncService = ({
         total: candidate.candidate.rows.length,
         valid: candidate.candidate.rows.filter((row) => row.status === 'VALID').length,
         invalid: candidate.candidate.rows.filter((row) => row.status === 'INVALID').length,
+        headerRow: settings.headerRow,
         changedFields: 0,
         enrichmentSourceVersionId: currentVersion(previousCatalog.manifest),
         ...candidate.candidate.summary,
@@ -429,7 +433,10 @@ export const createCatalogResyncService = ({
       assertPersistedFullSyncSummary(batch.summary);
       if (['APPLIED', 'PARTIALLY_APPLIED'].includes(batch.status)) return { batch: publicBatch(batch), rows: (await repository.listRows(id)).map(publicRow), versionId: batch.catalogVersionId, idempotent: true };
       const reference = await referenceClient.readRows();
-      const settings = normalizeHicoGocSettings({ fieldMapping: batch.fieldMapping, priceMapping: batch.priceMapping, headerHash: batch.headerHash });
+      const settings = {
+        ...normalizeHicoGocSettings({ fieldMapping: batch.fieldMapping, priceMapping: batch.priceMapping, headerHash: batch.headerHash }),
+        headerRow: Number(batch.headerRow ?? batch.summary?.headerRow ?? 1),
+      };
       const [current, offers] = await Promise.all([canonicalRepository.readCatalog({ required: true }), providerRepository.listOffers()]);
       if (currentVersion(current.manifest) !== batch.catalogVersionId) throw new SheetSyncError('Catalog đã thay đổi sau preview. Hãy tạo lại preview.', { code: 'SHEET_SYNC_CONCURRENCY_CONFLICT', status: 409 });
       if (sourceHashFor(reference, settings, offers) !== batch.sourceHash) throw new SheetSyncError('Sheet, mapping hoặc provider snapshot đã thay đổi sau preview.', { code: 'SHEET_SYNC_STALE_PREVIEW', status: 409 });

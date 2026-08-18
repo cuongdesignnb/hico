@@ -16,6 +16,10 @@ const rangeEndColumn = (value: string) => {
   const match = /:[A-Z]{1,3}\d+$/i.exec(String(value ?? '').trim());
   return match ? columnNumber(match[0].split(':')[1].replace(/\d+$/, '')) : 0;
 };
+const rangeEndRow = (value: string) => {
+  const match = /:[A-Z]{1,3}(\d+)$/i.exec(String(value ?? '').trim());
+  return match ? Number(match[1]) : 0;
+};
 
 export const GoogleSheetSettings: React.FC = () => {
   const [settings, setSettings] = useState<GoogleSheetSettingsStatus | null>(null);
@@ -101,6 +105,10 @@ export const GoogleSheetSettings: React.FC = () => {
     try { const result = await googleSheetSettingsApi.preview(); toast.success(`Preview batch ${result.batch.id} đã tạo: ${result.rows.length} dòng.`); }
     catch (previewError) { toast.error(errorText(previewError)); } finally { setBusy(false); }
   };
+  const suggestedFullRange = headerDiscovery?.suggestedFullRange ?? headerDiscovery?.suggestedRange ?? '';
+  const rangeNeedsExpansion = Boolean(headerDiscovery && suggestedFullRange && (
+    rangeEndColumn(range) < rangeEndColumn(suggestedFullRange) || rangeEndRow(range) < rangeEndRow(suggestedFullRange)
+  ));
 
   return <section className="google-sheet-settings-shell">
     <div className="google-sheet-settings-header"><div><p className="google-sheet-settings-eyebrow">Cài đặt / Tích hợp</p><h2>Google Sheet Catalog</h2><p>Quản lý kết nối Sheet chỉ đọc cho Catalog Sync.</p></div><Settings2 size={24} aria-hidden="true" /></div>
@@ -112,10 +120,10 @@ export const GoogleSheetSettings: React.FC = () => {
         <label className="google-sheet-toggle"><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /><span>Bật tích hợp Google Sheet</span></label>
         <label className="google-sheet-field">Spreadsheet ID<input value={spreadsheetId} onChange={(event) => setSpreadsheetId(event.target.value)} placeholder={settings?.spreadsheetIdMasked ?? 'Nhập Spreadsheet ID'} /></label>
         <label className="google-sheet-field">Tên sheet<input value={sheetName} onChange={(event) => setSheetName(event.target.value)} placeholder="HICO GỐC" /></label>
-        {discovery && <div className="google-sheet-discovery-result"><strong>{discovery.title ?? 'Spreadsheet'}</strong><span>{discovery.sheets.length} tab GRID · {discovery.timeZone ?? 'Không rõ múi giờ'}</span>{headerDiscovery && <span>Header: {headerDiscovery.headers.join(', ')} · Suggested: {headerDiscovery.suggestedRange}</span>}</div>}
-        <label className="google-sheet-field">Range<input value={range} onChange={(event) => setRange(event.target.value)} placeholder={sheetName.trim() === 'HICO GỐC' ? 'A1:AT5000' : 'A1:K5000'} /></label>
+        {discovery && <div className="google-sheet-discovery-result"><strong>{discovery.title ?? 'Spreadsheet'}</strong><span>{discovery.sheets.length} tab GRID · {discovery.timeZone ?? 'Không rõ múi giờ'}</span>{headerDiscovery && <span>Header sample: {headerDiscovery.headerSampleRange ?? headerDiscovery.suggestedRange} · Full sync: {suggestedFullRange}</span>}</div>}
+        <label className="google-sheet-field">Range<input value={range} onChange={(event) => setRange(event.target.value)} placeholder={sheetName.trim() === 'HICO GỐC' ? 'A1:Y17666' : 'A1:K5000'} /></label>
         <label className="google-sheet-field">Header row<input type="number" min="1" value={headerRow} onChange={(event) => setHeaderRow(event.target.value)} /></label>
-        {sheetName.trim() === 'HICO GỐC' && headerDiscovery && rangeEndColumn(range) < rangeEndColumn(headerDiscovery.suggestedRange) && <div className="google-sheet-range-warning" role="alert"><AlertTriangle size={16} /><span>Range hiện tại chưa bao phủ đủ header HICO GỐC.</span><button type="button" className="admin-btn-secondary" onClick={() => setRange(headerDiscovery.suggestedRange)}>Dùng range đề xuất</button></div>}
+        {sheetName.trim() === 'HICO GỐC' && headerDiscovery && rangeNeedsExpansion && <div className="google-sheet-range-warning" role="alert"><AlertTriangle size={16} /><span>Range hiện tại chưa bao phủ đủ dữ liệu HICO GỐC để đồng bộ đầy đủ.</span><button type="button" className="admin-btn-secondary" onClick={() => setRange(suggestedFullRange)}>Dùng range đề xuất</button></div>}
         {sheetName.trim() === 'HICO GỐC' && <div className="google-sheet-price-mapping">
           <div><strong>Giá bán đồng bộ</strong><p>Giá đã chọn sẽ dùng chung cho Catalog, giỏ hàng và checkout.</p></div>
           <label className="google-sheet-field">Giá SIM<select value={physicalPrice} onChange={(event) => setPhysicalPrice(event.target.value)}><option value="pricePhysical">Giá Sim</option><option value="priceWholesalePhysical">Giá sỉ Sim</option><option value="priceCtvPhysical">Giá CTV SIM</option></select></label>

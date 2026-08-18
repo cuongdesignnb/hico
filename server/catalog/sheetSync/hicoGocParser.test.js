@@ -37,6 +37,11 @@ test('HICO GỐC parser reports rows with no identity instead of silently droppi
   });
 });
 
+test('HICO GỐC parser keeps the physical Sheet row number when header is not row one', () => {
+  const result = parseHicoGocRowsWithDiagnostics([Array(25).fill('header'), cells()], { headerRow: 2 });
+  assert.equal(result.rows[0].sheetRowNumber, 3);
+});
+
 test('HICO GỐC parser maps total package duration and collapses trip-day options', () => {
   const first = cells({ 1: 'Trung Quốc, 5 Ngày, Tổng 3GB', 2: '1', 3: 'Gói tổng', 16: 'SKU-TOTAL', 17: '', 23: 'WM-TOTAL' });
   const second = [...first]; second[2] = '3';

@@ -41,6 +41,7 @@ export const fullSyncDiagnostics = ({ reference, range, parser, candidate, basel
       headerColumns: range?.headerColumns ?? reference?.values?.[0]?.length ?? 0,
       requiredLastColumn: range?.requiredLastColumn ?? null,
       configuredLastColumn: range?.configuredLastColumn ?? null,
+      batching: reference?.batching ?? null,
     },
     parser: {
       rowsParsed: parser?.rowsParsed ?? 0,

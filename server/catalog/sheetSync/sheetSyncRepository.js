@@ -2,14 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { publicBatch, publicRow } from './sheetSyncTypes.js';
 
 const parseJson = (value, fallback) => typeof value === 'string' ? JSON.parse(value) : value ?? fallback;
-const mapBatch = (row) => ({
+const mapBatch = (row) => {
+  const summary = parseJson(row.summary, {});
+  return {
   id: row.id, sourceHash: row.source_hash, spreadsheetId: row.spreadsheet_id, sheetTab: row.sheet_tab, sheetRange: row.sheet_range,
   status: row.status, createdBy: row.created_by, createdAt: row.created_at?.toISOString?.() ?? row.created_at,
   validatedAt: row.validated_at?.toISOString?.() ?? row.validated_at, appliedAt: row.applied_at?.toISOString?.() ?? row.applied_at,
   rejectedAt: row.rejected_at?.toISOString?.() ?? row.rejected_at, rejectedBy: row.rejected_by, catalogVersionId: row.catalog_version_id,
   approvedBy: row.approved_by,
-  summary: parseJson(row.summary, {}), mode: row.mode ?? 'legacy', fieldMapping: parseJson(row.field_mapping, null), priceMapping: parseJson(row.price_mapping, null), headerHash: row.header_hash ?? null, providerSnapshotHash: row.provider_snapshot_hash ?? null,
-});
+  summary, headerRow: Number(summary.headerRow ?? 1), mode: row.mode ?? 'legacy', fieldMapping: parseJson(row.field_mapping, null), priceMapping: parseJson(row.price_mapping, null), headerHash: row.header_hash ?? null, providerSnapshotHash: row.provider_snapshot_hash ?? null,
+  };
+};
 const mapRow = (row) => ({
   id: row.id, batchId: row.batch_id, sheetRowNumber: row.sheet_row_number, rowHash: row.row_hash, variantId: row.variant_id,
   status: row.status, normalizedData: parseJson(row.normalized_data, {}), raw: parseJson(row.raw_data, {}), diff: parseJson(row.diff, {}),

@@ -103,6 +103,17 @@ settings or the encrypted credential are unavailable, it exits with a blocked
 result rather than inventing a pass. Do not use Reset or Full Apply merely to
 test parser or configuration changes.
 
+### Large HICO GỐC ranges
+
+The configured range is logical and may cover more than 5,000 Sheet rows, for
+example `A1:Y17666`. Runtime reads split it into sequential requests of at most
+`maxRowsPerBatch` rows (default 5,000), merge them in Sheet row order, and keep
+the header exactly once. Admins do not need to split the range manually. Header
+discovery shows a small `Header sample` range separately from the `Full sync`
+range; `Test connection` also reads only the sample. A failed batch stops the
+read with `SHEET_BATCH_FETCH_FAILED` and no candidate or partial success is
+created.
+
 ## Evidence and rollback
 
 Record only redacted evidence: operator, timestamp, route, preview/batch ID,

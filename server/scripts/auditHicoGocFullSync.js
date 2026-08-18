@@ -28,6 +28,7 @@ const knownBlockedCodes = new Set([
   'GOOGLE_SHEET_CREDENTIAL_TOO_LARGE', 'GOOGLE_SHEET_PERMISSION_DENIED',
   'GOOGLE_SHEET_NOT_FOUND', 'GOOGLE_SHEET_RATE_LIMITED', 'GOOGLE_SHEET_CONNECTION_FAILED',
   'GOOGLE_SHEET_RANGE_INVALID', 'SHEET_FETCH_FAILED', 'SHEET_AUTH_FAILED',
+  'SHEET_BATCH_FETCH_FAILED',
   'SHEET_SYNC_NOT_CONFIGURED', 'SHEET_SERVICE_ACCOUNT_INVALID',
   'SHEET_SOURCE_TAB_INVALID', 'SHEET_HEADER_REQUIRED', 'SHEET_HEADER_CHANGED',
   'SHEET_RANGE_INCOMPLETE', 'MAPPING_COLUMN_OUT_OF_RANGE', 'FULL_SYNC_SOURCE_EMPTY',
@@ -42,7 +43,7 @@ const credentialUnavailableCodes = new Set([
 const safeErrorKeys = new Set([
   'missing', 'configuredRange', 'requiredLastColumn', 'configuredLastColumn',
   'field', 'columnIndex', 'headerColumns', 'rowsRead', 'rowsParsed',
-  'products', 'variants', 'diagnostics', 'reasonCode',
+  'products', 'variants', 'diagnostics', 'reasonCode', 'batchIndex', 'batchCount', 'range',
 ]);
 
 const sanitizeDetails = (value) => {
@@ -100,7 +101,10 @@ export const runHicoGocFullSyncAudit = async ({
     });
     const publicSettings = await connectionService.getPublicSettings();
     const reference = await connectionService.readRows();
-    const settings = normalizeHicoGocSettings(reference.syncSettings ?? {});
+    const settings = {
+      ...normalizeHicoGocSettings(reference.syncSettings ?? {}),
+      headerRow: Number(reference.syncSettings?.headerRow ?? publicSettings.headerRow ?? 1),
+    };
     const validation = assertHicoGocReference(reference, settings);
     const parsed = parseHicoGocRowsWithDiagnostics(reference.values, settings);
     const canonicalRepository = canonicalRepositoryFactory();
@@ -136,6 +140,11 @@ export const runHicoGocFullSyncAudit = async ({
         headerRow: publicSettings.headerRow,
         headerColumns: validation.headers.length,
         rowsRead: diagnostics.source.rowsRead,
+        logicalRange: reference.sheetRange,
+        batching: reference.batching ?? null,
+        batchCount: reference.batching?.batchCount ?? 1,
+        rowsFetched: reference.batching?.rowsFetched ?? null,
+        maxRowsPerBatch: reference.batching?.maxRowsPerBatch ?? null,
       },
       mapping: {
         valid: true,

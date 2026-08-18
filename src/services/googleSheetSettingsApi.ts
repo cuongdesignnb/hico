@@ -24,7 +24,7 @@ export const googleSheetSettingsApi = {
   test: (input: Record<string, unknown> = {}) => request<GoogleSheetConnectionTestResult>('/test', { method: 'POST', body: JSON.stringify(input) }),
   discover: (spreadsheetId: string) => request<GoogleSheetDiscoveryResult>('/discover', { method: 'POST', body: JSON.stringify({ spreadsheetId }) }),
   discoverHeader: (input: { spreadsheetId: string; sheetId: number; sheetTitle: string; headerRow: number; maxColumns?: number }) => request<GoogleSheetHeaderDiscoveryResult>('/discover-header', { method: 'POST', body: JSON.stringify(input) }),
-  validateRange: (input: { spreadsheetId: string; sheetTitle: string; range: string; headerRow: number; maxRowsPerBatch?: number }) => request<{ valid: true; checkedAt: string }>('/validate-range', { method: 'POST', body: JSON.stringify(input) }),
+  validateRange: (input: { spreadsheetId: string; sheetTitle: string; range: string; headerRow: number; maxRowsPerBatch?: number }) => request<{ valid: true; checkedAt: string; batching?: { logicalRange: string; batchCount: number; maxRowsPerBatch: number; rowsFetched: number } }>('/validate-range', { method: 'POST', body: JSON.stringify(input) }),
   revoke: (input: { version: number }) => request<GoogleSheetSettingsStatus>('/credential', { method: 'DELETE', body: JSON.stringify(input) }),
   preview: () => request<{ batch: { id: string; status: string; summary?: Record<string, number> }; rows: unknown[]; idempotent?: boolean }>('/preview', { method: 'POST', body: '{}' }),
 };

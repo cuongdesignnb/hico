@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { cloneSeedCategories } from '../categories/catalogCategories.js';
-import { buildFullSyncCandidate, createCatalogResyncService, productSourceKeyFor, variantSourceKeyFor } from './catalogResyncService.js';
+import { buildFullSyncCandidate, createCatalogResyncService, productSourceKeyFor, sourceHashFor, variantSourceKeyFor } from './catalogResyncService.js';
 import { createInMemorySheetSyncRepository } from './sheetSyncRepository.js';
 
 const timestamp = '2026-08-16T00:00:00.000Z';
@@ -10,6 +10,14 @@ const rowData = {
   price: 70000, wmproductId: 'WM-CN-10', networkLabel: 'China Unicom', publicNote: 'Gói thử', activationPolicy: 'Reset hàng ngày', cancellable: true,
 };
 const offer = { id: 'offer-1', provider: 'worldmove', wmproductId: 'WM-CN-10', providerProductType: 1, active: true, leSIM: false };
+
+test('source hash is stable when only batch metadata changes', () => {
+  const reference = { spreadsheetId: 'sheet-1', sheetTab: 'HICO GỐC', sheetRange: 'A1:Y17666', values: [['header'], ['row']] };
+  const settings = { fieldMapping: { productName: 1 }, priceMapping: { physical: 'pricePhysical' } };
+  const first = sourceHashFor({ ...reference, batching: { batchCount: 4, maxRowsPerBatch: 5000 } }, settings, [offer]);
+  const second = sourceHashFor({ ...reference, batching: { batchCount: 18, maxRowsPerBatch: 1000 } }, settings, [offer]);
+  assert.equal(first, second);
+});
 
 test('full sync keeps exact previous media and enrichment while draft-safe', async () => {
   const previousProduct = {

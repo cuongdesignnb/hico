@@ -148,8 +148,9 @@ const makeCandidate = ({ cells, rowNumber, medium, mapping, priceMapping }) => {
   };
 };
 
-export const parseHicoGocRowsWithDiagnostics = (values = [], { fieldMapping = DEFAULT_HICO_GOC_FIELD_MAPPING, priceMapping = DEFAULT_HICO_GOC_PRICE_MAPPING } = {}) => {
+export const parseHicoGocRowsWithDiagnostics = (values = [], { fieldMapping = DEFAULT_HICO_GOC_FIELD_MAPPING, priceMapping = DEFAULT_HICO_GOC_PRICE_MAPPING, headerRow = 1 } = {}) => {
   if (!Array.isArray(values) || values.length < 1 || !Array.isArray(values[0])) throw new SheetSyncError('HICO GỐC does not contain a header row.', { code: 'SHEET_HEADER_REQUIRED', status: 422 });
+  if (!Number.isInteger(headerRow) || headerRow < 1) throw new SheetSyncError('HICO GỐC header row is invalid.', { code: 'SHEET_HEADER_INVALID', status: 422 });
   const mapping = normalizeHicoGocMapping(fieldMapping);
   const prices = normalizeHicoGocPriceMapping(priceMapping);
   const rows = [];
@@ -162,7 +163,7 @@ export const parseHicoGocRowsWithDiagnostics = (values = [], { fieldMapping = DE
     if (!Array.isArray(cells) || !cells.some((value) => String(value ?? '').trim() !== '')) return;
     rowsRead += 1;
     let emitted = false;
-    const rowNumber = offset + 2;
+    const rowNumber = headerRow + offset + 1;
     for (const medium of ['physical_sim', 'esim']) {
       const skuField = medium === 'physical_sim' ? 'skuPhysical' : 'skuEsim';
       if (clean(valueAt(cells, mapping, skuField), 'sku', []) === undefined) continue;

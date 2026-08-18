@@ -41,6 +41,7 @@ export const publicBatch = (batch) => ({
   mode: batch.mode ?? 'legacy',
   fieldMapping: batch.fieldMapping ?? null,
   priceMapping: batch.priceMapping ?? null,
+  headerRow: batch.headerRow ?? batch.summary?.headerRow ?? 1,
   headerHash: batch.headerHash ?? null,
   providerSnapshotHash: batch.providerSnapshotHash ?? null,
   summary: batch.summary ?? {},
