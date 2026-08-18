@@ -3,6 +3,7 @@ import { AlertTriangle, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
 import { catalogLifecycleApi, CatalogLifecycleApiError } from '../../../services/catalogLifecycleApi';
 import type { CatalogResetPreview } from '../../../types/catalogLifecycle';
 import type { CatalogSheetSyncBatch } from '../../../types/catalogSheetSync';
+import { useAdminToast } from '../../../hooks/useAdminToast';
 import './CatalogLifecycleControls.css';
 
 type Mode = 'reset' | 'full' | null;
@@ -14,20 +15,20 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
   const [mode, setMode] = useState<Mode>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
+  const toast = useAdminToast();
   const [resetPreview, setResetPreview] = useState<CatalogResetPreview | null>(null);
   const [fullBatch, setFullBatch] = useState<CatalogSheetSyncBatch | null>(null);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
 
   const openReset = async () => {
-    setBusy(true); setError(''); setMessage('');
-    try { setResetPreview(await catalogLifecycleApi.resetPreview()); setMode('reset'); } catch (loadError) { setError(errorText(loadError)); }
+    setBusy(true); setError('');
+    try { setResetPreview(await catalogLifecycleApi.resetPreview()); setMode('reset'); } catch (loadError) { toast.error(errorText(loadError)); }
     finally { setBusy(false); }
   };
   const openFull = async () => {
-    setBusy(true); setError(''); setMessage('');
-    try { const result = await catalogLifecycleApi.fullPreview(); setFullBatch(result.batch); setMode('full'); } catch (loadError) { setError(errorText(loadError)); }
+    setBusy(true); setError('');
+    try { const result = await catalogLifecycleApi.fullPreview(); setFullBatch(result.batch); setMode('full'); } catch (loadError) { toast.error(errorText(loadError)); }
     finally { setBusy(false); }
   };
   const close = () => { if (busy) return; setMode(null); setPassword(''); setConfirmation(''); setError(''); };
@@ -36,15 +37,15 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
     setBusy(true); setError('');
     try {
       const result = await catalogLifecycleApi.reset({ catalogVersionId: resetPreview.currentVersionId, confirmation, currentPassword: password, idempotencyKey: idempotencyKey() });
-      setMessage(`Đã tạo catalog rỗng ${result.catalogVersionId}. Media và version cũ vẫn được giữ.`); close(); onChanged?.();
-    } catch (resetError) { setError(errorText(resetError)); }
+      toast.success(`Đã tạo catalog rỗng ${result.catalogVersionId}. Media và version cũ vẫn được giữ.`); close(); onChanged?.();
+    } catch (resetError) { setError(errorText(resetError)); toast.error(errorText(resetError)); }
     finally { setBusy(false); }
   };
   const fullApply = async () => {
     if (!fullBatch) return;
     setBusy(true); setError('');
-    try { const result = await catalogLifecycleApi.fullApply(fullBatch.id, password); setMessage(`Đã tạo catalog draft ${result.versionId}. Các variant cần review trước khi publish.`); close(); onChanged?.(); }
-    catch (applyError) { setError(errorText(applyError)); }
+    try { const result = await catalogLifecycleApi.fullApply(fullBatch.id, password); toast.success(`Đã tạo catalog draft ${result.versionId}. Các variant cần review trước khi publish.`); close(); onChanged?.(); }
+    catch (applyError) { setError(errorText(applyError)); toast.error(errorText(applyError)); }
     finally { setBusy(false); }
   };
   const summary = fullBatch?.summary ?? {};
@@ -53,7 +54,6 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
       <button type="button" className="catalog-secondary-button" onClick={() => void openFull()} disabled={busy}><RefreshCw size={16} /> Đồng bộ lại toàn bộ HICO GỐC</button>
       <button type="button" className="catalog-danger-button" onClick={() => void openReset()} disabled={busy}><Trash2 size={16} /> Xóa toàn bộ sản phẩm</button>
     </div>
-    {message && <p className="catalog-lifecycle-message" role="status">{message}</p>}
     {error && !mode && <p className="catalog-lifecycle-error" role="alert">{error}</p>}
     {mode && <div className="catalog-lifecycle-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
       <section className="catalog-lifecycle-dialog" role="dialog" aria-modal="true" aria-labelledby="catalog-lifecycle-title">

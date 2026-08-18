@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, KeyRound, RefreshCw, Settings2, ShieldCheck, TestTube2 } from 'lucide-react';
 import { googleSheetSettingsApi, GoogleSheetSettingsApiError } from '../../../../services/googleSheetSettingsApi';
 import type { GoogleSheetConnectionTestResult, GoogleSheetDiscoveryResult, GoogleSheetHeaderDiscoveryResult, GoogleSheetSettingsStatus } from '../../../../types/googleSheetSettings';
+import { useAdminToast } from '../../../../hooks/useAdminToast';
 import { GoogleSheetConnectionStatus } from './GoogleSheetConnectionStatus';
 import { GoogleSheetCredentialForm } from './GoogleSheetCredentialForm';
 import { GoogleSheetTestResult } from './GoogleSheetTestResult';
@@ -15,8 +16,7 @@ export const GoogleSheetSettings: React.FC = () => {
   const [settings, setSettings] = useState<GoogleSheetSettingsStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const toast = useAdminToast();
   const [credentialText, setCredentialText] = useState('');
   const [spreadsheetId, setSpreadsheetId] = useState('');
   const [sheetName, setSheetName] = useState('');
@@ -36,65 +36,65 @@ export const GoogleSheetSettings: React.FC = () => {
   const [discovery, setDiscovery] = useState<GoogleSheetDiscoveryResult | null>(null);
   const [headerDiscovery, setHeaderDiscovery] = useState<GoogleSheetHeaderDiscoveryResult | null>(null);
 
-  const load = async () => {
-    setLoading(true); setError('');
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
       const next = await googleSheetSettingsApi.get();
       setSettings(next); setEnabled(next.enabled); setSheetName(next.sheetName ?? ''); setRange(next.range ?? 'A1:K5000'); setHeaderRow(String(next.headerRow ?? 1)); setPhysicalPrice(next.priceMapping?.physical ?? 'pricePhysical'); setEsimPrice(next.priceMapping?.esim ?? 'priceEsim'); setPhysicalCompare(next.priceMapping?.comparePhysical ?? ''); setEsimCompare(next.priceMapping?.compareEsim ?? ''); setImageColumn(next.fieldMapping?.[imageMappingKey] === undefined || next.fieldMapping?.[imageMappingKey] === null ? '' : String(next.fieldMapping[imageMappingKey] + 1)); setGalleryColumn(next.fieldMapping?.galleryImageUrls === undefined || next.fieldMapping?.galleryImageUrls === null ? '' : String(next.fieldMapping.galleryImageUrls + 1)); setDescriptionColumn(next.fieldMapping?.description === undefined || next.fieldMapping?.description === null ? '' : String(next.fieldMapping.description + 1)); setInstallationGuideColumn(next.fieldMapping?.installationGuide === undefined || next.fieldMapping?.installationGuide === null ? '' : String(next.fieldMapping.installationGuide + 1)); setHeaderHash(next.headerHash ?? '');
-    } catch (loadError) { setError(errorText(loadError)); } finally { setLoading(false); }
-  };
-  useEffect(() => { queueMicrotask(() => { void load(); }); }, []);
+    } catch (loadError) { toast.error(errorText(loadError)); } finally { setLoading(false); }
+  }, [toast]);
+  useEffect(() => { queueMicrotask(() => { void load(); }); }, [load]);
 
   const saveSettings = async () => {
-    setBusy(true); setMessage(''); setError('');
+    setBusy(true);
     try {
       const fieldMapping = sheetName.trim() === 'HICO GỐC' ? { ...(settings?.fieldMapping ?? {}), [imageMappingKey]: imageColumn ? Number(imageColumn) - 1 : null, galleryImageUrls: galleryColumn ? Number(galleryColumn) - 1 : null, description: descriptionColumn ? Number(descriptionColumn) - 1 : null, installationGuide: installationGuideColumn ? Number(installationGuideColumn) - 1 : null } : undefined;
       const next = await googleSheetSettingsApi.save({ enabled, spreadsheetId: spreadsheetId.trim() || undefined, sheetName: sheetName.trim() || undefined, sheetRange: range.trim() || undefined, headerRow: Number(headerRow), referenceOnly: true, requireApproval: true, allowClearToken: true, scheduleEnabled: false, ...(fieldMapping ? { fieldMapping } : {}), priceMapping: { physical: physicalPrice, esim: esimPrice, comparePhysical: physicalCompare || null, compareEsim: esimCompare || null }, ...(headerHash ? { headerHash } : {}) });
-      setSettings(next); setMessage('Đã lưu cấu hình kết nối.');
-    } catch (saveError) { setError(errorText(saveError)); } finally { setBusy(false); }
+      setSettings(next); toast.success('Đã lưu cấu hình Google Sheet.');
+    } catch (saveError) { toast.error(errorText(saveError)); } finally { setBusy(false); }
   };
   const replaceCredential = async () => {
     if (!settings || !credentialText.trim()) return;
-    setBusy(true); setMessage(''); setError('');
+    setBusy(true);
     try {
       const result = await googleSheetSettingsApi.replaceCredential({ credential: credentialText, version: settings.version });
-      setSettings(result.settings); setTestResult(result.test); setCredentialText(''); setMessage('Credential đã được kiểm tra và lưu an toàn.');
-    } catch (credentialError) { setError(errorText(credentialError)); } finally { setBusy(false); }
+      setSettings(result.settings); setTestResult(result.test); setCredentialText(''); toast.success('Credential đã được kiểm tra và lưu an toàn.');
+    } catch (credentialError) { toast.error(errorText(credentialError)); } finally { setBusy(false); }
   };
   const testConnection = async () => {
-    setBusy(true); setMessage(''); setError('');
-    try { const result = await googleSheetSettingsApi.test({ spreadsheetId: spreadsheetId.trim(), sheetName: sheetName.trim(), sheetRange: range.trim(), headerRow: Number(headerRow) }); setSettings(result.settings); setTestResult(result); setMessage('Đã kiểm tra kết nối Google Sheet.'); }
-    catch (testError) { setError(errorText(testError)); } finally { setBusy(false); }
+    setBusy(true);
+    try { const result = await googleSheetSettingsApi.test({ spreadsheetId: spreadsheetId.trim(), sheetName: sheetName.trim(), sheetRange: range.trim(), headerRow: Number(headerRow) }); setSettings(result.settings); setTestResult(result); toast.success('Đã kiểm tra kết nối Google Sheet.'); }
+    catch (testError) { toast.error(errorText(testError)); } finally { setBusy(false); }
   };
   const discoverSpreadsheet = async () => {
     if (!spreadsheetId.trim()) return;
-    setBusy(true); setMessage(''); setError('');
-    try { const result = await googleSheetSettingsApi.discover(spreadsheetId.trim()); setDiscovery(result); setHeaderDiscovery(null); setSheetName(result.sheets[0]?.title ?? ''); setMessage('Đã đọc thông tin spreadsheet và danh sách tab.'); }
-    catch (discoverError) { setError(errorText(discoverError)); } finally { setBusy(false); }
+    setBusy(true);
+    try { const result = await googleSheetSettingsApi.discover(spreadsheetId.trim()); setDiscovery(result); setHeaderDiscovery(null); setSheetName(result.sheets[0]?.title ?? ''); toast.info('Đã đọc thông tin spreadsheet và danh sách tab.'); }
+    catch (discoverError) { toast.error(errorText(discoverError)); } finally { setBusy(false); }
   };
   const discoverHeader = async () => {
     const selected = discovery?.sheets.find((sheet) => sheet.title === sheetName);
     if (!selected || !spreadsheetId.trim()) return;
-    setBusy(true); setMessage(''); setError('');
-    try { const result = await googleSheetSettingsApi.discoverHeader({ spreadsheetId: spreadsheetId.trim(), sheetId: selected.sheetId, sheetTitle: selected.title, headerRow: Number(headerRow) }); setHeaderDiscovery(result); setHeaderHash(result.headerHash ?? ''); setRange(result.suggestedRange); setMessage('Đã đọc header. Hãy kiểm tra và xác nhận range trước khi lưu.'); }
-    catch (headerError) { setError(errorText(headerError)); } finally { setBusy(false); }
+    setBusy(true);
+    try { const result = await googleSheetSettingsApi.discoverHeader({ spreadsheetId: spreadsheetId.trim(), sheetId: selected.sheetId, sheetTitle: selected.title, headerRow: Number(headerRow) }); setHeaderDiscovery(result); setHeaderHash(result.headerHash ?? ''); setRange(result.suggestedRange); toast.info('Đã đọc header. Hãy kiểm tra và xác nhận range trước khi lưu.'); }
+    catch (headerError) { toast.error(errorText(headerError)); } finally { setBusy(false); }
   };
   const validateRange = async () => {
     if (!spreadsheetId.trim() || !sheetName.trim() || !range.trim()) return;
-    setBusy(true); setMessage(''); setError('');
-    try { await googleSheetSettingsApi.validateRange({ spreadsheetId: spreadsheetId.trim(), sheetTitle: sheetName.trim(), range: range.trim(), headerRow: Number(headerRow) }); setMessage('Range hợp lệ trong giới hạn đọc an toàn.'); }
-    catch (rangeError) { setError(errorText(rangeError)); } finally { setBusy(false); }
+    setBusy(true);
+    try { await googleSheetSettingsApi.validateRange({ spreadsheetId: spreadsheetId.trim(), sheetTitle: sheetName.trim(), range: range.trim(), headerRow: Number(headerRow) }); toast.success('Range hợp lệ trong giới hạn đọc an toàn.'); }
+    catch (rangeError) { toast.error(errorText(rangeError)); } finally { setBusy(false); }
   };
   const revokeCredential = async () => {
     if (!settings || !window.confirm('Thu hồi credential sẽ dừng Sheet Sync từ Admin Settings. Tiếp tục?')) return;
-    setBusy(true); setMessage(''); setError('');
-    try { const next = await googleSheetSettingsApi.revoke({ version: settings.version }); setSettings(next); setMessage('Credential đã được thu hồi. Sheet Sync đã fail-closed.'); }
-    catch (revokeError) { setError(errorText(revokeError)); } finally { setBusy(false); }
+    setBusy(true);
+    try { const next = await googleSheetSettingsApi.revoke({ version: settings.version }); setSettings(next); toast.success('Credential đã được thu hồi. Sheet Sync đã fail-closed.'); }
+    catch (revokeError) { toast.error(errorText(revokeError)); } finally { setBusy(false); }
   };
   const preview = async () => {
-    setBusy(true); setMessage(''); setError('');
-    try { const result = await googleSheetSettingsApi.preview(); setMessage(`Preview batch ${result.batch.id} đã tạo: ${result.rows.length} dòng.`); }
-    catch (previewError) { setError(errorText(previewError)); } finally { setBusy(false); }
+    setBusy(true);
+    try { const result = await googleSheetSettingsApi.preview(); toast.success(`Preview batch ${result.batch.id} đã tạo: ${result.rows.length} dòng.`); }
+    catch (previewError) { toast.error(errorText(previewError)); } finally { setBusy(false); }
   };
 
   return <section className="google-sheet-settings-shell">
@@ -124,7 +124,5 @@ export const GoogleSheetSettings: React.FC = () => {
     </div>
     {settings && <GoogleSheetCredentialForm credentialText={credentialText} busy={busy} configured={settings.credentialConfigured} canRevoke={settings.source === 'ADMIN_SETTINGS' && settings.credentialConfigured} onCredentialChange={setCredentialText} onFileChange={(file) => { if (file) void file.text().then(setCredentialText); }} onReplace={replaceCredential} onRevoke={revokeCredential} />}
     <GoogleSheetTestResult result={testResult} />
-    {message && <p className="google-sheet-settings-message" role="status">{message}</p>}
-    {error && <p className="google-sheet-settings-error" role="alert">{error}</p>}
   </section>;
 };

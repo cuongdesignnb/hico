@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, CreditCard, KeyRound, RefreshCw, Save } from 'lucide-react';
+import { CreditCard, KeyRound, RefreshCw, Save } from 'lucide-react';
 import { getSePaySettings, getSePayTransactions, replaceSePayCredential, saveSePaySettings } from '../../../services/sepayApi';
 import type { SePaySettings, SePayTransaction } from '../../../types/sepay';
+import { useAdminToast } from '../../../hooks/useAdminToast';
 import './SePaySettingsPanel.css';
 
 const initialForm = { enabled: false, bankAccountNumber: '', accountHolder: '', bankName: '', orderReferencePrefix: 'HICO' };
@@ -12,8 +13,8 @@ const SePaySettingsPanel = () => {
   const [form, setForm] = useState(initialForm);
   const [secret, setSecret] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const toast = useAdminToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -36,24 +37,23 @@ const SePaySettingsPanel = () => {
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    setSaving(true); setMessage(''); setError('');
-    try { const next = await saveSePaySettings({ ...form, version: settings?.version }); setSettings(next); setMessage('Đã lưu cài đặt SePay.'); }
-    catch (value) { setError(value instanceof Error ? value.message : 'Không thể lưu cài đặt.'); }
+    setSaving(true);
+    try { const next = await saveSePaySettings({ ...form, version: settings?.version }); setSettings(next); toast.success('Đã lưu cài đặt SePay.'); }
+    catch (value) { toast.error(value instanceof Error ? value.message : 'Không thể lưu cài đặt.'); }
     finally { setSaving(false); }
   };
 
   const saveSecret = async (event: React.FormEvent) => {
     event.preventDefault();
-    setSaving(true); setMessage(''); setError('');
-    try { const next = await replaceSePayCredential({ secret, currentPassword, version: settings?.version }); setSettings(next); setSecret(''); setCurrentPassword(''); setMessage('Đã cập nhật secret. Secret không được hiển thị lại.'); }
-    catch (value) { setError(value instanceof Error ? value.message : 'Không thể cập nhật secret.'); }
+    setSaving(true);
+    try { const next = await replaceSePayCredential({ secret, currentPassword, version: settings?.version }); setSettings(next); setSecret(''); setCurrentPassword(''); toast.success('Đã cập nhật secret. Secret không được hiển thị lại.'); }
+    catch (value) { toast.error(value instanceof Error ? value.message : 'Không thể cập nhật secret.'); }
     finally { setSaving(false); }
   };
 
   if (loading) return <section className="sepay-panel" role="status"><RefreshCw className="sepay-spin" size={18} /> Đang tải cài đặt thanh toán...</section>;
   return <section className="sepay-panel">
     <div className="sepay-panel-heading"><div><p className="sepay-kicker">Tích hợp thanh toán</p><h2><CreditCard size={20} /> SePay</h2><p>Webhook chỉ nhận giao dịch VND, xác thực HMAC và đối soát mã đơn hàng chính xác.</p></div><button type="button" className="sepay-icon-button" onClick={() => void load()} aria-label="Làm mới cài đặt" title="Làm mới"><RefreshCw size={17} /></button></div>
-    {message && <p className="sepay-feedback sepay-success" role="status"><CheckCircle2 size={16} />{message}</p>}
     {error && <p className="sepay-feedback sepay-error" role="alert">{error}</p>}
     <form className="sepay-form" onSubmit={save}>
       <label className="sepay-toggle"><input type="checkbox" checked={form.enabled} onChange={(event) => setForm({ ...form, enabled: event.target.checked })} /><span>Kích hoạt nhận webhook SePay</span></label>

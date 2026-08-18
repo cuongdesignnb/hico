@@ -2,6 +2,7 @@ import { Archive, Plus, RotateCcw, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { createCategory, setCategoryArchived, updateCategory } from '../../../services/catalogWriteApi';
 import type { CatalogCategory, CatalogCategoryKind } from '../../../types/catalog';
+import { useAdminToast } from '../../../hooks/useAdminToast';
 
 interface CategoryManagerDialogProps {
   categories: CatalogCategory[];
@@ -25,6 +26,7 @@ const CategoryManagerDialog = ({ categories, catalogVersionId, onClose, onChange
   const [sortOrder, setSortOrder] = useState('10');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const toast = useAdminToast();
   const [versionId, setVersionId] = useState(catalogVersionId);
   const roots = useMemo(() => categories.filter((category) => category.parentId === null), [categories]);
 
@@ -37,16 +39,16 @@ const CategoryManagerDialog = ({ categories, catalogVersionId, onClose, onChange
       const response = editing
         ? await updateCategory(editing.id, { idempotencyKey: `category-update-${editing.id}-${Date.now()}`, catalogVersionId: versionId, version: editing.version, changes: payload })
         : await createCategory({ idempotencyKey: `category-create-${Date.now()}`, catalogVersionId: versionId, category: payload });
-      setVersionId(response.catalogVersionId); onChanged(response.catalogVersionId); reset();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không thể lưu danh mục.'); }
+      setVersionId(response.catalogVersionId); onChanged(response.catalogVersionId); reset(); toast.success(editing ? 'Đã cập nhật danh mục.' : 'Đã tạo danh mục.');
+    } catch (cause) { const message = cause instanceof Error ? cause.message : 'Không thể lưu danh mục.'; setError(message); toast.error(message); }
     finally { setSaving(false); }
   };
   const toggleArchive = async (category: CatalogCategory) => {
     setSaving(true); setError('');
     try {
       const response = await setCategoryArchived(category.id, category.status === 'active', { idempotencyKey: `category-status-${category.id}-${Date.now()}`, catalogVersionId: versionId, version: category.version });
-      setVersionId(response.catalogVersionId); onChanged(response.catalogVersionId); reset();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không thể đổi trạng thái danh mục.'); }
+      setVersionId(response.catalogVersionId); onChanged(response.catalogVersionId); reset(); toast.success(category.status === 'active' ? 'Đã ngừng sử dụng danh mục.' : 'Đã khôi phục danh mục.');
+    } catch (cause) { const message = cause instanceof Error ? cause.message : 'Không thể đổi trạng thái danh mục.'; setError(message); toast.error(message); }
     finally { setSaving(false); }
   };
 

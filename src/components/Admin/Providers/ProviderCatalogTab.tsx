@@ -21,6 +21,7 @@ import FulfillmentFamilyProfile from './FulfillmentFamilyProfile';
 import WorldmoveOfferTable from './WorldmoveOfferTable';
 import WorldmoveSyncButton from './WorldmoveSyncButton';
 import { formatProviderDate } from './providerLabels';
+import { useAdminToast } from '../../../hooks/useAdminToast';
 import './ProviderCatalogTab.css';
 
 interface ProviderCatalogTabProps {
@@ -69,6 +70,7 @@ const ProviderCatalogTab = ({
   const [activeTab, setActiveTab] = useState<'worldmove' | 'reconciliation' | 'fulfillment'>(
     'worldmove',
   );
+  const toast = useAdminToast();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -130,8 +132,9 @@ const ProviderCatalogTab = ({
       setSyncResult(result);
       setOffers(nextOffers);
       setPage(1);
+      toast.success(`Đồng bộ Worldmove hoàn tất: ${result.created} mới, ${result.updated} cập nhật.`);
     } catch (syncError) {
-      setError(syncError instanceof Error ? syncError.message : 'Không thể đồng bộ Worldmove.');
+      toast.error(syncError instanceof Error ? syncError.message : 'Không thể đồng bộ Worldmove.');
     } finally {
       setSyncing(false);
     }

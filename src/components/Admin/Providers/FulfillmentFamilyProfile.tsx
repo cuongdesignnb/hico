@@ -2,6 +2,7 @@ import { CheckCircle2, Edit3, LoaderCircle, RotateCcw, ShieldAlert, XCircle } fr
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { fulfillmentProfileAdminApi, FulfillmentProfileAdminApiError, type FulfillmentProfileInput } from '../../../services/fulfillmentProfileAdminApi';
 import type { FulfillmentProfile, FulfillmentProfilePreviewItem } from '../../../types/fulfillmentProfile';
+import { useAdminToast } from '../../../hooks/useAdminToast';
 
 interface FulfillmentFamilyProfileProps {
   searchQuery: string;
@@ -28,8 +29,8 @@ const FulfillmentFamilyProfile = ({ searchQuery }: FulfillmentFamilyProfileProps
   const [form, setForm] = useState<FulfillmentProfileInput>(emptyForm());
   const [editing, setEditing] = useState<FulfillmentProfile | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const toast = useAdminToast();
 
   const load = async () => {
     setError('');
@@ -58,19 +59,19 @@ const FulfillmentFamilyProfile = ({ searchQuery }: FulfillmentFamilyProfileProps
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!window.confirm(`Approve fulfillment family profile cho ${form.variantId}?`)) return;
-    setBusy(true); setError(''); setMessage('');
+    setBusy(true); setError('');
     try {
       if (editing) await fulfillmentProfileAdminApi.update(editing.id, form);
       else await fulfillmentProfileAdminApi.approve(form);
-      setMessage('Fulfillment family profile đã được lưu sau khi Admin xác nhận.');
+      toast.success('Fulfillment family profile đã được lưu sau khi Admin xác nhận.');
       setEditing(null); setForm(emptyForm()); await load();
-    } catch (saveError) { setError(saveError instanceof FulfillmentProfileAdminApiError ? saveError.message : 'Unable to save fulfillment profile.'); } finally { setBusy(false); }
+    } catch (saveError) { toast.error(saveError instanceof FulfillmentProfileAdminApiError ? saveError.message : 'Unable to save fulfillment profile.'); } finally { setBusy(false); }
   };
 
   const revoke = async (profile: FulfillmentProfile) => {
     if (!window.confirm(`Revoke fulfillment profile cho ${profile.variantId}?`)) return;
     setBusy(true); setError('');
-    try { await fulfillmentProfileAdminApi.revoke(profile.id, profile.version); setMessage('Profile đã được revoke.'); await load(); } catch (revokeError) { setError(revokeError instanceof FulfillmentProfileAdminApiError ? revokeError.message : 'Unable to revoke fulfillment profile.'); } finally { setBusy(false); }
+    try { await fulfillmentProfileAdminApi.revoke(profile.id, profile.version); toast.success('Profile đã được revoke.'); await load(); } catch (revokeError) { toast.error(revokeError instanceof FulfillmentProfileAdminApiError ? revokeError.message : 'Unable to revoke fulfillment profile.'); } finally { setBusy(false); }
   };
 
   const update = <K extends keyof FulfillmentProfileInput>(key: K, value: FulfillmentProfileInput[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -80,7 +81,6 @@ const FulfillmentFamilyProfile = ({ searchQuery }: FulfillmentFamilyProfileProps
       <div><strong>Fulfillment Family Profile</strong><p style={{ margin: '5px 0 0', color: '#6B7280', fontSize: 12 }}>Structured provider eligibility; duration nằm ngoài family key. Mọi thay đổi cần Admin xác nhận.</p></div>
       <button className="reconciliation-secondary-button" type="button" onClick={() => void load()} disabled={busy}><RotateCcw size={14} /> Refresh</button>
     </div>
-    {message && <p className="fulfillment-message" role="status"><CheckCircle2 size={15} /> {message}</p>}
     {error && <p className="fulfillment-error" role="alert"><ShieldAlert size={15} /> {error}</p>}
     <form onSubmit={submit} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 16 }}>
       <label>Variant ID<select value={form.variantId} onChange={(event) => { const selected = items.find((item) => item.variantId === event.target.value); update('variantId', event.target.value); if (!editing && selected?.durationDays) update('durationDays', selected.durationDays); }}><option value="var-1032">var-1032</option><option value="var-1033">var-1033</option></select></label>

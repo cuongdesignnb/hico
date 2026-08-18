@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { executeCatalogImport, previewCatalogImport } from '../../../services/catalogImportApi';
 import type { CatalogCategory } from '../../../types/catalog';
 import type { CatalogImportColumnMap, CatalogImportPreview, CatalogImportSourceMode } from '../../../types/catalogImport';
+import { useAdminToast } from '../../../hooks/useAdminToast';
 
 interface CatalogImportDialogProps {
   categories: CatalogCategory[];
@@ -40,9 +41,10 @@ const CatalogImportDialog = ({ categories, initialCategoryId, catalogVersionId, 
   const [preview, setPreview] = useState<CatalogImportPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const toast = useAdminToast();
   const updateText = (value: string) => { setText(value); setMapping(guessedMap(headersFrom(value))); setPreview(null); };
-  const runPreview = async () => { setLoading(true); setError(''); try { setPreview(await previewCatalogImport({ catalogVersionId, categoryId, sourceMode, text, columnMap: mapping })); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không thể preview import.'); } finally { setLoading(false); } };
-  const execute = async () => { if (!preview) return; setLoading(true); setError(''); try { await executeCatalogImport({ previewId: preview.previewId, catalogVersionId: preview.catalogVersionId, confirm: true, idempotencyKey: `catalog-import-${preview.previewId}` }); onComplete(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Không thể thực thi import.'); } finally { setLoading(false); } };
+  const runPreview = async () => { setLoading(true); setError(''); try { setPreview(await previewCatalogImport({ catalogVersionId, categoryId, sourceMode, text, columnMap: mapping })); toast.info('Đã tạo preview import. Hãy kiểm tra lỗi theo dòng trước khi xác nhận.'); } catch (cause) { const message = cause instanceof Error ? cause.message : 'Không thể preview import.'; setError(message); toast.error(message); } finally { setLoading(false); } };
+  const execute = async () => { if (!preview) return; setLoading(true); setError(''); try { await executeCatalogImport({ previewId: preview.previewId, catalogVersionId: preview.catalogVersionId, confirm: true, idempotencyKey: `catalog-import-${preview.previewId}` }); toast.success('Đã xác nhận import catalog ở trạng thái draft.'); onComplete(); } catch (cause) { const message = cause instanceof Error ? cause.message : 'Không thể thực thi import.'; setError(message); toast.error(message); } finally { setLoading(false); } };
   const canPreview = Boolean(categoryId && text.trim() && semanticFields.filter((field) => field.required).every((field) => mapping[field.key]));
 
   return <div className="catalog-dialog-backdrop" role="presentation"><section className="catalog-dialog catalog-import-dialog" role="dialog" aria-modal="true" aria-labelledby="catalog-import-title">

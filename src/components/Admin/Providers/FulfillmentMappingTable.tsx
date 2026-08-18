@@ -2,6 +2,7 @@ import { CheckCircle2, LoaderCircle, RefreshCw, ShieldAlert, XCircle } from 'luc
 import { useEffect, useMemo, useState } from 'react';
 import { fulfillmentAdminApi, FulfillmentAdminApiError } from '../../../services/fulfillmentAdminApi';
 import type { FulfillmentPreviewItem } from '../../../types/fulfillment';
+import { useAdminToast } from '../../../hooks/useAdminToast';
 
 interface FulfillmentMappingTableProps {
   searchQuery: string;
@@ -14,8 +15,8 @@ const FulfillmentMappingTable = ({ searchQuery }: FulfillmentMappingTableProps) 
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState('');
   const [selectedOffers, setSelectedOffers] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const toast = useAdminToast();
 
   const load = async () => {
     setLoading(true);
@@ -50,14 +51,13 @@ const FulfillmentMappingTable = ({ searchQuery }: FulfillmentMappingTableProps) 
     if (!providerOfferId || !window.confirm(`Persist mapping cho ${item.sku ?? item.variantId}?`)) return;
     setBusyKey(item.variantId);
     setError('');
-    setMessage('');
     try {
       if (item.binding) await fulfillmentAdminApi.change(item.binding.id, { variantId: item.variantId, providerOfferId, version: item.binding.version, confirmed: true });
       else await fulfillmentAdminApi.approve({ variantId: item.variantId, providerOfferId, confirmed: true });
-      setMessage(`Đã lưu mapping cho ${item.sku ?? item.variantId}.`);
+      toast.success(`Đã lưu mapping cho ${item.sku ?? item.variantId}.`);
       await load();
     } catch (saveError) {
-      setError(saveError instanceof FulfillmentAdminApiError ? saveError.message : 'Unable to save provider mapping.');
+      toast.error(saveError instanceof FulfillmentAdminApiError ? saveError.message : 'Unable to save provider mapping.');
     } finally {
       setBusyKey('');
     }
@@ -69,10 +69,10 @@ const FulfillmentMappingTable = ({ searchQuery }: FulfillmentMappingTableProps) 
     setError('');
     try {
       await fulfillmentAdminApi.revoke(item.binding.id, item.binding.version);
-      setMessage(`Đã revoke mapping cho ${item.sku ?? item.variantId}.`);
+      toast.success(`Đã revoke mapping cho ${item.sku ?? item.variantId}.`);
       await load();
     } catch (revokeError) {
-      setError(revokeError instanceof FulfillmentAdminApiError ? revokeError.message : 'Unable to revoke provider mapping.');
+      toast.error(revokeError instanceof FulfillmentAdminApiError ? revokeError.message : 'Unable to revoke provider mapping.');
     } finally {
       setBusyKey('');
     }
@@ -86,7 +86,6 @@ const FulfillmentMappingTable = ({ searchQuery }: FulfillmentMappingTableProps) 
         <div><strong>Fulfillment binding preview</strong><span>Exact is automatic. Only a longer fallback can be persisted as an approved mapping.</span></div>
         <button className="reconciliation-secondary-button" type="button" onClick={() => void load()} disabled={Boolean(busyKey)}><RefreshCw size={15} /> Refresh</button>
       </div>
-      {message && <p className="fulfillment-message" role="status"><CheckCircle2 size={15} /> {message}</p>}
       {error && <p className="fulfillment-error" role="alert"><ShieldAlert size={15} /> {error}</p>}
       <div className="provider-table-scroll">
         <table className="provider-table fulfillment-table">

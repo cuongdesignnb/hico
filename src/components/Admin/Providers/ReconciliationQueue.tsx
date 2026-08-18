@@ -29,6 +29,7 @@ import {
   getReconciliationStatusTone,
 } from './reconciliationLabels';
 import ReconciliationSummaryCards from './ReconciliationSummaryCards';
+import { useAdminToast } from '../../../hooks/useAdminToast';
 
 const EMPTY_SUMMARY: ReconciliationSummary = {
   total: 0,
@@ -65,6 +66,7 @@ const ReconciliationQueue = () => {
   const [runResult, setRunResult] = useState<ReconciliationRunResult | null>(null);
   const [detailsItem, setDetailsItem] = useState<ReconciliationItem | null>(null);
   const [confirmItem, setConfirmItem] = useState<ReconciliationItem | null>(null);
+  const toast = useAdminToast();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -113,12 +115,9 @@ const ReconciliationQueue = () => {
       setPage(1);
       setLoading(true);
       setRefreshKey((value) => value + 1);
+      toast.success(`Đối chiếu hoàn tất: ${result.updated} cập nhật, ${result.created} mới.`);
     } catch (runError) {
-      setError(
-        runError instanceof Error
-          ? runError.message
-          : 'Không thể chạy reconciliation.',
-      );
+      toast.error(runError instanceof Error ? runError.message : 'Không thể chạy reconciliation.');
     } finally {
       setRunning(false);
     }
@@ -134,12 +133,9 @@ const ReconciliationQueue = () => {
       setConfirmItem(null);
       setLoading(true);
       setRefreshKey((value) => value + 1);
+      toast.success('Đã lưu xác nhận reconciliation.');
     } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : 'Không thể lưu xác nhận.',
-      );
+      toast.error(saveError instanceof Error ? saveError.message : 'Không thể lưu xác nhận.');
     } finally {
       setSaving(false);
     }

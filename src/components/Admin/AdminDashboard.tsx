@@ -18,6 +18,7 @@ import { GoogleSheetSettings } from './Settings/Integrations/GoogleSheetSettings
 import SePaySettingsPanel from './Payments/SePaySettingsPanel';
 import { createLegacyVariantId } from '../../utils/ids';
 import { useAuth } from '../../auth/useAuth';
+import { useAdminToast } from '../../hooks/useAdminToast';
 import type {
   AdminArticle,
   AdminCatalogItem,
@@ -137,6 +138,7 @@ interface CatalogSourceStatus {
 
 export const AdminDashboard: React.FC = () => {
   const { hasPermission } = useAuth();
+  const toast = useAdminToast();
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
   const ITEMS_PER_PAGE = 10;
@@ -299,14 +301,14 @@ export const AdminDashboard: React.FC = () => {
           body: JSON.stringify({ variantId, base64Data, filename: file.name })
         });
         if (res.ok) {
-          alert('Nạp mã QR thành công!');
+          toast.success('Nạp mã QR thành công!');
           fetchManualQrs();
         } else {
-          alert('Nạp mã QR thất bại!');
+          toast.error('Nạp mã QR thất bại!');
         }
       } catch (err) {
         console.error(err);
-        alert('Gặp lỗi khi tải ảnh QR lên!');
+        toast.error('Gặp lỗi khi tải ảnh QR lên!');
       }
     };
     reader.readAsDataURL(file);
@@ -371,7 +373,7 @@ export const AdminDashboard: React.FC = () => {
         });
         fetchData(type === 'destination' ? 'coverage' : 'packages'); // reload main table lists
       } else {
-        alert('Không thể lưu biến thể!');
+        toast.error('Không thể lưu biến thể!');
       }
     } catch (err) {
       console.error('Failed to add variant:', err);
@@ -399,7 +401,7 @@ export const AdminDashboard: React.FC = () => {
         setVariantTarget({ type, item: updatedItem }); // update local modal state
         fetchData(type === 'destination' ? 'coverage' : 'packages'); // reload main table lists
       } else {
-        alert('Không thể xoá biến thể!');
+        toast.error('Không thể xoá biến thể!');
       }
     } catch (err) {
       console.error('Failed to delete variant:', err);
@@ -464,7 +466,7 @@ export const AdminDashboard: React.FC = () => {
   const handleStartBulkGeneration = async () => {
     const list = bulkKeywords.split('\n').map(k => k.trim()).filter(Boolean);
     if (list.length === 0) {
-      alert('Vui lòng nhập danh sách từ khóa (mỗi dòng một từ)!');
+      toast.warning('Vui lòng nhập danh sách từ khóa (mỗi dòng một từ)!');
       return;
     }
     
@@ -961,7 +963,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="admin-header-right">
-            <button className="admin-create-btn" onClick={() => alert('Tạo nhanh')}>
+            <button className="admin-create-btn" onClick={() => toast.info('Tạo nhanh sẽ được bổ sung trong phiên bản tiếp theo.')}>
               <Plus size={14} />
               <span>Tạo nhanh</span>
             </button>
@@ -1017,7 +1019,7 @@ export const AdminDashboard: React.FC = () => {
                   <ChevronDown size={12} />
                 </div>
 
-                <button className="admin-export-btn" onClick={() => alert('Đang xuất báo cáo...')}>
+                <button className="admin-export-btn" onClick={() => toast.info('Đang chuẩn bị xuất báo cáo...')}>
                   <Download size={14} />
                   <span>Xuất báo cáo</span>
                 </button>
@@ -2051,7 +2053,7 @@ export const AdminDashboard: React.FC = () => {
                                     body: JSON.stringify({ orderId: o.orderId })
                                   });
                                   if (res.ok) {
-                                    alert('Đã gửi yêu cầu kích hoạt giả lập! Chờ vài giây để Worldmove callback.');
+                                    toast.success('Đã gửi yêu cầu kích hoạt giả lập! Chờ vài giây để Worldmove callback.');
                                     setTimeout(() => fetchData('orders'), 1000);
                                   }
                                 }}
@@ -2068,11 +2070,11 @@ export const AdminDashboard: React.FC = () => {
                                     method: 'POST'
                                   });
                                   if (res.ok) {
-                                    alert('Cấp phát mã QR thành công!');
+                                    toast.success('Cấp phát mã QR thành công!');
                                     fetchData('orders');
                                   } else {
                                     const data = await res.json();
-                                    alert(data.error || 'Cấp phát mã QR thất bại! Vui lòng nạp ảnh QR vào kho trước.');
+                                    toast.error(data.error || 'Cấp phát mã QR thất bại! Vui lòng nạp ảnh QR vào kho trước.');
                                   }
                                 }}
                               >
@@ -2095,7 +2097,7 @@ export const AdminDashboard: React.FC = () => {
                                   onClick={async () => {
                                     const tracking = orderTracking[o.orderId];
                                     if (!tracking) {
-                                      alert('Vui lòng nhập mã vận đơn!');
+                                      toast.warning('Vui lòng nhập mã vận đơn!');
                                       return;
                                     }
                                     const res = await fetch(`/api/admin/orders/${encodeURIComponent(o.orderId)}/ship`, {
@@ -2104,10 +2106,10 @@ export const AdminDashboard: React.FC = () => {
                                       body: JSON.stringify({ trackingCode: tracking })
                                     });
                                     if (res.ok) {
-                                      alert('Đã cập nhật giao hàng và gửi email!');
+                                      toast.success('Đã cập nhật giao hàng và gửi email!');
                                       fetchData('orders');
                                     } else {
-                                      alert('Thao tác thất bại!');
+                                      toast.error('Thao tác thất bại!');
                                     }
                                   }}
                                 >
@@ -2896,7 +2898,7 @@ export const AdminDashboard: React.FC = () => {
                         setIsAddingCustomer(false);
                         fetchData('customers');
                       } else {
-                        alert('Thao tác thất bại!');
+                        toast.error('Thao tác thất bại!');
                       }
                     } catch (err) {
                       console.error('Failed to submit customer form:', err);
@@ -3002,7 +3004,7 @@ export const AdminDashboard: React.FC = () => {
                                   if (res.ok) {
                                     fetchData('customers');
                                   } else {
-                                    alert('Xóa khách hàng thất bại!');
+                                    toast.error('Xóa khách hàng thất bại!');
                                   }
                                 }
                               }}
@@ -3063,7 +3065,7 @@ export const AdminDashboard: React.FC = () => {
                         setIsAddingPromo(false);
                         fetchData('promos');
                       } else {
-                        alert('Thao tác thất bại!');
+                        toast.error('Thao tác thất bại!');
                       }
                     } catch (err) {
                       console.error('Failed to submit promo form:', err);
@@ -3181,7 +3183,7 @@ export const AdminDashboard: React.FC = () => {
                                   if (res.ok) {
                                     fetchData('promos');
                                   } else {
-                                    alert('Xóa thất bại!');
+                                    toast.error('Xóa thất bại!');
                                   }
                                 }
                               }}
@@ -3414,7 +3416,7 @@ export const AdminDashboard: React.FC = () => {
                           disabled={isGeneratingAi}
                           onClick={async () => {
                             if (!articleForm.title) {
-                              alert('Vui lòng nhập tiêu đề bài viết trước!');
+                              toast.warning('Vui lòng nhập tiêu đề bài viết trước!');
                               return;
                             }
                             setIsGeneratingAi(true);
@@ -3434,13 +3436,13 @@ export const AdminDashboard: React.FC = () => {
                                   seoDescription: data.seoDescription,
                                   seoKeywords: data.seoKeywords
                                 }));
-                                alert('Sinh bài viết AI thành công!');
+                                toast.success('Sinh bài viết AI thành công!');
                               } else {
                                 const data = await res.json();
-                                alert(`Lỗi AI: ${data.error}`);
+                                toast.error(`Lỗi AI: ${data.error}`);
                               }
                             } catch {
-                              alert('Lỗi kết nối máy chủ!');
+                              toast.error('Lỗi kết nối máy chủ!');
                             } finally {
                               setIsGeneratingAi(false);
                             }
@@ -3830,7 +3832,7 @@ export const AdminDashboard: React.FC = () => {
                                     if (res.ok) {
                                       fetchData('reviews');
                                     } else {
-                                      alert('Lỗi phê duyệt đánh giá!');
+                                      toast.error('Lỗi phê duyệt đánh giá!');
                                     }
                                   }}
                                 >
@@ -3847,7 +3849,7 @@ export const AdminDashboard: React.FC = () => {
                                     if (res.ok) {
                                       fetchData('reviews');
                                     } else {
-                                      alert('Lỗi khi xóa đánh giá!');
+                                      toast.error('Lỗi khi xóa đánh giá!');
                                     }
                                   }
                                 }}
@@ -3914,7 +3916,7 @@ export const AdminDashboard: React.FC = () => {
                           className="media-action-icon-btn copy"
                           onClick={() => {
                             navigator.clipboard.writeText(window.location.origin + file.url);
-                            alert('Đã sao chép liên kết ảnh: ' + file.url);
+                            toast.success('Đã sao chép liên kết ảnh: ' + file.url);
                           }}
                           title="Sao chép liên kết"
                         >
@@ -4183,14 +4185,14 @@ export const AdminDashboard: React.FC = () => {
                       body: JSON.stringify(apiConfig)
                     });
                     if (res.ok) {
-                      alert('Cập nhật cấu hình API Worldmove thành công!');
+                      toast.success('Cập nhật cấu hình API Worldmove thành công!');
                       fetchData('settings');
                     } else {
-                      alert('Không thể cập nhật cấu hình API.');
+                      toast.error('Không thể cập nhật cấu hình API.');
                     }
                   } catch (err) {
                     console.error('Failed to update config:', err);
-                    alert('Lỗi kết nối máy chủ!');
+                    toast.error('Lỗi kết nối máy chủ!');
                   }
                 }}
               >
