@@ -6,6 +6,7 @@ import { Header } from '../components/Header/Header';
 import { Footer } from '../components/Footer/Footer';
 import { CartDrawer } from '../components/CartDrawer/CartDrawer';
 import { AdminDashboard } from '../components/Admin/AdminDashboard';
+import { AdminToastProvider } from '../components/Admin/Toast/AdminToastProvider';
 import { SeoHead } from '../seo/SeoHead';
 import { defaultMetadata } from '../seo/buildMetadata';
 import { HomePage } from '../pages/HomePage';
@@ -55,7 +56,7 @@ const PublicLayout = () => {
   </div>;
 };
 
-const PrivateAdmin = () => <><SeoHead path="/quan-tri" metadata={{ ...defaultMetadata(), title: 'Admin | HICO eSIM', indexable: false }} noindex /><AdminDashboard /></>;
+const PrivateAdmin = () => <><SeoHead path="/quan-tri" metadata={{ ...defaultMetadata(), title: 'Admin | HICO eSIM', indexable: false }} noindex /><AdminToastProvider><AdminDashboard /></AdminToastProvider></>;
 
 export const AppRouter: React.FC = () => <RouteErrorBoundary><ScrollRestoration /><Routes>
   <Route element={<PublicLayout />}>
