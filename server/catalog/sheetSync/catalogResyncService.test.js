@@ -43,6 +43,53 @@ test('full sync keeps exact previous media and enrichment while draft-safe', asy
   assert.equal(candidate.summary.imagesReused, 1);
   assert.equal(candidate.summary.descriptionsReused, 1);
   assert.equal(candidate.summary.installationGuideReused, 1);
+  assert.equal(candidate.summary.provider.resolved, 1);
+  assert.equal(candidate.variants[0].providerResolution, 'RESOLVED');
+});
+
+test('full sync keeps structurally valid rows when provider offers are unavailable', async () => {
+  const candidate = await buildFullSyncCandidate({
+    rows: [{ id: 'row-unresolved', sourceMedium: rowData.medium, normalizedData: rowData, errors: [], status: 'VALID' }],
+    categories: cloneSeedCategories(), offers: [], previousCatalog: { products: [], variants: [] },
+  });
+  const [variant] = candidate.variants;
+  assert.equal(candidate.products.length, 1);
+  assert.equal(candidate.variants.length, 1);
+  assert.equal(candidate.rows[0].status, 'VALID');
+  assert.equal(candidate.rows[0].providerResolution, 'UNRESOLVED');
+  assert.deepEqual(candidate.rows[0].errors, []);
+  assert.ok(candidate.rows[0].warnings.some((warning) => warning.code === 'PROVIDER_NOT_FOUND'));
+  assert.equal(variant.supplier, 'other');
+  assert.equal(variant.fulfillmentMethod, 'MANUAL_PROCESSING');
+  assert.equal(variant.providerProductType, null);
+  assert.equal(variant.leSIM, null);
+  assert.equal(variant.requiresExistingSim, false);
+  assert.equal(variant.wmproductId, rowData.wmproductId);
+  assert.equal(variant.active, false);
+  assert.equal(variant.needsReview, true);
+  assert.equal(variant.providerResolution, 'UNRESOLVED');
+  assert.deepEqual(candidate.summary.provider, { resolved: 0, unresolved: 1, ambiguous: 0, inactive: 0, needsReviewVariants: 1 });
+});
+
+test('full sync keeps ambiguous and inactive provider rows as reviewable fallbacks', async () => {
+  const build = (offers) => buildFullSyncCandidate({
+    rows: [{ id: 'row-provider', sourceMedium: rowData.medium, normalizedData: rowData, errors: [], status: 'VALID' }],
+    categories: cloneSeedCategories(), offers, previousCatalog: { products: [], variants: [] },
+  });
+  const ambiguous = await build([
+    { ...offer, id: 'offer-a' },
+    { ...offer, id: 'offer-b' },
+  ]);
+  assert.equal(ambiguous.variants[0].fulfillmentMethod, 'MANUAL_PROCESSING');
+  assert.equal(ambiguous.variants[0].providerResolution, 'AMBIGUOUS');
+  assert.ok(ambiguous.rows[0].warnings.some((warning) => warning.code === 'PROVIDER_AMBIGUOUS'));
+  assert.equal(ambiguous.summary.provider.ambiguous, 1);
+
+  const inactive = await build([{ ...offer, active: false }]);
+  assert.equal(inactive.variants[0].fulfillmentMethod, 'MANUAL_PROCESSING');
+  assert.equal(inactive.variants[0].providerResolution, 'INACTIVE');
+  assert.ok(inactive.rows[0].warnings.some((warning) => warning.code === 'PROVIDER_INACTIVE'));
+  assert.equal(inactive.summary.provider.inactive, 1);
 });
 
 test('full sync uses internal Sheet image then a safe existing placeholder', async () => {

@@ -26,6 +26,13 @@ test('HICO GỐC parser maps daily data and keeps exact identities private in pu
   assert.equal(publicRow(physical).normalizedData.wmproductId, undefined);
 });
 
+test('HICO GỐC parser treats a missing WMID as a structural rejection', () => {
+  const [row] = parseHicoGocRows([Array(25).fill('header'), cells({ 23: '' })]);
+  assert.equal(row.status, 'INVALID');
+  assert.ok(row.errors.some((error) => error.code === 'MISSING_WMID'));
+  assert.equal(row.errors.some((error) => error.code === 'PROVIDER_NOT_FOUND'), false);
+});
+
 test('HICO GỐC parser reports rows with no identity instead of silently dropping them', () => {
   const result = parseHicoGocRowsWithDiagnostics([Array(25).fill('header'), cells({ 16: '', 17: '', 23: '', 24: '' })]);
   assert.equal(result.rows.length, 0);

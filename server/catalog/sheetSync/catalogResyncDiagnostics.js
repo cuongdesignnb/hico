@@ -30,6 +30,13 @@ export const fullSyncDiagnostics = ({ reference, range, parser, candidate, basel
   const previousVariants = baselineCatalog?.variants?.length ?? 0;
   const candidateProducts = candidate?.summary?.products ?? 0;
   const candidateVariants = candidate?.summary?.variants ?? 0;
+  const provider = candidate?.summary?.provider ?? {
+    resolved: 0,
+    unresolved: 0,
+    ambiguous: 0,
+    inactive: 0,
+    needsReviewVariants: candidateVariants,
+  };
   const sizeDropWarning = previousProducts > 0 && previousVariants > 0 && (candidateProducts < previousProducts * 0.5 || candidateVariants < previousVariants * 0.5)
     ? { code: 'CATALOG_SIZE_DROP_WARNING', previousProducts, previousVariants, candidateProducts, candidateVariants }
     : null;
@@ -55,6 +62,7 @@ export const fullSyncDiagnostics = ({ reference, range, parser, candidate, basel
       uniqueProductKeys: candidate?.summary?.uniqueProductKeys ?? 0,
       topRejectionReasons: topRejectionReasons(candidateReasons),
     },
+    provider,
     ...(sizeDropWarning ? { sizeDropWarning } : {}),
   };
 };

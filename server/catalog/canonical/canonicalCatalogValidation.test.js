@@ -45,6 +45,22 @@ test('validates canonical product and variant contracts', () => {
   assert.equal(result.valid, true);
 });
 
+test('accepts an unresolved manual provider fallback while keeping it review-only', () => {
+  const result = validateCanonicalCatalog({
+    products: [product()],
+    variants: [variant({
+      wmproductId: 'WM-MISSING',
+      providerProductType: null,
+      leSIM: null,
+      active: false,
+      needsReview: true,
+    })],
+    providerOffers: [],
+  });
+  assert.equal(result.valid, true);
+  assert.equal(result.publishSafety.blockedVariants, 1);
+});
+
 test('reports duplicate IDs, SKU and slug', () => {
   const result = validateCanonicalCatalog({
     products: [product(), product({ name: 'Duplicate' })],

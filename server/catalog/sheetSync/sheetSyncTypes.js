@@ -60,6 +60,7 @@ export const publicRow = (row) => ({
   sourceMedium: row.sourceMedium ?? row.normalizedData?.sourceMedium ?? null,
   variantId: row.variantId ?? null,
   status: row.status,
+  providerResolution: row.providerResolution ?? null,
   normalizedData: publicNormalizedData(row.normalizedData ?? {}),
   diff: row.diff ?? {},
   errors: row.errors ?? [],

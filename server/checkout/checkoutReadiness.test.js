@@ -142,6 +142,21 @@ test('pure 1D eSIM is ready without physical inventory', async () => {
   assert.equal(readiness.requiredCapabilities.includes(CHECKOUT_CAPABILITIES.PHYSICAL_INVENTORY), false);
 });
 
+test('checkout blocks a provider-unresolved draft variant before fulfillment lookup', async () => {
+  const service = await createService({
+    catalog: {
+      products: [product('p-esim')],
+      variants: [variant('v-unresolved', 'p-esim', {
+        supplier: 'other', fulfillmentMethod: 'MANUAL_PROCESSING', active: false, needsReview: true,
+      })],
+    },
+    offers: [],
+  });
+  const readiness = await service.evaluate({ items: [{ variantId: 'v-unresolved', quantity: 1 }] });
+  assert.equal(readiness.ready, false);
+  assert.deepEqual(readiness.blockingReasons, ['CANONICAL_VARIANT_NOT_READY']);
+});
+
 test('pure 2D eSIM is ready with the shortest compatible 3D provider offer', async () => {
   const service = await createService({
     catalog: { products: [product('p-esim')], variants: [variant('v-esim-2d', 'p-esim', { durationDays: 2 })] },

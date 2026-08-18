@@ -128,7 +128,7 @@ const makeCandidate = ({ cells, rowNumber, medium, mapping, priceMapping }) => {
     ...(mapping.installationGuide !== null && mapping.installationGuide !== undefined ? { installationGuide: clean(valueAt(cells, mapping, 'installationGuide'), 'installationGuide', errors) } : {}),
   };
   if (!sku) errors.push({ code: 'EXACT_MATCH_REQUIRED', field: 'sku' });
-  if (!wmproductId) errors.push({ code: 'PROVIDER_NOT_FOUND', field: 'wmproductId' });
+  if (!wmproductId) errors.push({ code: 'MISSING_WMID', field: 'wmproductId' });
   if (normalizedData.tripDayOptions?.some((value) => value === undefined)) delete normalizedData.tripDayOptions;
   const hasFields = QUICK_SHEET_SYNC_FIELDS.some((field) => normalizedData[field] !== undefined);
   if (!hasFields) errors.push({ code: 'NO_MUTABLE_FIELDS' });

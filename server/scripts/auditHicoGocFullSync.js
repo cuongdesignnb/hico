@@ -44,6 +44,7 @@ const safeErrorKeys = new Set([
   'missing', 'configuredRange', 'requiredLastColumn', 'configuredLastColumn',
   'field', 'columnIndex', 'headerColumns', 'rowsRead', 'rowsParsed',
   'products', 'variants', 'diagnostics', 'reasonCode', 'batchIndex', 'batchCount', 'range',
+  'provider', 'resolved', 'unresolved', 'ambiguous', 'inactive', 'needsReviewVariants',
 ]);
 
 const sanitizeDetails = (value) => {
@@ -165,6 +166,7 @@ export const runHicoGocFullSyncAudit = async ({
         validRows: diagnostics.candidate.validRows,
         uniqueProductKeys: diagnostics.candidate.uniqueProductKeys,
       },
+      provider: diagnostics.provider,
       enrichment: {
         imagesReused: candidate.summary.imagesReused,
         imagesFromSheet: candidate.summary.imagesFromSheet,
