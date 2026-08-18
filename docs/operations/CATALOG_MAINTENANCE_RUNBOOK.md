@@ -84,17 +84,24 @@ unchanged. Do not press Reset to work around a parser, mapping, provider, or
 range problem; Reset is only for an owner who intentionally wants an empty
 catalog.
 
-The read-only diagnostic command is available from the backend directory:
+The read-only diagnostic command is available from the backend directory. In a
+runtime container use the same Admin Settings and encrypted credential stored
+in PostgreSQL as the backend:
 
 ```bash
-node scripts/auditHicoGocFullSync.js
+docker compose -f docker-compose.yml -f compose.hc.yml exec -T backend \
+  node scripts/auditHicoGocFullSync.js
 ```
 
-It expects the existing read-only Sheet environment configuration. If a local
-credential is not available, it exits with a blocked result rather than
-inventing a pass. It prints only Sheet/range counts, parser rejection codes,
-candidate counts, and size-drop warnings. It never calls Reset, Full Apply,
-publish, or the catalog commit service.
+The default source is `ADMIN_SETTINGS`; do not copy Spreadsheet ID, tab, range,
+or service-account JSON into `.env`. Legacy environment configuration is only
+available as an explicit local-development fallback with `--legacy-env`.
+The output prints only masked settings, Sheet/range counts, parser rejection
+codes, candidate counts, and size-drop warnings. It never creates a sync batch,
+calls Reset, Full Apply, publish, or the catalog commit service. If PostgreSQL
+settings or the encrypted credential are unavailable, it exits with a blocked
+result rather than inventing a pass. Do not use Reset or Full Apply merely to
+test parser or configuration changes.
 
 ## Evidence and rollback
 
