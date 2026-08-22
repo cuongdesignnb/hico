@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Check, Clock, Database, Globe, HardDrive, Headphones, Mail, MapPin,
   Minus, Plus, Radio, Settings, ShieldCheck, Star, Users, Zap,
@@ -10,6 +11,7 @@ import type { PublicProduct, PublicVariant } from '../../types/publicCatalog';
 import type { ProductReview } from '../../types/legacy';
 import { productCategoryLabel, toProductDetailViewModel } from '../../adapters/productDetailViewModel';
 import './ProductDetail.css';
+import { getCanonicalProductPath } from '../../routing/canonicalRoute';
 
 type DetailTab = 'kythuat' | 'caidat' | 'tuongthich' | 'danhgia' | 'faq';
 
@@ -64,7 +66,7 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
   const currentDataLimit = selectedViewVariant?.dataLimitLabel;
   const currentDuration = selectedViewVariant?.durationLabel;
   const currentVariantAvailable = selectedViewVariant?.availability === 'available';
-  const physical = product.operation === 'device_sale' || variant?.medium === 'physical_sim';
+  const physical = product.operation === 'device_sale' || (product.operation === 'new_subscription' && variant?.medium === 'physical_sim');
   const categoryLabel = productCategoryLabel(product);
   const shortDescription = viewModel.description || `Thông tin ${categoryLabel.toLowerCase()} được lấy từ dữ liệu canonical của HICO.`;
 
@@ -101,6 +103,7 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
     name: product.name,
     operation: product.operation,
     type: product.operation === 'device_sale' ? 'device' as const : variant.medium === 'physical_sim' ? 'physical' as const : 'esim' as const,
+    medium: variant.medium ?? undefined,
     simType: selectedViewVariant.simTypeLabel,
     price: variant.price,
     currency: variant.currency,
@@ -192,6 +195,8 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
             </div>
 
             {simTypes.length > 1 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn loại SIM</h3><span className="package-badge-info">Dữ liệu canonical</span></div><div className="packages-card-grid">{simTypes.map((type) => <button type="button" key={type} className={`package-card-option ${currentSimType === type ? 'selected' : ''}`} onClick={() => handleSimTypeClick(type)}><span className="pkg-card-limit">{type}</span><span className="pkg-card-duration">{type === 'SIM vật lý' ? 'Giao hàng tận nơi' : 'Theo gói hiện tại'}</span>{currentSimType === type && <span className="selected-check-indicator"><Check size={10} strokeWidth={3} /></span>}</button>)}</div></div>}
+
+            {product.familyProducts && product.familyProducts.length > 0 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Phiên bản cùng họ gói</h3><span className="package-badge-info">Chọn đúng loại</span></div><div className="packages-card-grid">{product.familyProducts.map((familyProduct) => <Link className="package-card-option" key={familyProduct.id} to={getCanonicalProductPath(familyProduct)}><span className="pkg-card-limit">{familyProduct.medium === 'physical_sim' ? 'SIM vật lý' : familyProduct.medium === 'esim' ? 'eSIM' : familyProduct.name}</span><span className="pkg-card-duration">{familyProduct.name}</span></Link>)}</div></div>}
 
             {dataLimits.length > 0 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn dung lượng</h3><span className="package-badge-info">Theo variant</span></div><div className="packages-card-grid">{dataLimits.map((limit) => <button type="button" key={limit} className={`package-card-option ${currentDataLimit === limit ? 'selected' : ''}`} onClick={() => handleDataLimitClick(limit)}><span className="pkg-card-limit">{limit}</span><span className="pkg-card-duration">{currentSimType || categoryLabel}</span>{currentDataLimit === limit && <span className="selected-check-indicator"><Check size={10} strokeWidth={3} /></span>}</button>)}</div></div>}
 

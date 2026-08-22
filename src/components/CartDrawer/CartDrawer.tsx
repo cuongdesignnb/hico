@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/useApp';
 import { X, Trash2, Minus, Plus, CreditCard, ShoppingBag } from 'lucide-react';
 import { createCheckoutOrder, getCheckoutConfig, validateCheckout } from '../../services/checkoutApi';
+import { cartLabelFor, requiresShippingForCartItem, requiresTopupForCartItem } from '../../utils/cartItemClassification';
 import './CartDrawer.css';
 
 export const CartDrawer: React.FC = () => {
@@ -21,6 +22,7 @@ export const CartDrawer: React.FC = () => {
     district: '',
     ward: '',
   });
+  const [topupDetails, setTopupDetails] = useState({ simNum: '', day: '' });
 
   if (!isCartOpen) return null;
 
@@ -55,12 +57,15 @@ export const CartDrawer: React.FC = () => {
     }
   };
 
-  const hasPhysicalItem = cart.some((item) => item.type === 'physical');
+  const hasPhysicalItem = cart.some(requiresShippingForCartItem);
+  const hasTopupItem = cart.some(requiresTopupForCartItem);
   const currencyGroups = new Set(cart.map((item) => item.currency ?? 'VND'));
   const hasMixedCurrency = currencyGroups.size > 1;
 
-  const finishCheckout = (physical: boolean) => {
-    if (physical) {
+  const finishCheckout = (physical: boolean, topup: boolean) => {
+    if (topup) {
+      triggerNotification('Đặt hàng thành công! Yêu cầu nạp SIM đang được xử lý.', 'success');
+    } else if (physical) {
       triggerNotification('Đặt hàng thành công! Đơn hàng SIM vật lý đang chờ chuẩn bị giao hàng.', 'success');
     } else {
       triggerNotification('Thanh toán thành công! Mã QR kích hoạt eSIM đã được gửi vào email của bạn.', 'success');
@@ -72,6 +77,7 @@ export const CartDrawer: React.FC = () => {
     setPromoApplied(false);
     setDiscount(0);
     setShippingAddress({ address: '', city: '', district: '', ward: '' });
+    setTopupDetails({ simNum: '', day: '' });
   };
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
@@ -82,6 +88,10 @@ export const CartDrawer: React.FC = () => {
     }
     if (hasPhysicalItem && (!shippingAddress.address || !shippingAddress.city || !shippingAddress.district || !shippingAddress.ward)) {
       triggerNotification('Vui lòng điền đầy đủ địa chỉ giao hàng cho SIM vật lý!', 'error');
+      return;
+    }
+    if (hasTopupItem && (!topupDetails.simNum.trim() || !Number.isInteger(Number(topupDetails.day)) || Number(topupDetails.day) < 1)) {
+      triggerNotification('Vui lòng nhập số SIM và số ngày cần nạp.', 'error');
       return;
     }
     setIsCheckingOut(true);
@@ -101,15 +111,16 @@ export const CartDrawer: React.FC = () => {
           province: shippingAddress.city,
           country: 'VN',
         } : null;
-        await validateCheckout({ items, shipping, topup: null });
+        const topup = hasTopupItem ? { simNum: topupDetails.simNum.trim(), day: Number(topupDetails.day) } : null;
+        await validateCheckout({ items, shipping, topup });
         await createCheckoutOrder({
           idempotencyKey: window.crypto?.randomUUID?.() ?? `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           items,
           customer: checkoutForm,
           shipping,
-          topup: null,
+          topup,
         });
-        finishCheckout(hasPhysicalItem);
+        finishCheckout(hasPhysicalItem, hasTopupItem);
         return;
       }
       const promises = cart.map(async (item) => {
@@ -134,7 +145,7 @@ export const CartDrawer: React.FC = () => {
       });
       const responses = await Promise.all(promises);
       if (!responses.every(Boolean)) throw new Error('Legacy checkout không hoàn tất.');
-      finishCheckout(hasPhysicalItem);
+      finishCheckout(hasPhysicalItem, hasTopupItem);
     } catch (err) {
       console.warn('Payment webhook connection failed:', err);
       triggerNotification(err instanceof Error ? err.message : 'Không thể hoàn tất thanh toán.', 'error');
@@ -175,11 +186,11 @@ export const CartDrawer: React.FC = () => {
                   <div className="cart-item-info">
                     <div className="cart-item-header-info">
                       <span className={`item-type-badge ${item.type}`}>
-                        {item.type === 'esim' ? 'eSIM' : 'Thiết bị'}
+                        {cartLabelFor(item)}
                       </span>
                       <h3>{item.name}</h3>
                     </div>
-                    {item.type === 'esim' && (
+                    {item.type !== 'device' && (
                       <p className="cart-item-specs">
                         {item.dataLimit} • {item.duration}
                       </p>
@@ -300,6 +311,32 @@ export const CartDrawer: React.FC = () => {
                   onChange={(e) => setCheckoutForm({ ...checkoutForm, phone: e.target.value })}
                   className="checkout-input"
                 />
+
+                {hasTopupItem && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', borderTop: '1px dashed #cbd5e0', paddingTop: '12px' }}>
+                    <div className="checkout-title" style={{ marginBottom: '4px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#2b6cb0' }}>Thông tin SIM cần nạp</span>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Số SIM cần nạp"
+                      required={hasTopupItem}
+                      value={topupDetails.simNum}
+                      onChange={(e) => setTopupDetails({ ...topupDetails, simNum: e.target.value })}
+                      className="checkout-input"
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      max="365"
+                      placeholder="Số ngày top-up"
+                      required={hasTopupItem}
+                      value={topupDetails.day}
+                      onChange={(e) => setTopupDetails({ ...topupDetails, day: e.target.value })}
+                      className="checkout-input"
+                    />
+                  </div>
+                )}
 
                 {hasPhysicalItem && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', borderTop: '1px dashed #cbd5e0', paddingTop: '12px' }}>

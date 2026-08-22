@@ -74,6 +74,7 @@ const PUBLIC_NORMALIZED_FIELDS = new Set([
   'tripDayOptions', 'price', 'compareAtPrice', 'apn', 'networkLabel',
   'publicNote', 'activationPolicy', 'speedLabel', 'cancellable', 'medium',
   'sourceRows', 'imageUrl', 'galleryImageUrls', 'description', 'installationGuide',
+  'packageFamilyKey', 'operation', 'operationResolution', 'coverageFilter', 'sourceCategoryLabel',
 ]);
 
 const publicNormalizedData = (value) => Object.fromEntries(

@@ -1,22 +1,33 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AppContext, type CartItem, type CurrentUser } from './contextValue';
 
+const normalizeCartItem = (value: unknown): CartItem | null => {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.id !== 'string'
+    || typeof record.productId !== 'string'
+    || typeof record.variantId !== 'string'
+    || typeof record.slug !== 'string'
+    || typeof record.name !== 'string'
+    || typeof record.currency !== 'string'
+    || typeof record.price !== 'number'
+    || typeof record.quantity !== 'number') return null;
+  const operation = record.operation === 'topup' || record.operation === 'device_sale' || record.operation === 'new_subscription'
+    ? record.operation
+    : record.type === 'device' ? 'device_sale' : 'new_subscription';
+  const medium = record.medium === 'esim' || record.medium === 'physical_sim'
+    ? record.medium
+    : record.type === 'physical' ? 'physical_sim' : record.type === 'esim' ? 'esim' : undefined;
+  const type = operation === 'device_sale' ? 'device' : medium === 'physical_sim' ? 'physical' : 'esim';
+  return { ...record, operation, medium, type, quantity: Math.max(1, Math.floor(record.quantity)) } as CartItem;
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cart, setCart] = useState<CartItem[]>(() => {
     try {
       const savedCart: unknown = JSON.parse(localStorage.getItem('hico_cart') || 'null');
       if (!Array.isArray(savedCart)) return [];
-      return savedCart.filter((item: unknown): item is CartItem => {
-        if (!item || typeof item !== 'object') return false;
-        const record = item as Record<string, unknown>;
-        return typeof record.id === 'string'
-          && typeof record.productId === 'string'
-          && typeof record.variantId === 'string'
-          && typeof record.slug === 'string'
-          && typeof record.operation === 'string'
-          && typeof record.currency === 'string'
-          && typeof record.quantity === 'number';
-      });
+      return savedCart.map(normalizeCartItem).filter((item): item is CartItem => item !== null);
     } catch {
       return [];
     }

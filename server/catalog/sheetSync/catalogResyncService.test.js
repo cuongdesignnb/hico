@@ -92,6 +92,55 @@ test('full sync keeps ambiguous and inactive provider rows as reviewable fallbac
   assert.equal(inactive.summary.provider.inactive, 1);
 });
 
+test('full sync splits one package family by medium and uses operation-aware fulfillment', async () => {
+  const physical = { ...rowData, sourceCategoryLabel: 'Sim & eSIM', sku: 'SKU-FAMILY-SIM', wmproductId: 'WM-FAMILY-SIM', medium: 'physical_sim' };
+  const esim = { ...rowData, sourceCategoryLabel: 'Sim & eSIM', sku: 'SKU-FAMILY-ESIM', wmproductId: 'WM-FAMILY-ESIM', medium: 'esim' };
+  const candidate = await buildFullSyncCandidate({
+    rows: [
+      { id: 'row-family-sim', sourceMedium: 'physical_sim', normalizedData: physical, errors: [], warnings: [], status: 'VALID' },
+      { id: 'row-family-esim', sourceMedium: 'esim', normalizedData: esim, errors: [], warnings: [], status: 'VALID' },
+    ],
+    categories: cloneSeedCategories(),
+    offers: [
+      { id: 'offer-family-sim', provider: 'worldmove', wmproductId: physical.wmproductId, providerProductType: 1, active: true, leSIM: false },
+      { id: 'offer-family-esim', provider: 'worldmove', wmproductId: esim.wmproductId, providerProductType: 0, active: true, leSIM: true },
+    ],
+    previousCatalog: { products: [], variants: [] },
+  });
+  assert.equal(candidate.products.length, 2);
+  assert.equal(new Set(candidate.products.map((product) => product.packageFamilyKey)).size, 1);
+  assert.deepEqual(new Set(candidate.products.map((product) => product.categoryId)), new Set(['cat-sim-vat-ly', 'cat-esim-du-lich']));
+  assert.equal(candidate.variants.find((variant) => variant.medium === 'physical_sim')?.shippingRequired, true);
+  assert.equal(candidate.variants.find((variant) => variant.medium === 'esim')?.shippingRequired, false);
+});
+
+test('full sync keeps physical top-up as a no-shipping operation', async () => {
+  const topup = { ...rowData, sourceCategoryLabel: 'Nạp thêm', sku: 'SKU-TOPUP', wmproductId: 'WM-TOPUP', medium: 'physical_sim' };
+  const candidate = await buildFullSyncCandidate({
+    rows: [{ id: 'row-topup', sourceMedium: 'physical_sim', normalizedData: topup, errors: [], warnings: [], status: 'VALID' }],
+    categories: cloneSeedCategories(),
+    offers: [{ id: 'offer-topup', provider: 'worldmove', wmproductId: topup.wmproductId, providerProductType: 2, active: true, leSIM: false }],
+    previousCatalog: { products: [], variants: [] },
+  });
+  assert.equal(candidate.products[0].operation, 'topup');
+  assert.equal(candidate.products[0].categoryId, 'cat-nap-them');
+  assert.equal(candidate.variants[0].shippingRequired, false);
+  assert.equal(candidate.variants[0].requiresExistingSim, true);
+});
+
+test('full sync blocks a resolved provider APN or network conflict', async () => {
+  const row = { ...rowData, apn: 'internet', networkLabel: 'China Unicom', sku: 'SKU-CONFLICT', wmproductId: 'WM-CONFLICT' };
+  const candidate = await buildFullSyncCandidate({
+    rows: [{ id: 'row-conflict', sourceMedium: 'physical_sim', normalizedData: row, errors: [], warnings: [], status: 'VALID' }],
+    categories: cloneSeedCategories(),
+    offers: [{ id: 'offer-conflict', provider: 'worldmove', wmproductId: row.wmproductId, providerProductType: 1, active: true, leSIM: false, apnHint: 'mobile', networkLabel: 'China Telecom' }],
+    previousCatalog: { products: [], variants: [] },
+  });
+  assert.equal(candidate.products.length, 0);
+  assert.ok(candidate.rows[0].errors.some((error) => error.code === 'APN_PROVIDER_CONFLICT'));
+  assert.ok(candidate.rows[0].errors.some((error) => error.code === 'NETWORK_PROVIDER_CONFLICT'));
+});
+
 test('full sync uses internal Sheet image then a safe existing placeholder', async () => {
   const withSheet = await buildFullSyncCandidate({
     rows: [{ id: 'row-1', sourceMedium: 'physical_sim', normalizedData: { ...rowData, imageUrl: '/uploads/catalog-a.webp' }, errors: [], status: 'VALID' }],

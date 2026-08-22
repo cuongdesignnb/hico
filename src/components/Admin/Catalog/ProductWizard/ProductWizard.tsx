@@ -98,7 +98,7 @@ const buildProductPayload = (product: ProductDraft) => ({
   faqItems: product.faqItems.length ? product.faqItems : undefined,
 });
 
-const buildVariantPayload = (variant: VariantDraft) => {
+const buildVariantPayload = (variant: VariantDraft, operation: ProductDraft['operation']) => {
   const source = variant.sourceMode ? sourceTechnicalFields(variant.sourceMode) : null;
   return {
     sku: variant.sku.trim(),
@@ -116,7 +116,7 @@ const buildVariantPayload = (variant: VariantDraft) => {
     providerProductType: source?.providerProductType ?? variant.providerProductType ?? null,
     leSIM: source?.leSIM ?? variant.leSIM ?? null,
     requiresExistingSim: source?.requiresExistingSim ?? variant.requiresExistingSim,
-    shippingRequired: source?.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER' || variant.shippingRequired,
+    shippingRequired: operation === 'device_sale' || (operation === 'new_subscription' && (source?.medium ?? variant.medium) === 'physical_sim'),
     networkLabel: variant.networkLabel,
     coverageLabel: variant.coverageLabel,
     speedLabel: variant.speedLabel,
@@ -220,7 +220,7 @@ const ProductWizardBody = ({ data, mode, initialCategoryId, onClose, onSaved }: 
       if (!productId) throw new Error('Backend chưa trả về product ID.');
       wizard.applySaveResult({ productId, productVersion, catalogVersionId, dirty: false, lastError: '' });
       for (const variant of wizard.state.variants) {
-        const variantPayload = buildVariantPayload(variant);
+        const variantPayload = buildVariantPayload(variant, wizard.state.product.operation);
         if (variant.id && variant.version !== undefined) {
           const response = await updateVariant(productId, variant.id, { idempotencyKey: makeIdempotencyKey(wizard.state.sessionId, 'update-variant', variant.id, variantPayload), catalogVersionId, version: variant.version, changes: variantPayload });
           catalogVersionId = response.catalogVersionId;

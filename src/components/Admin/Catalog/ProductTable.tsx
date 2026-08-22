@@ -126,6 +126,8 @@ const ProductTable = ({ products, onEdit, onClone, entityType, selectedIds, onTo
                   <div className="catalog-product-copy">
                     <strong>{product.name}</strong>
                     <span>{product.id}</span>
+                    <span>{product.medium === 'physical_sim' ? 'SIM vật lý' : product.medium === 'esim' ? 'eSIM' : product.operation === 'topup' ? 'Nạp thêm' : 'Chưa xác định medium'}</span>
+                    {product.operationResolution === 'UNRESOLVED' && <span className="catalog-review-warning"><AlertTriangle size={12} /> Cần xác nhận nghiệp vụ</span>}
                     {reviewCount > 0 && (
                       <span className="catalog-review-warning">
                         <AlertTriangle size={12} />

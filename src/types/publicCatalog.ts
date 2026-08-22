@@ -48,6 +48,7 @@ export interface PublicVariant {
   compareAtPrice: number | null;
   currency: PublicCurrency;
   active: boolean;
+  dataPolicy?: 'daily' | 'total';
   dataLimit: string | null;
   duration: string | null;
   tripDayOptions?: number[];
@@ -101,11 +102,14 @@ export interface PublicProduct {
   name: string;
   dataPolicy?: 'daily' | 'total';
   operation: PublicOperation;
+  medium?: PublicMedium;
+  familyProducts?: Array<{ id: string; slug: string; name: string; medium: PublicMedium; operation: PublicOperation }>;
   categoryId: string | null;
   categoryPath: Array<{ id: string; slug: string; name: string }>;
   status: 'active';
   coverageType: PublicCoverageType;
   coverageIds: string[];
+  coverageFilter?: { rawLabel: string; normalizedLabel?: string; id?: string } | Array<{ rawLabel: string; normalizedLabel?: string; id?: string }>;
   primaryImage: string | null;
   primaryMedia?: PublicProductMedia | null;
   image?: string;
@@ -149,6 +153,10 @@ export interface PublicCatalogListResponse {
     pageSize: number;
     total: number;
     totalPages: number;
+  };
+  facets?: {
+    categories: Array<{ id: string; slug: string; name: string; count: number }>;
+    destinations: Array<{ id: string; name: string; count: number }>;
   };
 }
 

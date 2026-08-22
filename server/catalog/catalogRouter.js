@@ -79,6 +79,8 @@ export const createCatalogRouter = ({
       if (result.invalid) return res.status(400).json({ error: 'Đường dẫn sản phẩm không hợp lệ.', code: 'INVALID_SLUG' });
       if (result.redirect) return res.json({ redirect: result.redirect, permanent: true });
       if (!result.product) return res.status(404).json({ error: 'Không tìm thấy sản phẩm.', code: 'PRODUCT_NOT_FOUND' });
+      const canonicalProduct = await catalogService.getPublicProductBySlug?.(result.product.slug ?? req.params.slug);
+      if (canonicalProduct) return res.json(canonicalProduct);
       return res.json(toPublicProduct(result.product, result.product.variants ?? [], { mediaAssets: await mediaAssets(), providerOffers: await providerOffers() }));
     } catch (error) {
       return sendError(res, error);

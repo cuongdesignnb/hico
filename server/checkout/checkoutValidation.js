@@ -188,8 +188,9 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
       }
       : { ...variant, operation: variant.operation ?? product.operation };
     assertFulfillmentSupported(fulfillmentVariant);
-    const requiresShipping = variant.medium === 'physical_sim' || product.operation === 'device_sale';
-    const requiresTopup = fulfillmentVariant.fulfillmentMethod === 'WORLDMOVE_TOPUP';
+    const requiresShipping = product.operation === 'device_sale'
+      || (product.operation === 'new_subscription' && variant.medium === 'physical_sim');
+    const requiresTopup = product.operation === 'topup' || fulfillmentVariant.fulfillmentMethod === 'WORLDMOVE_TOPUP';
     resolved.push({
       requested,
       product,

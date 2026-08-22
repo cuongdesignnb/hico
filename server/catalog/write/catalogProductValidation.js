@@ -30,6 +30,11 @@ const PRODUCT_FIELDS = new Set([
   'name',
   'slug',
   'operation',
+  'medium',
+  'packageFamilyKey',
+  'sourceCategoryLabel',
+  'operationResolution',
+  'dataPolicy',
   'categoryId',
   'categoryNeedsReview',
   'coverageType',
@@ -164,6 +169,20 @@ export const normalizeProductInput = (input, { partial = false } = {}) => {
     if (!OPERATIONS.has(result.operation)) {
       throw new CatalogWriteError('operation không hợp lệ.');
     }
+  }
+  if (input.medium !== undefined) {
+    if (!['esim', 'physical_sim', null].includes(input.medium)) throw new CatalogWriteError('product.medium không hợp lệ.');
+    result.medium = input.medium;
+  }
+  if (input.packageFamilyKey !== undefined) result.packageFamilyKey = optionalString(input.packageFamilyKey, 'product.packageFamilyKey', 160);
+  if (input.sourceCategoryLabel !== undefined) result.sourceCategoryLabel = optionalString(input.sourceCategoryLabel, 'product.sourceCategoryLabel', 160);
+  if (input.operationResolution !== undefined) {
+    if (!['RESOLVED', 'UNRESOLVED'].includes(input.operationResolution)) throw new CatalogWriteError('product.operationResolution không hợp lệ.');
+    result.operationResolution = input.operationResolution;
+  }
+  if (input.dataPolicy !== undefined) {
+    if (!['daily', 'total'].includes(input.dataPolicy)) throw new CatalogWriteError('product.dataPolicy không hợp lệ.');
+    result.dataPolicy = input.dataPolicy;
   }
   if (input.categoryId !== undefined) {
     if (input.categoryId === null || input.categoryId === '') result.categoryId = null;

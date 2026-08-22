@@ -4,6 +4,7 @@ import { defaultUploadsDirectory } from '../write/catalogWritePersistence.js';
 import { assertCanonicalCatalog } from '../canonical/canonicalCatalogValidation.js';
 import { applySkuConflictMetadata } from '../canonical/canonicalSkuConflicts.js';
 import { cloneSeedCategories } from '../categories/catalogCategories.js';
+import { categoryById, operationForCategoryKind } from '../categories/catalogCategories.js';
 import { createCanonicalCatalogRepository } from '../canonical/canonicalCatalogRepository.js';
 import { createCatalogVersionCommitService } from '../write/catalogVersionCommitService.js';
 import { createCatalogAuditRepository } from '../write/catalogAuditRepository.js';
@@ -16,6 +17,16 @@ import { SheetSyncError } from './sheetSyncTypes.js';
 import { createCatalogCommandService } from '../write/catalogCommandService.js';
 import { sanitizeCatalogHtml } from '../write/catalogProductValidation.js';
 import { assertFullSyncCandidate, assertPersistedFullSyncSummary, fullSyncDiagnostics, rejectionReasonsForRows } from './catalogResyncDiagnostics.js';
+import {
+  coverageFilterFor,
+  legacyProductSourceKeyFor,
+  legacyVariantSourceKeyFor,
+  normalizeIdentityToken,
+  packageFamilyKeyFor,
+  productSourceKeyFor,
+  variantSourceKeyFor,
+} from './packageFamilyIdentity.js';
+import { classifyHicoGocSourceRows, operationEvidenceFor } from './hicoGocSourceClassifier.js';
 
 const PLACEHOLDER_IMAGES = Object.freeze({
   esim: '/images/art_esim_intro.png',
@@ -24,24 +35,11 @@ const PLACEHOLDER_IMAGES = Object.freeze({
   other: '/images/art_esim_intro.png',
 });
 const FALLBACK_INSTALLATION_GUIDE = 'Hướng dẫn cài đặt đang được cập nhật.';
-const normalizeToken = (value) => String(value ?? '').normalize('NFC').trim().toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ');
+const normalizeToken = normalizeIdentityToken;
 const nonEmpty = (value) => typeof value === 'string' && value.trim() !== '';
 const sha = (value) => createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex').slice(0, 24);
 const currentVersion = (manifest) => manifest?.versionId ?? manifest?.migrationId ?? null;
-const productSourceParts = (data) => [
-  normalizeToken(data?.productName),
-  normalizeToken(data?.dataPolicy),
-  normalizeToken(data?.dataLimit),
-  normalizeToken(data?.networkLabel),
-  normalizeToken(data?.medium ?? data?.sourceMedium),
-];
-
-export const productSourceKeyFor = (data) => `hico-goc:${sha(productSourceParts(data))}`;
-export const variantSourceKeyFor = (data) => `hico-goc-variant:${sha([
-  normalizeToken(data?.sku),
-  normalizeToken(data?.medium),
-  normalizeToken(data?.wmproductId),
-])}`;
+export { productSourceKeyFor, variantSourceKeyFor } from './packageFamilyIdentity.js';
 
 const PROVIDER_RESOLUTIONS = Object.freeze({
   RESOLVED: 'RESOLVED',
@@ -62,18 +60,13 @@ const slugFor = (name, sourceKey) => {
   return `${base}-${sourceKey.slice(-8)}`;
 };
 
-const operationFor = (rows, previousProduct) => {
-  if (previousProduct?.operation) return previousProduct.operation;
-  return rows.some((row) => row.providerOffer?.providerProductType === 2) ? 'topup' : 'new_subscription';
-};
-
-const fulfillmentFor = (offer, medium) => {
+const fulfillmentFor = (offer, medium, operation) => {
   if (!offer) return {
     supplier: 'other',
     fulfillmentMethod: 'MANUAL_PROCESSING',
     providerProductType: null,
     leSIM: null,
-    requiresExistingSim: false,
+    requiresExistingSim: operation === 'topup',
   };
   if (offer.providerProductType === 2) return {
     supplier: 'worldmove',
@@ -96,7 +89,7 @@ const fulfillmentFor = (offer, medium) => {
       : 'WORLDMOVE_ESIM_REDEEM',
     providerProductType: 0,
     leSIM: offer.leSIM ?? true,
-    requiresExistingSim: false,
+    requiresExistingSim: operation === 'topup',
   };
 };
 
@@ -120,8 +113,21 @@ export const createEnrichmentIndex = ({ products = [], variants = [] } = {}) => 
   const byProductSourceKey = new Map();
   const byVariantSourceKey = new Map();
   const byVariantRecordSourceKey = new Map();
+  const setUnique = (map, key, value) => {
+    if (!nonEmpty(key)) return;
+    const existing = map.get(key);
+    if (!map.has(key) || existing?.id === value?.id) map.set(key, value);
+    else map.set(key, null);
+  };
   for (const product of products) {
-    if (nonEmpty(product.sourceKey)) byProductSourceKey.set(product.sourceKey, product);
+    setUnique(byProductSourceKey, product.sourceKey, product);
+    setUnique(byProductSourceKey, productSourceKeyFor({
+      productName: product.name,
+      operation: product.operation,
+      medium: product.medium,
+      sourceCategoryLabel: product.sourceCategoryLabel,
+      coverageLabel: product.coverageLabel,
+    }), product);
   }
   for (const variant of variants) {
     const product = productsById.get(variant.productId);
@@ -129,26 +135,52 @@ export const createEnrichmentIndex = ({ products = [], variants = [] } = {}) => 
     const key = nonEmpty(variant.sourceKey)
       ? variant.sourceKey
       : variantSourceKeyFor({ sku: variant.sku, medium: variant.medium, wmproductId: variant.wmproductId });
-    const existingProduct = byVariantSourceKey.get(key);
-    if (!byVariantSourceKey.has(key) || existingProduct?.id === product.id) byVariantSourceKey.set(key, product);
-    else byVariantSourceKey.set(key, null);
-    const existingVariant = byVariantRecordSourceKey.get(key);
-    if (!byVariantRecordSourceKey.has(key) || existingVariant?.id === variant.id) byVariantRecordSourceKey.set(key, variant);
-    else byVariantRecordSourceKey.set(key, null);
+    setUnique(byVariantSourceKey, key, product);
+    setUnique(byVariantRecordSourceKey, key, variant);
+    const legacyKey = legacyVariantSourceKeyFor({ sku: variant.sku, medium: variant.medium, wmproductId: variant.wmproductId });
+    setUnique(byVariantSourceKey, legacyKey, product);
+    setUnique(byVariantRecordSourceKey, legacyKey, variant);
+    const legacyProductKey = legacyProductSourceKeyFor({
+      productName: product.name,
+      dataPolicy: variant.dataPolicy,
+      dataLimit: variant.dataLimit,
+      networkLabel: variant.networkLabel ?? product.networkLabel,
+      medium: variant.medium,
+    });
+    setUnique(byProductSourceKey, legacyProductKey, product);
   }
   return { byProductSourceKey, byVariantSourceKey, byVariantRecordSourceKey };
 };
 
+const derivedCategoryIdFor = (operation, medium) => {
+  if (operation === 'topup') return 'cat-nap-them';
+  if (operation === 'new_subscription' && medium === 'esim') return 'cat-esim-du-lich';
+  if (operation === 'new_subscription' && medium === 'physical_sim') return 'cat-sim-vat-ly';
+  return null;
+};
+
 const enrichmentForRows = (rows, index) => {
   const productKey = productSourceKeyFor(rows[0]?.normalizedData ?? {});
-  const direct = index.byProductSourceKey.get(productKey);
+  const direct = index.byProductSourceKey.get(productKey)
+    ?? index.byProductSourceKey.get(legacyProductSourceKeyFor(rows[0]?.normalizedData ?? {}));
   if (direct) return direct;
   const matches = new Map();
   for (const row of rows) {
-    const product = index.byVariantSourceKey.get(variantSourceKeyFor(row.normalizedData));
+    const product = index.byVariantSourceKey.get(variantSourceKeyFor(row.normalizedData))
+      ?? index.byVariantSourceKey.get(legacyVariantSourceKeyFor(row.normalizedData));
     if (product) matches.set(product.id, product);
   }
   return matches.size === 1 ? [...matches.values()][0] : null;
+};
+
+const previousProductForRows = (rows, index, operation) => {
+  for (const row of rows) {
+    const data = { ...row.normalizedData, operation };
+    const direct = index.byProductSourceKey.get(productSourceKeyFor(data))
+      ?? index.byProductSourceKey.get(legacyProductSourceKeyFor(data));
+    if (direct) return direct;
+  }
+  return enrichmentForRows(rows, index);
 };
 
 const resolveImage = async ({ pathValue, mediaAssetRepository }) => {
@@ -186,13 +218,16 @@ export const resolveProviderRows = ({ rows, offers }) => {
     if (wmproductId && providerResolution === PROVIDER_RESOLUTIONS.UNRESOLVED) warnings.push({ code: 'PROVIDER_NOT_FOUND', field: 'wmproductId' });
     if (providerResolution === PROVIDER_RESOLUTIONS.AMBIGUOUS) warnings.push({ code: 'PROVIDER_AMBIGUOUS', field: 'wmproductId' });
     if (providerResolution === PROVIDER_RESOLUTIONS.INACTIVE) warnings.push({ code: 'PROVIDER_INACTIVE', field: 'wmproductId' });
+    const providerOffer = matches.length === 1 && matches[0].active !== false ? matches[0] : null;
+    if (providerOffer?.apnHint && row.normalizedData?.apn && normalizeToken(providerOffer.apnHint) !== normalizeToken(row.normalizedData.apn)) errors.push({ code: 'APN_PROVIDER_CONFLICT', field: 'apn' });
+    if (providerOffer?.networkLabel && row.normalizedData?.networkLabel && normalizeToken(providerOffer.networkLabel) !== normalizeToken(row.normalizedData.networkLabel)) errors.push({ code: 'NETWORK_PROVIDER_CONFLICT', field: 'networkLabel' });
     return {
       ...row,
       errors,
       warnings,
       status: errors.length ? 'INVALID' : 'VALID',
       providerResolution,
-      providerOffer: matches.length === 1 && matches[0].active !== false ? matches[0] : null,
+      providerOffer,
       normalizedData: {
         ...row.normalizedData,
         sourceKey: productSourceKeyFor(row.normalizedData),
@@ -213,22 +248,86 @@ export const buildFullSyncCandidate = async ({
   const preparedRows = resolveProviderRows({ rows, offers });
   const validRows = preparedRows.filter((row) => row.status === 'VALID');
   const index = createEnrichmentIndex(previousCatalog ?? {});
-  const groups = new Map();
+  const familyGroups = new Map();
   for (const row of validRows) {
-    const key = row.normalizedData.sourceKey;
-    groups.set(key, [...(groups.get(key) ?? []), row]);
+    const coverageFilter = coverageFilterFor(row.normalizedData?.coverageLabel ?? row.normalizedData?.networkLabel);
+    const packageFamilyKey = packageFamilyKeyFor({ ...row.normalizedData, coverageFilter });
+    row.normalizedData = { ...row.normalizedData, packageFamilyKey, coverageFilter };
+    const key = `${packageFamilyKey}:${row.sourceMedium}`;
+    familyGroups.set(key, [...(familyGroups.get(key) ?? []), row]);
+  }
+  const groups = new Map();
+  for (const familyRows of familyGroups.values()) {
+    const operationGroups = new Map();
+    for (const row of familyRows) {
+      const previousProduct = previousProductForRows([row], index, 'new_subscription')
+        ?? previousProductForRows([row], index, 'topup')
+        ?? previousProductForRows([row], index, 'device_sale');
+      const evidence = operationEvidenceFor({
+        sourceCategoryLabel: row.normalizedData.sourceCategoryLabel,
+        providerOffer: row.providerOffer,
+        previousOperation: previousProduct?.operation,
+      });
+      row.operationEvidence = evidence;
+      const key = `${row.normalizedData.packageFamilyKey}:${row.sourceMedium}:${evidence.operation}`;
+      operationGroups.set(key, [...(operationGroups.get(key) ?? []), row]);
+    }
+    for (const operationRows of operationGroups.values()) {
+      const operation = operationRows[0].operationEvidence.operation;
+      const operationResolution = operationRows.every((row) => row.operationEvidence.resolution === 'RESOLVED') ? 'RESOLVED' : 'UNRESOLVED';
+      for (const row of operationRows) {
+        if (row.operationEvidence.resolution !== 'RESOLVED') row.warnings.push({ code: 'OPERATION_UNRESOLVED', field: 'simType' });
+        const sourceKey = productSourceKeyFor({ ...row.normalizedData, operation, medium: row.sourceMedium });
+        row.normalizedData = {
+          ...row.normalizedData,
+          operation,
+          operationResolution,
+          sourceKey,
+          variantSourceKey: variantSourceKeyFor({ ...row.normalizedData, operation, medium: row.sourceMedium }),
+        };
+        const key = sourceKey;
+        groups.set(key, [...(groups.get(key) ?? []), row]);
+      }
+    }
   }
   const products = [];
   const variants = [];
+  let exactDuplicatesCollapsed = 0;
+  let groupingCollisions = 0;
   const enrichment = {
     imagesReused: 0, imagesFromSheet: 0, imagesFallback: 0,
     descriptionsReused: 0, descriptionsFromSheet: 0, descriptionsFallback: 0,
     installationGuideReused: 0, installationGuideFromSheet: 0, installationGuideFallback: 0,
   };
   for (const groupRows of groups.values()) {
+    const variantsByKey = new Map();
+    const retainedRows = [];
+    for (const row of groupRows) {
+      const key = row.normalizedData.variantSourceKey;
+      const existing = variantsByKey.get(key);
+      if (!existing) {
+        variantsByKey.set(key, row);
+        retainedRows.push(row);
+        continue;
+      }
+      if (JSON.stringify(existing.normalizedData) === JSON.stringify(row.normalizedData)) {
+        exactDuplicatesCollapsed += 1;
+        existing.warnings.push({ code: 'DUPLICATE_IDENTICAL_COLLAPSED', field: 'variantSourceKey' });
+      } else {
+        groupingCollisions += 1;
+        existing.errors.push({ code: 'PACKAGE_VARIANT_COLLISION', field: 'variantSourceKey' });
+        row.errors.push({ code: 'PACKAGE_VARIANT_COLLISION', field: 'variantSourceKey' });
+        existing.status = 'INVALID';
+        row.status = 'INVALID';
+        const indexOfExisting = retainedRows.indexOf(existing);
+        if (indexOfExisting >= 0) retainedRows.splice(indexOfExisting, 1);
+      }
+    }
+    groupRows.splice(0, groupRows.length, ...retainedRows);
+    if (groupRows.length === 0) continue;
     const first = groupRows[0];
     const data = first.normalizedData;
-    const previousProduct = enrichmentForRows(groupRows, index);
+    const previousProduct = previousProductForRows(groupRows, index, data.operation);
     const description = uniqueValue(groupRows, 'description');
     const installationGuide = uniqueValue(groupRows, 'installationGuide');
     const imageValue = uniqueValue(groupRows, 'imageUrl');
@@ -239,6 +338,24 @@ export const buildFullSyncCandidate = async ({
     if (galleryValue?.conflict) groupRows.forEach((row) => { row.errors.push({ code: 'GALLERY_IMAGE_CONFLICT', field: 'galleryImageUrls' }); row.status = 'INVALID'; });
     if (groupRows.some((row) => row.status !== 'VALID')) continue;
     const productSourceKey = data.sourceKey;
+    const operation = data.operation;
+    const operationResolution = data.operationResolution ?? 'UNRESOLVED';
+    const derivedCategoryId = derivedCategoryIdFor(operation, first.sourceMedium);
+    const previousCategory = previousProduct?.categoryId ? categoryById(categories, previousProduct.categoryId) : null;
+    const previousCategoryId = previousCategory && operationForCategoryKind(previousCategory.kind) === operation ? previousCategory.id : null;
+    const categoryId = previousCategoryId ?? (operationResolution === 'RESOLVED' ? derivedCategoryId : null);
+    const coverageLabels = [...new Set(groupRows.map((row) => row.normalizedData.coverageLabel).filter(nonEmpty))];
+    const coverageFilters = coverageLabels.map(coverageFilterFor).filter((filter) => filter.id);
+    const coverageIds = coverageFilters.map((filter) => filter.id);
+    const previousCoverageIds = Array.isArray(previousProduct?.coverageIds) ? [...previousProduct.coverageIds] : [];
+    const effectiveCoverageIds = coverageIds.length > 0 ? coverageIds : previousCoverageIds;
+    const effectiveCoverageType = effectiveCoverageIds.length > 1
+      ? 'region'
+      : effectiveCoverageIds.length === 1
+        ? 'country'
+        : previousProduct?.coverageType ?? 'not_applicable';
+    const dataPolicy = uniqueValue(groupRows, 'dataPolicy');
+    const networkValue = uniqueValue(groupRows, 'networkLabel');
     const productId = previousProduct?.id ?? `product-${sha(productSourceKey)}`;
     const sheetGallery = Array.isArray(galleryValue) ? galleryValue : [];
     const sheetImage = await resolveImage({ pathValue: imageValue ?? sheetGallery[0], mediaAssetRepository });
@@ -278,8 +395,13 @@ export const buildFullSyncCandidate = async ({
     else enrichment.installationGuideFallback += 1;
     const timestamp = now().toISOString();
     products.push({
-      ...(previousProduct?.categoryId ? { categoryId: previousProduct.categoryId } : { categoryId: null, categoryNeedsReview: true }),
-      ...(previousProduct?.coverageType ? { coverageType: previousProduct.coverageType, coverageIds: [...(previousProduct.coverageIds ?? [])] } : { coverageType: 'not_applicable', coverageIds: [] }),
+      categoryId,
+      categoryNeedsReview: !categoryId || operationResolution !== 'RESOLVED',
+      coverageType: effectiveCoverageType,
+      coverageIds: effectiveCoverageIds,
+      ...(coverageFilters.length ? { coverageFilter: coverageFilters.length === 1 ? coverageFilters[0] : coverageFilters } : {}),
+      ...(coverageLabels.length === 1 ? { coverageLabel: coverageLabels[0] } : {}),
+      ...(typeof networkValue === 'string' ? { networkLabel: networkValue } : {}),
       ...image,
       ...(previousProduct?.featured !== undefined ? { featured: previousProduct.featured } : { featured: false }),
       ...(previousProduct?.seoTitle ? { seoTitle: previousProduct.seoTitle } : {}),
@@ -287,9 +409,14 @@ export const buildFullSyncCandidate = async ({
       ...(previousProduct?.seoKeywords ? { seoKeywords: previousProduct.seoKeywords } : {}),
       id: productId,
       sourceKey: productSourceKey,
+      packageFamilyKey: data.packageFamilyKey,
+      sourceCategoryLabel: data.sourceCategoryLabel,
+      medium: first.sourceMedium,
+      operationResolution,
+      ...(dataPolicy && !dataPolicy.conflict && dataPolicy !== undefined ? { dataPolicy } : {}),
       slug: previousProduct?.slug ?? slugFor(data.productName, productSourceKey),
       name: data.productName,
-      operation: operationFor(groupRows, previousProduct),
+      operation,
       description: productDescription,
       installationGuide: productInstallationGuide,
       status: 'draft',
@@ -299,14 +426,17 @@ export const buildFullSyncCandidate = async ({
     });
     for (const row of groupRows) {
       const variantData = row.normalizedData;
-      const previousVariant = index.byVariantRecordSourceKey.get(variantData.variantSourceKey) ?? null;
-      const fulfillment = fulfillmentFor(row.providerOffer, row.sourceMedium);
+      const previousVariant = index.byVariantRecordSourceKey.get(variantData.variantSourceKey)
+        ?? index.byVariantRecordSourceKey.get(legacyVariantSourceKeyFor(variantData))
+        ?? null;
+      const fulfillment = fulfillmentFor(row.providerOffer, row.sourceMedium, operation);
       variants.push({
         ...(previousVariant?.publicSku ? { publicSku: previousVariant.publicSku } : {}),
         id: previousVariant?.id ?? `variant-${sha(variantData.variantSourceKey)}`,
         sourceKey: variantData.variantSourceKey,
         productId,
         sku: variantData.sku,
+        dataPolicy: variantData.dataPolicy,
         dataLimit: variantData.dataLimit,
         duration: variantData.duration,
         ...(variantData.tripDayOptions ? { tripDayOptions: variantData.tripDayOptions } : {}),
@@ -314,6 +444,8 @@ export const buildFullSyncCandidate = async ({
         compareAtPrice: variantData.compareAtPrice ?? null,
         currency: 'VND',
         medium: variantData.medium,
+        packageFamilyKey: variantData.packageFamilyKey,
+        operationResolution,
         ...fulfillment,
         providerResolution: row.providerResolution ?? PROVIDER_RESOLUTIONS.UNRESOLVED,
         ...(variantData.wmproductId ? { wmproductId: variantData.wmproductId } : {}),
@@ -321,10 +453,11 @@ export const buildFullSyncCandidate = async ({
         ...(row.providerOffer?.providerProductId ? { providerProductId: row.providerOffer.providerProductId } : {}),
         ...(variantData.activationPolicy ? { activationPolicy: variantData.activationPolicy } : {}),
         ...(variantData.networkLabel ? { networkLabel: variantData.networkLabel } : {}),
+        ...(variantData.apn ? { apnGuidance: variantData.apn } : {}),
         ...(variantData.publicNote ? { publicNote: variantData.publicNote } : {}),
         ...(variantData.speedLabel ? { speedLabel: variantData.speedLabel } : {}),
         ...(typeof variantData.cancellable === 'boolean' ? { cancellable: variantData.cancellable } : {}),
-        shippingRequired: row.sourceMedium === 'physical_sim',
+        shippingRequired: operation === 'new_subscription' && row.sourceMedium === 'physical_sim',
         stock: previousVariant?.stock ?? null,
         active: false,
         needsReview: true,
@@ -355,6 +488,14 @@ export const buildFullSyncCandidate = async ({
       invalidRows: preparedRows.filter((row) => row.status === 'INVALID').length,
       validRows: validRows.length,
       uniqueProductKeys: groups.size,
+      packageFamilies: familyGroups.size,
+      exactDuplicatesCollapsed,
+      groupingCollisions,
+      operationUnresolved: preparedRows.filter((row) => row.operationEvidence?.resolution === 'UNRESOLVED').length,
+      operations: Object.fromEntries([...new Set(products.map((product) => product.operation))].map((operation) => [operation, products.filter((product) => product.operation === operation).length])),
+      mediums: Object.fromEntries([...new Set(variants.map((variant) => variant.medium ?? 'none'))].map((medium) => [medium, variants.filter((variant) => (variant.medium ?? 'none') === medium).length])),
+      coverageFilters: [...new Set(products.flatMap((product) => product.coverageIds ?? []))],
+      sourceClassification: classifyHicoGocSourceRows(preparedRows),
       rejectionReasons: rejectionReasonsForRows(preparedRows),
       provider,
       ...enrichment,

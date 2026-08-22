@@ -16,6 +16,7 @@
     "check:sheet-variant-identity": "node scripts/check-sheet-variant-identity.mjs",
     "check:fulfillment-family-contract": "node scripts/check-fulfillment-family-contract.mjs",
     "provider:reference:audit": "node scripts/audit-provider-reference.mjs",
+    "catalog:sheet:contract-audit": "npm --prefix server run catalog:sheet:contract-audit",
     "check:customer-copy": "node scripts/check-customer-ui-copy.mjs",
     "check:catalog-hardcodes": "node scripts/check-public-catalog-hardcodes.mjs",
     "audit:product-contract": "node server/scripts/auditAdminPublicProductContract.js",

@@ -8,6 +8,7 @@ export interface CartItem {
   name: string;
   operation: 'new_subscription' | 'topup' | 'device_sale';
   type: 'esim' | 'device' | 'physical';
+  medium?: 'esim' | 'physical_sim';
   simType?: string;
   price: number;
   currency: 'VND' | 'USD';

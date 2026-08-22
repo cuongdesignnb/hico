@@ -26,6 +26,22 @@ test('HICO GỐC parser maps daily data and keeps exact identities private in pu
   assert.equal(publicRow(physical).normalizedData.wmproductId, undefined);
 });
 
+test('HICO GỐC parser emits independent physical and eSIM branches from one Sheet row', () => {
+  const [physical, esim] = parseHicoGocRows([Array(25).fill('header'), cells()]);
+  assert.equal(physical.sourceMedium, 'physical_sim');
+  assert.equal(esim.sourceMedium, 'esim');
+  assert.equal(physical.status, 'VALID');
+  assert.equal(esim.status, 'VALID');
+});
+
+test('HICO GỐC parser keeps a valid branch when the other branch has a partial identity', () => {
+  const result = parseHicoGocRowsWithDiagnostics([Array(25).fill('header'), cells({ 24: '' })]);
+  assert.equal(result.rows.length, 2);
+  assert.equal(result.rows.find((row) => row.sourceMedium === 'physical_sim')?.status, 'VALID');
+  assert.equal(result.rows.find((row) => row.sourceMedium === 'esim')?.status, 'INVALID');
+  assert.ok(result.rows.find((row) => row.sourceMedium === 'esim')?.errors.some((error) => error.code === 'MISSING_WMID'));
+});
+
 test('HICO GỐC parser treats a missing WMID as a structural rejection', () => {
   const [row] = parseHicoGocRows([Array(25).fill('header'), cells({ 23: '' })]);
   assert.equal(row.status, 'INVALID');
@@ -50,7 +66,7 @@ test('HICO GỐC parser keeps the physical Sheet row number when header is not r
 });
 
 test('HICO GỐC parser maps total package duration and collapses trip-day options', () => {
-  const first = cells({ 1: 'Trung Quốc, 5 Ngày, Tổng 3GB', 2: '1', 3: 'Gói tổng', 16: 'SKU-TOTAL', 17: '', 23: 'WM-TOTAL' });
+  const first = cells({ 1: 'Trung Quốc, 5 Ngày, Tổng 3GB', 2: '1', 3: 'Gói tổng', 16: 'SKU-TOTAL', 17: '', 23: 'WM-TOTAL', 24: '' });
   const second = [...first]; second[2] = '3';
   const rows = collapseHicoGocRows(parseHicoGocRows([Array(25).fill('header'), first, second]));
   assert.equal(rows.length, 1);
@@ -63,12 +79,12 @@ test('HICO GỐC parser maps total package duration and collapses trip-day optio
 test('HICO GỐC parser blocks ambiguous quota and invalid cancellable values', () => {
   assert.equal(parseDataLimit('5 ngày, Tổng 3GB', 'total'), '3GB');
   const [row] = parseHicoGocRows([Array(25).fill('header'), cells({ 1: 'Trung Quốc, gói data', 15: 'Có' })]);
-  assert.ok(row.errors.some((error) => error.code === 'DATA_LIMIT_AMBIGUOUS'));
-  assert.ok(row.errors.some((error) => error.code === 'CANCELLABLE_INVALID'));
+  assert.ok(row.warnings.some((warning) => warning.code === 'DATA_LIMIT_AMBIGUOUS'));
+  assert.ok(row.warnings.some((warning) => warning.code === 'CANCELLABLE_INVALID'));
 });
 
 test('HICO GỐC duplicate payload conflict is never collapsed', () => {
-  const first = cells({ 1: 'Trung Quốc, 5 Ngày, Tổng 3GB', 2: '1', 3: 'Gói tổng', 16: 'SKU-TOTAL', 17: '', 23: 'WM-TOTAL' });
+  const first = cells({ 1: 'Trung Quốc, 5 Ngày, Tổng 3GB', 2: '1', 3: 'Gói tổng', 16: 'SKU-TOTAL', 17: '', 23: 'WM-TOTAL', 24: '' });
   const second = [...first]; second[2] = '3'; second[10] = 'different-apn';
   const rows = collapseHicoGocRows(parseHicoGocRows([Array(25).fill('header'), first, second]));
   assert.equal(rows.length, 2);
@@ -83,7 +99,7 @@ test('HICO GỐC optional enrichment fields accept internal media paths and reje
   assert.equal(parsed.normalizedData.description, 'Mô tả mới');
   assert.equal(parsed.normalizedData.installationGuide, '<p>Cài đặt mới</p>');
   const [external] = parseHicoGocRows([Array(28).fill('header'), cells({ 25: 'https://cdn.example/image.webp' })], { fieldMapping: mapping });
-  assert.ok(external.errors.some((error) => error.code === 'IMAGE_SOURCE_UNSUPPORTED'));
+  assert.ok(external.warnings.some((warning) => warning.code === 'IMAGE_SOURCE_UNSUPPORTED'));
 });
 
 test('quick preview matches exact SKU and blocks stale Sheet before apply', async () => {

@@ -81,6 +81,12 @@ export interface CatalogProduct {
   slug: string;
   name: string;
   operation: ProductOperation;
+  medium?: SimMedium;
+  packageFamilyKey?: string;
+  sourceCategoryLabel?: string;
+  operationResolution?: 'RESOLVED' | 'UNRESOLVED';
+  coverageFilter?: { rawLabel: string; normalizedLabel?: string; id?: string } | Array<{ rawLabel: string; normalizedLabel?: string; id?: string }>;
+  dataPolicy?: CatalogDataPolicy;
   categoryId?: string | null;
   categoryPath?: CatalogCategoryPathItem[];
   categoryNeedsReview?: boolean;
@@ -130,6 +136,7 @@ export interface CatalogVariant {
   sku: string;
   publicSku?: string;
   dataLimit?: string;
+  dataPolicy?: CatalogDataPolicy;
   duration?: string;
   tripDayOptions?: number[];
   cancellable?: boolean;
@@ -137,6 +144,8 @@ export interface CatalogVariant {
   compareAtPrice?: number | null;
   currency: 'VND' | 'USD';
   medium: SimMedium;
+  packageFamilyKey?: string;
+  operationResolution?: 'RESOLVED' | 'UNRESOLVED';
   supplier: Supplier;
   fulfillmentMethod: FulfillmentMethod;
   providerOfferId?: string;

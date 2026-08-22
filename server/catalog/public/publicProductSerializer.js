@@ -90,16 +90,21 @@ const optionalPublicFields = (source) => pickDefined(source, PUBLIC_CONTENT_FIEL
 const providerPublicMetadata = (variant, providerOffers = []) => {
   const offer = providerOffers.find((item) => item.id === variant.providerOfferId);
   return {
-    ...(offer?.apnHint ? { apn: offer.apnHint } : {}),
+    ...(offer?.apnHint || variant.apnGuidance ? { apn: offer?.apnHint ?? variant.apnGuidance } : {}),
     ...(offer?.networkLabel ? { networkLabel: offer.networkLabel } : {}),
     ...(variant.publicNote ? { publicNote: variant.publicNote } : {}),
   };
 };
 
-export const toPublicVariant = (variant, { providerOffers = [] } = {}) => {
+export const toPublicVariant = (variant, { providerOffers = [], productOperation } = {}) => {
   if (!isPublicVariant(variant)) return null;
   const stock = Number.isInteger(variant.stock) && variant.stock >= 0 ? variant.stock : null;
   const content = optionalPublicFields(variant);
+  const shippingRequired = productOperation === 'topup'
+    ? false
+    : productOperation === undefined
+      ? variant.shippingRequired === true || variant.medium === 'physical_sim'
+      : variant.shippingRequired === true || (productOperation === 'new_subscription' && variant.medium === 'physical_sim') || productOperation === 'device_sale';
   return {
     id: variant.id,
     productId: variant.productId,
@@ -108,6 +113,7 @@ export const toPublicVariant = (variant, { providerOffers = [] } = {}) => {
     compareAtPrice: variant.compareAtPrice ?? null,
     currency: variant.currency,
     active: true,
+    ...(variant.dataPolicy === 'daily' || variant.dataPolicy === 'total' ? { dataPolicy: variant.dataPolicy } : {}),
     dataLimit: variant.dataLimit ?? null,
     duration: variant.duration ?? null,
     ...(Array.isArray(variant.tripDayOptions) ? { tripDayOptions: [...variant.tripDayOptions] } : {}),
@@ -116,7 +122,7 @@ export const toPublicVariant = (variant, { providerOffers = [] } = {}) => {
     supplier: variant.supplier,
     fulfillmentMethod: variant.fulfillmentMethod,
     requiresExistingSim: variant.requiresExistingSim === true,
-    shippingRequired: variant.shippingRequired === true || variant.medium === 'physical_sim',
+    shippingRequired,
     stock,
     availability: {
       inStock: stock === null || stock > 0,
@@ -158,7 +164,7 @@ const summarizeVariants = (variants, options) => {
 };
 
 export const toPublicProduct = (product, variants = [], { includeVariants = true, mediaAssets = [], providerOffers = [] } = {}) => {
-  const publicVariantRows = summarizeVariants(variants, { providerOffers });
+  const publicVariantRows = summarizeVariants(variants, { providerOffers, productOperation: product.operation });
   const media = normalizeMedia(product, mediaAssets);
   const content = optionalPublicFields(product);
   const deviceSpecifications = pickDeviceSpecifications(product.deviceSpecifications ?? product.deviceSpecs);
@@ -173,12 +179,15 @@ export const toPublicProduct = (product, variants = [], { includeVariants = true
     name: product.name,
     ...(product.dataPolicy === 'daily' || product.dataPolicy === 'total' ? { dataPolicy: product.dataPolicy } : {}),
     operation: product.operation,
+    ...(product.medium ? { medium: product.medium } : {}),
+    ...(Array.isArray(product.familyProducts) ? { familyProducts: product.familyProducts.map(({ id, slug, name, medium, operation }) => ({ id, slug, name, medium: medium ?? null, operation })) } : {}),
     categoryId: product.categoryId ?? null,
     categoryPath: Array.isArray(product.categoryPath) ? product.categoryPath.map(({ id, slug, name }) => ({ id, slug, name })) : [],
     status: product.status,
     featured: product.featured === true,
     coverageType: product.coverageType,
     coverageIds: Array.isArray(product.coverageIds) ? [...product.coverageIds] : [],
+    ...(product.coverageFilter ? { coverageFilter: Array.isArray(product.coverageFilter) ? product.coverageFilter.map(({ rawLabel, normalizedLabel, id }) => ({ rawLabel, ...(normalizedLabel ? { normalizedLabel } : {}), ...(id ? { id } : {}) })) : { rawLabel: product.coverageFilter.rawLabel, ...(product.coverageFilter.normalizedLabel ? { normalizedLabel: product.coverageFilter.normalizedLabel } : {}), ...(product.coverageFilter.id ? { id: product.coverageFilter.id } : {}) } } : {}),
     primaryImage: media.primary,
     ...(media.primaryAsset ? { primaryMedia: { id: media.primaryAsset.id, url: media.primaryAsset.publicUrl, alt: media.primaryAsset.altText || product.name, ...(media.primaryAsset.title ? { title: media.primaryAsset.title } : {}) } } : {}),
     image: media.primary ?? undefined,
@@ -204,14 +213,14 @@ export const toPublicProduct = (product, variants = [], { includeVariants = true
     priceSummary: publicVariantRows.priceSummary,
     availability: publicVariantRows.availability,
     deviceGeneration: publicVariantRows.deviceGeneration,
-    variants: includeVariants ? variants.map((variant) => toPublicVariant(variant, { providerOffers })).filter(Boolean) : publicVariantRows.rows,
+    variants: includeVariants ? variants.map((variant) => toPublicVariant(variant, { providerOffers, productOperation: product.operation })).filter(Boolean) : publicVariantRows.rows,
   };
 };
 
 export const publicVariantsForProduct = (product, variants, { providerOffers = [] } = {}) => (
   variants
     .filter((variant) => variant.productId === product.id)
-    .map((variant) => toPublicVariant(variant, { providerOffers }))
+    .map((variant) => toPublicVariant(variant, { providerOffers, productOperation: product.operation }))
     .filter(Boolean)
 );
 

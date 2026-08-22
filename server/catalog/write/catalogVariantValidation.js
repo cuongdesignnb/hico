@@ -29,7 +29,11 @@ const VARIANT_FIELDS = new Set([
   'sku',
   'publicSku',
   'dataLimit',
+  'dataPolicy',
   'duration',
+  'tripDayOptions',
+  'packageFamilyKey',
+  'operationResolution',
   'price',
   'compareAtPrice',
   'currency',
@@ -94,6 +98,13 @@ export const normalizeVariantInput = (input, { partial = false } = {}) => {
       result[field] = optionalString(input[field], `variant.${field}`);
     }
   }
+  if (input.dataPolicy !== undefined && !['daily', 'total'].includes(input.dataPolicy)) throw new CatalogWriteError('variant.dataPolicy không hợp lệ.');
+  if (input.tripDayOptions !== undefined) {
+    if (!Array.isArray(input.tripDayOptions) || input.tripDayOptions.some((value) => !Number.isInteger(value) || value < 1 || value > 3650)) throw new CatalogWriteError('variant.tripDayOptions không hợp lệ.');
+    result.tripDayOptions = [...new Set(input.tripDayOptions)].sort((left, right) => left - right);
+  }
+  if (input.packageFamilyKey !== undefined) result.packageFamilyKey = optionalString(input.packageFamilyKey, 'variant.packageFamilyKey', 160);
+  if (input.operationResolution !== undefined && !['RESOLVED', 'UNRESOLVED'].includes(input.operationResolution)) throw new CatalogWriteError('variant.operationResolution không hợp lệ.');
   if (!partial || input.price !== undefined) {
     result.price = nonNegativeNumber(input.price, 'variant.price');
   }

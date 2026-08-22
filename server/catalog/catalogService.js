@@ -61,6 +61,10 @@ const toAdminProductSummary = (product) => {
   slug: product.slug,
   name: product.name,
   operation: product.operation,
+  medium: product.medium ?? null,
+  packageFamilyKey: product.packageFamilyKey,
+  sourceCategoryLabel: product.sourceCategoryLabel,
+  operationResolution: product.operationResolution,
   categoryId: product.categoryId ?? null,
   categoryPath: product.categoryPath ?? [],
   categoryNeedsReview: product.categoryNeedsReview === true,
@@ -114,7 +118,15 @@ export const createCatalogService = (
     const version = versionIdFor(catalog.manifest);
     if (!cachedModel || version === null || cachedVersion !== version) {
       cachedCategories = catalog.categories ?? cloneSeedCategories();
-      cachedModel = attachVariants({ ...catalog, categories: cachedCategories });
+      const attached = attachVariants({ ...catalog, categories: cachedCategories });
+      cachedModel = attached.map((product) => ({
+        ...product,
+        ...(product.packageFamilyKey ? {
+          familyProducts: attached
+            .filter((candidate) => candidate.packageFamilyKey === product.packageFamilyKey && candidate.operation === product.operation && candidate.id !== product.id)
+            .map((candidate) => ({ id: candidate.id, slug: candidate.slug, name: candidate.name, medium: candidate.medium ?? candidate.variants.find((variant) => variant.medium)?.medium ?? null, operation: candidate.operation })),
+        } : {}),
+      }));
       cachedVersion = version;
     }
     return { products: cachedModel, categories: cachedCategories, versionId: version };
@@ -179,6 +191,21 @@ export const createCatalogService = (
         if (filters.sort === 'featured') return Number(right.featured) - Number(left.featured);
         return left.name.localeCompare(right.name, 'vi');
       });
+      const categoryCounts = new Map();
+      const destinationCounts = new Map();
+      for (const product of publicProducts) {
+        if (product.categoryId) categoryCounts.set(product.categoryId, (categoryCounts.get(product.categoryId) ?? 0) + 1);
+        for (const destination of product.coverageFilter ? (Array.isArray(product.coverageFilter) ? product.coverageFilter : [product.coverageFilter]) : []) {
+          if (destination.id) destinationCounts.set(destination.id, { id: destination.id, name: destination.rawLabel, count: (destinationCounts.get(destination.id)?.count ?? 0) + 1 });
+        }
+        if (!product.coverageFilter && product.coverageIds.length > 0) {
+          for (const id of product.coverageIds) destinationCounts.set(id, { id, name: product.coverageLabel ?? id, count: (destinationCounts.get(id)?.count ?? 0) + 1 });
+        }
+      }
+      const facets = {
+        categories: categories.filter((category) => category.status === 'active' && category.parentId).map((category) => ({ id: category.id, slug: category.slug, name: category.name, count: categoryCounts.get(category.id) ?? 0 })).filter((category) => category.count > 0),
+        destinations: [...destinationCounts.values()].sort((left, right) => left.name.localeCompare(right.name, 'vi')),
+      };
       if (!paginate) return sorted;
       const page = Math.max(1, Number.parseInt(filters.page ?? '1', 10) || 1);
       const pageSize = Math.min(100, Math.max(1, Number.parseInt(filters.pageSize ?? '24', 10) || 24));
@@ -186,6 +213,7 @@ export const createCatalogService = (
       return {
         items: sorted.slice(start, start + pageSize),
         pagination: { page, pageSize, total: sorted.length, totalPages: Math.ceil(sorted.length / pageSize) },
+        facets,
       };
     },
 
