@@ -63,9 +63,10 @@ export const classifyHicoGocSourceRows = (rows = []) => {
     providerProductTypeCounts: {},
     packageClassCounts: {},
     branchStatus: {
-      physical: { complete: 0, missingSku: 0, missingWmid: 0, invalidPrice: 0 },
-      esim: { complete: 0, missingSku: 0, missingWmid: 0, invalidPrice: 0 },
+      physical: { complete: 0, missingSku: 0, missingWmid: 0, invalidPrice: 0, partialIdentity: 0 },
+      esim: { complete: 0, missingSku: 0, missingWmid: 0, invalidPrice: 0, partialIdentity: 0 },
     },
+    rowsWithoutIdentity: 0,
   };
   const normalizedRows = rows.some((row) => Array.isArray(row.branches))
     ? rows
@@ -80,6 +81,7 @@ export const classifyHicoGocSourceRows = (rows = []) => {
     if (physical) diagnostics.physicalRows += 1;
     if (esim) diagnostics.esimRows += 1;
     if (physical && esim) diagnostics.bothBranches += 1;
+    if (!physical && !esim) diagnostics.rowsWithoutIdentity += 1;
     diagnostics.physicalBranches += row.branches?.filter((branch) => branch.medium === 'physical_sim').length ?? 0;
     diagnostics.esimBranches += row.branches?.filter((branch) => branch.medium === 'esim').length ?? 0;
     for (const branch of row.branches ?? []) {
@@ -91,6 +93,7 @@ export const classifyHicoGocSourceRows = (rows = []) => {
         if (codes.has(`MISSING_${medium === 'esim' ? 'ESIM' : 'PHYSICAL'}_SKU`) || codes.has('MISSING_SKU')) status.missingSku += 1;
         if (codes.has(`MISSING_${medium === 'esim' ? 'ESIM' : 'PHYSICAL'}_WMID`) || codes.has('MISSING_WMID')) status.missingWmid += 1;
         if (codes.has('INVALID_SELLING_PRICE')) status.invalidPrice += 1;
+        if (codes.has('INVALID_BRANCH_PAIR')) status.partialIdentity += 1;
       }
       const providerType = branch.providerOffer?.providerProductType;
       if (providerType !== undefined && providerType !== null) {

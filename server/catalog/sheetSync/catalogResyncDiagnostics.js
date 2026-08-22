@@ -24,7 +24,7 @@ export const topRejectionReasons = (reasons = {}) => Object.entries(reasons)
   .slice(0, 10)
   .map(([code, count]) => ({ code, count }));
 
-export const fullSyncDiagnostics = ({ reference, range, parser, candidate, baselineCatalog } = {}) => {
+export const fullSyncDiagnostics = ({ reference, range, parser, candidate, baselineCatalog, sourceAudit = null } = {}) => {
   const candidateReasons = candidate?.summary?.rejectionReasons ?? rejectionReasonsForRows(candidate?.rows ?? []);
   const previousProducts = baselineCatalog?.products?.length ?? 0;
   const previousVariants = baselineCatalog?.variants?.length ?? 0;
@@ -61,6 +61,8 @@ export const fullSyncDiagnostics = ({ reference, range, parser, candidate, basel
       validRows: candidate?.summary?.validRows ?? 0,
       uniqueProductKeys: candidate?.summary?.uniqueProductKeys ?? 0,
       packageFamilies: candidate?.summary?.packageFamilies ?? 0,
+      packageFamilyMediumGroups: candidate?.summary?.packageFamilyMediumGroups ?? 0,
+      packageFamilyDiagnostics: candidate?.summary?.packageFamilyDiagnostics ?? {},
       exactDuplicatesCollapsed: candidate?.summary?.exactDuplicatesCollapsed ?? 0,
       groupingCollisions: candidate?.summary?.groupingCollisions ?? 0,
       operationUnresolved: candidate?.summary?.operationUnresolved ?? 0,
@@ -74,6 +76,7 @@ export const fullSyncDiagnostics = ({ reference, range, parser, candidate, basel
       topRejectionReasons: topRejectionReasons(candidateReasons),
     },
     provider,
+    ...(sourceAudit ? { sourceAudit } : {}),
     ...(sizeDropWarning ? { sizeDropWarning } : {}),
   };
 };

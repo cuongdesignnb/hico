@@ -307,6 +307,22 @@ export const buildFullSyncCandidate = async ({
     const key = `${packageFamilyKey}:${row.sourceMedium}`;
     familyGroups.set(key, [...(familyGroups.get(key) ?? []), row]);
   }
+  const packageFamilyMediums = new Map();
+  for (const row of validRows) {
+    const packageFamilyKey = row.normalizedData.packageFamilyKey;
+    packageFamilyMediums.set(packageFamilyKey, new Set([
+      ...(packageFamilyMediums.get(packageFamilyKey) ?? []),
+      row.sourceMedium,
+    ]));
+  }
+  const packageFamilyDiagnostics = {
+    uniqueFamilies: packageFamilyMediums.size,
+    mediumGroups: familyGroups.size,
+    familiesWithBothMediums: [...packageFamilyMediums.values()].filter((mediums) => mediums.has('physical_sim') && mediums.has('esim')).length,
+    physicalOnlyFamilies: [...packageFamilyMediums.values()].filter((mediums) => mediums.has('physical_sim') && !mediums.has('esim')).length,
+    esimOnlyFamilies: [...packageFamilyMediums.values()].filter((mediums) => mediums.has('esim') && !mediums.has('physical_sim')).length,
+    otherMediumFamilies: [...packageFamilyMediums.values()].filter((mediums) => !mediums.has('physical_sim') && !mediums.has('esim')).length,
+  };
   const groups = new Map();
   for (const familyRows of familyGroups.values()) {
     const operationGroups = new Map();
@@ -416,7 +432,25 @@ export const buildFullSyncCandidate = async ({
     const dataPolicy = uniqueValue(groupRows, 'dataPolicy');
     const networks = [...new Set(groupRows.flatMap((row) => row.normalizedData.coverage?.networks ?? []).filter(nonEmpty))];
     const networkValue = networks.join(', ');
-    const coverageNeedsReview = groupRows.some((row) => row.normalizedData.coverage?.needsReview === true);
+    const coverageStatuses = new Set(groupRows.map((row) => {
+      const coverage = row.normalizedData.coverage;
+      if (coverage?.status) return coverage.status;
+      if (coverage?.carrierOnly) return 'CARRIER_ONLY';
+      if (Array.isArray(coverage?.destinations) && coverage.destinations.length > 0) return coverage.needsReview ? 'PARTIAL' : 'RESOLVED';
+      return 'MISSING';
+    }));
+    const coverageStatus = coverageStatuses.has('UNKNOWN_DESTINATION')
+      ? 'UNKNOWN_DESTINATION'
+      : coverageStatuses.has('CARRIER_ONLY')
+        ? 'CARRIER_ONLY'
+        : coverageStatuses.has('PARTIAL')
+          ? 'PARTIAL'
+          : coverageStatuses.has('UNRESOLVED')
+            ? 'UNRESOLVED'
+            : coverageStatuses.has('RESOLVED')
+              ? 'RESOLVED'
+              : 'MISSING';
+    const coverageNeedsReview = coverageStatus !== 'RESOLVED';
     const productId = previousProduct?.id ?? `product-${sha(productSourceKey)}`;
     const sheetGallery = Array.isArray(galleryValue) ? galleryValue : [];
     const sheetImage = await resolveImage({ pathValue: imageValue ?? sheetGallery[0], mediaAssetRepository });
@@ -464,6 +498,7 @@ export const buildFullSyncCandidate = async ({
       ...(coverageLabels.length === 1 ? { coverageLabel: coverageLabels[0] } : {}),
       ...(coverageLabels.length ? { rawCoverageLabels: coverageLabels } : {}),
       ...(coverageDestinations.length ? { coverageDestinations } : {}),
+      coverageStatus,
       coverageNeedsReview,
       ...(networkValue ? { networkLabel: networkValue } : {}),
       ...image,
@@ -554,7 +589,9 @@ export const buildFullSyncCandidate = async ({
       invalidRows: preparedRows.filter((row) => row.status === 'INVALID').length,
       validRows: validRows.length,
       uniqueProductKeys: groups.size,
-      packageFamilies: familyGroups.size,
+      packageFamilies: packageFamilyDiagnostics.uniqueFamilies,
+      packageFamilyMediumGroups: packageFamilyDiagnostics.mediumGroups,
+      packageFamilyDiagnostics,
       exactDuplicatesCollapsed,
       groupingCollisions,
       operationUnresolved: preparedRows.filter((row) => row.operationEvidence?.resolution === 'UNRESOLVED').length,
@@ -566,15 +603,20 @@ export const buildFullSyncCandidate = async ({
       coverage: (() => {
         const summary = products.reduce((result, product) => {
           if (product.coverageNeedsReview) result.coverageNeedsReviewProducts += 1;
+          const status = product.coverageStatus ?? (product.coverageNeedsReview ? 'NEEDS_REVIEW' : 'RESOLVED');
+          result.statusCounts[status] = (result.statusCounts[status] ?? 0) + 1;
           for (const destination of product.coverageDestinations ?? []) {
             result.uniqueDestinations.add(destination.id);
+            result.destinationNames[destination.id] = destination.name;
             result.destinationCounts[destination.id] = (result.destinationCounts[destination.id] ?? 0) + 1;
           }
           return result;
-        }, { coverageNeedsReviewProducts: 0, uniqueDestinations: new Set(), destinationCounts: {} });
+        }, { coverageNeedsReviewProducts: 0, uniqueDestinations: new Set(), destinationNames: {}, destinationCounts: {}, statusCounts: {} });
         return {
           coverageNeedsReviewProducts: summary.coverageNeedsReviewProducts,
           uniqueDestinations: [...summary.uniqueDestinations].sort(),
+          uniqueDestinationNames: Object.fromEntries([...summary.uniqueDestinations].sort().map((id) => [id, summary.destinationNames[id]])),
+          statusCounts: summary.statusCounts,
           topDestinations: Object.entries(summary.destinationCounts)
             .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
             .slice(0, 20)

@@ -11,6 +11,7 @@ import { buildFullSyncCandidate } from '../catalog/sheetSync/catalogResyncServic
 import { assertFullSyncCandidate, fullSyncDiagnostics } from '../catalog/sheetSync/catalogResyncDiagnostics.js';
 import { HICO_GOC_SHEET, hicoGocHeaderHash, normalizeHicoGocSettings, validateHicoGocRange } from '../catalog/sheetSync/hicoGocMapping.js';
 import { SheetSyncError } from '../catalog/sheetSync/sheetSyncTypes.js';
+import { auditHicoGocValues } from '../catalog/sheetSync/hicoGocContractAudit.js';
 import { cloneSeedCategories } from '../catalog/categories/catalogCategories.js';
 import { createCanonicalCatalogRepository } from '../catalog/canonical/canonicalCatalogRepository.js';
 import { createProviderOfferRepository } from '../providers/providerOfferRepository.js';
@@ -108,6 +109,7 @@ export const runHicoGocFullSyncAudit = async ({
     };
     const validation = assertHicoGocReference(reference, settings);
     const parsed = parseHicoGocRowsWithDiagnostics(reference.values, settings);
+    const sourceAudit = auditHicoGocValues(reference.values, settings);
     const canonicalRepository = canonicalRepositoryFactory();
     const providerRepository = providerRepositoryFactory();
     const current = await canonicalRepository.readCatalog({ required: true });
@@ -121,7 +123,7 @@ export const runHicoGocFullSyncAudit = async ({
       offers,
       previousCatalog,
     });
-    const diagnostics = fullSyncDiagnostics({ reference, range: validation.range, parser: parsed.diagnostics, candidate, baselineCatalog: previousCatalog });
+    const diagnostics = fullSyncDiagnostics({ reference, range: validation.range, parser: parsed.diagnostics, candidate, baselineCatalog: previousCatalog, sourceAudit });
     assertFullSyncCandidate(diagnostics);
     return {
       status: 'ok',
@@ -166,6 +168,8 @@ export const runHicoGocFullSyncAudit = async ({
         validRows: diagnostics.candidate.validRows,
         uniqueProductKeys: diagnostics.candidate.uniqueProductKeys,
         packageFamilies: diagnostics.candidate.packageFamilies,
+        packageFamilyMediumGroups: diagnostics.candidate.packageFamilyMediumGroups,
+        packageFamilyDiagnostics: diagnostics.candidate.packageFamilyDiagnostics,
         exactDuplicatesCollapsed: diagnostics.candidate.exactDuplicatesCollapsed,
         groupingCollisions: diagnostics.candidate.groupingCollisions,
         operationUnresolved: diagnostics.candidate.operationUnresolved,
@@ -178,6 +182,7 @@ export const runHicoGocFullSyncAudit = async ({
         sourceClassification: diagnostics.candidate.sourceClassification,
       },
       provider: diagnostics.provider,
+      sourceAudit: diagnostics.sourceAudit,
       enrichment: {
         imagesReused: candidate.summary.imagesReused,
         imagesFromSheet: candidate.summary.imagesFromSheet,

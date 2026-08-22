@@ -48,7 +48,15 @@ const autoNetworkPrefix = /^tự động nhận mạng\s*:\s*/i;
 
 export const parseHicoCoverage = (value) => {
   const rawLabel = normalize(value);
-  if (!rawLabel) return { rawLabel: '', destinations: [], networks: [], needsReview: true, carrierOnly: false };
+  if (!rawLabel) return {
+    rawLabel: '',
+    destinations: [],
+    networks: [],
+    needsReview: true,
+    carrierOnly: false,
+    unresolvedDestination: false,
+    status: 'MISSING',
+  };
 
   let text = rawLabel;
   let listPrefix = false;
@@ -92,14 +100,27 @@ export const parseHicoCoverage = (value) => {
     items.forEach(addDestination);
   }
 
-  const carrierOnly = destinations.length === 0 && networks.length > 0;
-  const needsReview = carrierOnly || unresolvedDestination || (!structured && !listPrefix);
-  return { rawLabel, destinations, networks, needsReview, carrierOnly };
+  const carrierOnly = destinations.length === 0 && networks.length > 0 && !structured;
+  const needsReview = carrierOnly || unresolvedDestination || (destinations.length === 0 && !structured && !listPrefix);
+  const status = !rawLabel
+    ? 'MISSING'
+    : carrierOnly
+      ? 'CARRIER_ONLY'
+      : unresolvedDestination
+        ? 'UNKNOWN_DESTINATION'
+        : destinations.length > 0 && needsReview
+          ? 'PARTIAL'
+          : destinations.length > 0
+            ? 'RESOLVED'
+            : 'UNRESOLVED';
+  return { rawLabel, destinations, networks, needsReview, carrierOnly, unresolvedDestination, status };
 };
 
 export const coverageSummaryFor = (parsedCoverage = {}) => ({
   coverageNeedsReview: parsedCoverage.needsReview === true,
+  coverageStatus: parsedCoverage.status ?? (parsedCoverage.needsReview ? 'NEEDS_REVIEW' : 'RESOLVED'),
   carrierOnlyLabels: parsedCoverage.carrierOnly ? 1 : 0,
+  unresolvedDestinationLabels: parsedCoverage.unresolvedDestination ? 1 : 0,
   resolvedDestinations: Array.isArray(parsedCoverage.destinations) ? parsedCoverage.destinations.length : 0,
   networks: Array.isArray(parsedCoverage.networks) ? parsedCoverage.networks.length : 0,
 });

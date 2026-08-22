@@ -29,4 +29,12 @@ test('coverage parser does not fuzzy-create a destination for an unknown label',
   assert.deepEqual(result.destinations, []);
   assert.deepEqual(result.networks, ['Example Telecom']);
   assert.equal(result.needsReview, true);
+  assert.equal(result.status, 'UNKNOWN_DESTINATION');
+});
+
+test('coverage parser distinguishes missing coverage from an unresolved country', () => {
+  assert.equal(parseHicoCoverage('').status, 'MISSING');
+  assert.equal(parseHicoCoverage('Narnia: Example Telecom').status, 'UNKNOWN_DESTINATION');
+  assert.equal(parseHicoCoverage('Trung Quốc').status, 'RESOLVED');
+  assert.equal(parseHicoCoverage('Trung Quốc: China Unicom').status, 'RESOLVED');
 });

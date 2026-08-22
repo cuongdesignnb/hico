@@ -112,6 +112,7 @@ export interface CatalogProduct {
   coverageLabel?: string;
   rawCoverageLabels?: string[];
   coverageDestinations?: Array<{ id: string; name: string }>;
+  coverageStatus?: 'RESOLVED' | 'MISSING' | 'CARRIER_ONLY' | 'UNKNOWN_DESTINATION' | 'PARTIAL' | 'UNRESOLVED';
   coverageNeedsReview?: boolean;
   speedLabel?: string;
   hotspotSupport?: string;

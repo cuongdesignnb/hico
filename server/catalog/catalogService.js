@@ -80,6 +80,7 @@ const toAdminProductSummary = (product) => {
   coverageLabel: product.coverageLabel ?? null,
   rawCoverageLabels: Array.isArray(product.rawCoverageLabels) ? [...product.rawCoverageLabels] : [],
   coverageDestinations: Array.isArray(product.coverageDestinations) ? product.coverageDestinations.map(({ id, name }) => ({ id, name })) : [],
+  coverageStatus: product.coverageStatus ?? null,
   coverageNeedsReview: product.coverageNeedsReview === true,
   networkLabel: product.networkLabel ?? null,
   image: product.image ?? null,

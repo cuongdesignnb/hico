@@ -113,6 +113,9 @@ test('full sync splits one package family by medium and uses operation-aware ful
   });
   assert.equal(candidate.products.length, 2);
   assert.equal(new Set(candidate.products.map((product) => product.packageFamilyKey)).size, 1);
+  assert.equal(candidate.summary.packageFamilies, 1);
+  assert.equal(candidate.summary.packageFamilyMediumGroups, 2);
+  assert.equal(candidate.summary.packageFamilyDiagnostics.familiesWithBothMediums, 1);
   assert.deepEqual(new Set(candidate.products.map((product) => product.categoryId)), new Set(['cat-sim-vat-ly', 'cat-esim-du-lich']));
   assert.equal(candidate.variants.find((variant) => variant.medium === 'physical_sim')?.shippingRequired, true);
   assert.equal(candidate.variants.find((variant) => variant.medium === 'esim')?.shippingRequired, false);
@@ -144,6 +147,8 @@ test('full sync keeps package class and parsed coverage separate from family ide
   assert.equal(candidate.products[0].categoryId, 'cat-esim-san-goi');
   assert.deepEqual(candidate.products[0].coverageIds, ['coverage-trung-quoc']);
   assert.deepEqual(candidate.products[0].coverageFilter, { rawLabel: 'Trung Quốc', normalizedLabel: 'trung quốc', id: 'coverage-trung-quoc' });
+  assert.equal(candidate.products[0].coverageStatus, 'RESOLVED');
+  assert.deepEqual(candidate.summary.coverage.uniqueDestinationNames, { 'coverage-trung-quoc': 'Trung Quốc' });
   assert.equal(candidate.products[0].networkLabel, 'China Unicom, China Telecom');
 });
 

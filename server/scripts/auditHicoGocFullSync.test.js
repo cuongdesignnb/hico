@@ -88,6 +88,9 @@ test('audit uses Admin Settings and encrypted credential when legacy env is abse
   assert.equal(result.candidate.products, 1);
   assert.equal(result.candidate.variants, 1);
   assert.equal(result.provider.resolved, 1);
+  assert.equal(result.sourceAudit.branchDiagnostics.physical.complete, 1);
+  assert.equal(result.sourceAudit.coverage.carrierOnlyRows, 1);
+  assert.deepEqual(result.sourceAudit.coverage.destinationNames, {});
   assert.equal(deps.client.receivedCredential.private_key, credential.private_key);
   assert.equal(JSON.stringify(result).includes('TEST_SECRET_KEY'), false);
   assert.equal(deps.pool.ended, 1);
