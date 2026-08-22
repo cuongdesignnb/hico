@@ -32,6 +32,7 @@ const PRODUCT_FIELDS = new Set([
   'operation',
   'medium',
   'packageFamilyKey',
+  'packageClass',
   'sourceCategoryLabel',
   'operationResolution',
   'dataPolicy',
@@ -39,6 +40,9 @@ const PRODUCT_FIELDS = new Set([
   'categoryNeedsReview',
   'coverageType',
   'coverageIds',
+  'rawCoverageLabels',
+  'coverageDestinations',
+  'coverageNeedsReview',
   'image',
   'primaryMediaId',
   'gallery',
@@ -175,6 +179,10 @@ export const normalizeProductInput = (input, { partial = false } = {}) => {
     result.medium = input.medium;
   }
   if (input.packageFamilyKey !== undefined) result.packageFamilyKey = optionalString(input.packageFamilyKey, 'product.packageFamilyKey', 160);
+  if (input.packageClass !== undefined) {
+    if (!['STANDARD_TRAVEL', 'PRELOADED', 'VOICE', 'DOMESTIC_VN', 'UNKNOWN'].includes(input.packageClass)) throw new CatalogWriteError('product.packageClass không hợp lệ.');
+    result.packageClass = input.packageClass;
+  }
   if (input.sourceCategoryLabel !== undefined) result.sourceCategoryLabel = optionalString(input.sourceCategoryLabel, 'product.sourceCategoryLabel', 160);
   if (input.operationResolution !== undefined) {
     if (!['RESOLVED', 'UNRESOLVED'].includes(input.operationResolution)) throw new CatalogWriteError('product.operationResolution không hợp lệ.');
@@ -195,6 +203,18 @@ export const normalizeProductInput = (input, { partial = false } = {}) => {
   if (input.categoryNeedsReview !== undefined) {
     if (typeof input.categoryNeedsReview !== 'boolean') throw new CatalogWriteError('categoryNeedsReview phải là boolean.');
     result.categoryNeedsReview = input.categoryNeedsReview;
+  }
+  if (input.coverageNeedsReview !== undefined) {
+    if (typeof input.coverageNeedsReview !== 'boolean') throw new CatalogWriteError('coverageNeedsReview phải là boolean.');
+    result.coverageNeedsReview = input.coverageNeedsReview;
+  }
+  if (input.rawCoverageLabels !== undefined) {
+    if (!Array.isArray(input.rawCoverageLabels) || input.rawCoverageLabels.some((value) => typeof value !== 'string' || value.trim() === '')) throw new CatalogWriteError('rawCoverageLabels không hợp lệ.');
+    result.rawCoverageLabels = [...new Set(input.rawCoverageLabels.map((value) => value.trim()))];
+  }
+  if (input.coverageDestinations !== undefined) {
+    if (!Array.isArray(input.coverageDestinations) || input.coverageDestinations.some((value) => !value || typeof value.id !== 'string' || typeof value.name !== 'string')) throw new CatalogWriteError('coverageDestinations không hợp lệ.');
+    result.coverageDestinations = input.coverageDestinations.map(({ id, name }) => ({ id: id.trim(), name: name.trim() }));
   }
   if (!partial || input.coverageType !== undefined || input.coverageIds !== undefined) {
     if (partial && (

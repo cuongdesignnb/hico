@@ -31,6 +31,8 @@ const VARIANT_FIELDS = new Set([
   'dataLimit',
   'dataPolicy',
   'duration',
+  'durationValue',
+  'durationUnit',
   'tripDayOptions',
   'packageFamilyKey',
   'operationResolution',
@@ -97,6 +99,14 @@ export const normalizeVariantInput = (input, { partial = false } = {}) => {
     if (input[field] !== undefined) {
       result[field] = optionalString(input[field], `variant.${field}`);
     }
+  }
+  if (input.durationValue !== undefined) {
+    if (!Number.isInteger(input.durationValue) || input.durationValue < 1 || input.durationValue > 3650) throw new CatalogWriteError('variant.durationValue không hợp lệ.');
+    result.durationValue = input.durationValue;
+  }
+  if (input.durationUnit !== undefined) {
+    if (!['day', 'month'].includes(input.durationUnit)) throw new CatalogWriteError('variant.durationUnit không hợp lệ.');
+    result.durationUnit = input.durationUnit;
   }
   if (input.dataPolicy !== undefined && !['daily', 'total'].includes(input.dataPolicy)) throw new CatalogWriteError('variant.dataPolicy không hợp lệ.');
   if (input.tripDayOptions !== undefined) {
@@ -239,7 +249,9 @@ export const validateVariantRecord = ({
       sku: variant.sku,
       publicSku: variant.publicSku,
       dataLimit: variant.dataLimit,
-      duration: variant.duration,
+       duration: variant.duration,
+       durationValue: variant.durationValue,
+       durationUnit: variant.durationUnit,
       price: variant.price,
       compareAtPrice: variant.compareAtPrice,
       currency: variant.currency,

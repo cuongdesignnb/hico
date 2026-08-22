@@ -83,6 +83,7 @@ export interface CatalogProduct {
   operation: ProductOperation;
   medium?: SimMedium;
   packageFamilyKey?: string;
+  packageClass?: 'STANDARD_TRAVEL' | 'PRELOADED' | 'VOICE' | 'DOMESTIC_VN' | 'UNKNOWN';
   sourceCategoryLabel?: string;
   operationResolution?: 'RESOLVED' | 'UNRESOLVED';
   coverageFilter?: { rawLabel: string; normalizedLabel?: string; id?: string } | Array<{ rawLabel: string; normalizedLabel?: string; id?: string }>;
@@ -109,6 +110,9 @@ export interface CatalogProduct {
   networkLabel?: string;
   publicNote?: string;
   coverageLabel?: string;
+  rawCoverageLabels?: string[];
+  coverageDestinations?: Array<{ id: string; name: string }>;
+  coverageNeedsReview?: boolean;
   speedLabel?: string;
   hotspotSupport?: string;
   activationPolicy?: string;
@@ -138,6 +142,8 @@ export interface CatalogVariant {
   dataLimit?: string;
   dataPolicy?: CatalogDataPolicy;
   duration?: string;
+  durationValue?: number;
+  durationUnit?: 'day' | 'month';
   tripDayOptions?: number[];
   cancellable?: boolean;
   price: number;
@@ -224,6 +230,11 @@ export interface CatalogAdminVariantSummary {
   needsReview: boolean;
   archived: boolean;
   stock?: number | null;
+  duration?: string | null;
+  durationValue?: number | null;
+  durationUnit?: 'day' | 'month' | null;
+  tripDayOptions?: number[];
+  operationResolution?: 'RESOLVED' | 'UNRESOLVED' | null;
 }
 
 export interface CatalogAdminProductSummary extends Omit<CatalogProduct, 'variants'> {

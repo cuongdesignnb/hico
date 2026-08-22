@@ -341,7 +341,7 @@ export const createCatalogWriteService = ({
             path: categoryPath(context.categories, category.id),
             productCount: projected.filter((product) => categoryFilterIds(context.categories, category.id).has(product.categoryId)).length,
           })),
-        unresolvedCount: projected.filter((product) => !product.categoryId || product.categoryNeedsReview).length,
+        unresolvedCount: projected.filter((product) => !product.categoryId || product.categoryNeedsReview || product.operationResolution === 'UNRESOLVED').length,
         catalogVersionId: currentVersionId(context.manifest),
       };
     },

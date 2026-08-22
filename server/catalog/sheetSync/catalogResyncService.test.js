@@ -48,13 +48,17 @@ test('full sync keeps exact previous media and enrichment while draft-safe', asy
 });
 
 test('full sync keeps structurally valid rows when provider offers are unavailable', async () => {
+  const knownRow = { ...rowData, sourceCategoryLabel: 'Sim' };
   const candidate = await buildFullSyncCandidate({
-    rows: [{ id: 'row-unresolved', sourceMedium: rowData.medium, normalizedData: rowData, errors: [], status: 'VALID' }],
+    rows: [{ id: 'row-unresolved', sourceMedium: knownRow.medium, normalizedData: knownRow, errors: [], status: 'VALID' }],
     categories: cloneSeedCategories(), offers: [], previousCatalog: { products: [], variants: [] },
   });
   const [variant] = candidate.variants;
   assert.equal(candidate.products.length, 1);
   assert.equal(candidate.variants.length, 1);
+  assert.equal(candidate.products[0].categoryId, 'cat-sim-vat-ly');
+  assert.equal(candidate.products[0].categoryNeedsReview, false);
+  assert.equal(candidate.products[0].operationResolution, 'UNRESOLVED');
   assert.equal(candidate.rows[0].status, 'VALID');
   assert.equal(candidate.rows[0].providerResolution, 'UNRESOLVED');
   assert.deepEqual(candidate.rows[0].errors, []);
@@ -112,6 +116,35 @@ test('full sync splits one package family by medium and uses operation-aware ful
   assert.deepEqual(new Set(candidate.products.map((product) => product.categoryId)), new Set(['cat-sim-vat-ly', 'cat-esim-du-lich']));
   assert.equal(candidate.variants.find((variant) => variant.medium === 'physical_sim')?.shippingRequired, true);
   assert.equal(candidate.variants.find((variant) => variant.medium === 'esim')?.shippingRequired, false);
+});
+
+test('full sync keeps package class and parsed coverage separate from family identity', async () => {
+  const row = {
+    ...rowData,
+    sourceCategoryLabel: 'Sẵn gói',
+    medium: 'esim',
+    sku: 'SKU-PRELOADED-ESIM',
+    wmproductId: 'WM-PRELOADED-ESIM',
+    coverageLabel: 'Trung Quốc: China Unicom, China Telecom',
+    coverage: {
+      rawLabel: 'Trung Quốc: China Unicom, China Telecom',
+      destinations: [{ id: 'coverage-trung-quoc', name: 'Trung Quốc' }],
+      networks: ['China Unicom', 'China Telecom'],
+      needsReview: false,
+      carrierOnly: false,
+    },
+  };
+  const candidate = await buildFullSyncCandidate({
+    rows: [{ id: 'row-preloaded', sourceMedium: 'esim', normalizedData: row, errors: [], warnings: [], status: 'VALID' }],
+    categories: cloneSeedCategories(),
+    offers: [{ id: 'offer-preloaded', provider: 'worldmove', wmproductId: row.wmproductId, providerProductType: 0, active: true, leSIM: true }],
+    previousCatalog: { products: [], variants: [] },
+  });
+  assert.equal(candidate.products[0].packageClass, 'PRELOADED');
+  assert.equal(candidate.products[0].categoryId, 'cat-esim-san-goi');
+  assert.deepEqual(candidate.products[0].coverageIds, ['coverage-trung-quoc']);
+  assert.deepEqual(candidate.products[0].coverageFilter, { rawLabel: 'Trung Quốc', normalizedLabel: 'trung quốc', id: 'coverage-trung-quoc' });
+  assert.equal(candidate.products[0].networkLabel, 'China Unicom, China Telecom');
 });
 
 test('full sync does not reuse one legacy product identity across operations', async () => {

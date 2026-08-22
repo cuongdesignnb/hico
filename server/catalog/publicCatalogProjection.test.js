@@ -59,6 +59,23 @@ test('public serializer preserves safe media/content and strips private fields r
   assert.equal('pin' in product.variants[0].deviceSpecifications, false);
 });
 
+test('public serializer exposes package class and destination facets without provider identity', () => {
+  const product = toPublicProduct({
+    ...products[0],
+    packageClass: 'PRELOADED',
+    coverageDestinations: [{ id: 'coverage-trung-quoc', name: 'Trung Quốc' }],
+  }, [{
+    ...variants[0],
+    duration: '1 tháng',
+    durationValue: 1,
+    durationUnit: 'month',
+  }]);
+  assert.equal(product.packageClass, 'PRELOADED');
+  assert.deepEqual(product.coverageDestinations, [{ id: 'coverage-trung-quoc', name: 'Trung Quốc' }]);
+  assert.equal(product.variants[0].durationUnit, 'month');
+  assert.equal('wmproductId' in product.variants[0], false);
+});
+
 test('public serializer resolves active MediaAsset references and ignores archived assets', () => {
   const product = toPublicProduct({
     ...products[0],

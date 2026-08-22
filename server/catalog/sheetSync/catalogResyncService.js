@@ -3,8 +3,7 @@ import { readJson } from '../write/catalogWritePersistence.js';
 import { defaultUploadsDirectory } from '../write/catalogWritePersistence.js';
 import { assertCanonicalCatalog } from '../canonical/canonicalCatalogValidation.js';
 import { applySkuConflictMetadata } from '../canonical/canonicalSkuConflicts.js';
-import { cloneSeedCategories } from '../categories/catalogCategories.js';
-import { categoryById, operationForCategoryKind } from '../categories/catalogCategories.js';
+import { categoryIdForPackage, cloneSeedCategories, mergeCatalogCategories } from '../categories/catalogCategories.js';
 import { createCanonicalCatalogRepository } from '../canonical/canonicalCatalogRepository.js';
 import { createCatalogVersionCommitService } from '../write/catalogVersionCommitService.js';
 import { createCatalogAuditRepository } from '../write/catalogAuditRepository.js';
@@ -18,7 +17,6 @@ import { createCatalogCommandService } from '../write/catalogCommandService.js';
 import { sanitizeCatalogHtml } from '../write/catalogProductValidation.js';
 import { assertFullSyncCandidate, assertPersistedFullSyncSummary, fullSyncDiagnostics, rejectionReasonsForRows } from './catalogResyncDiagnostics.js';
 import {
-  coverageFilterFor,
   legacyProductSourceKeyFor,
   legacyVariantSourceKeyFor,
   normalizeIdentityToken,
@@ -26,7 +24,7 @@ import {
   productSourceKeyFor,
   variantSourceKeyFor,
 } from './packageFamilyIdentity.js';
-import { classifyHicoGocSourceRows, operationEvidenceFor } from './hicoGocSourceClassifier.js';
+import { classifyHicoGocSourceRows, classifyHicoPackageClass, operationEvidenceFor } from './hicoGocSourceClassifier.js';
 
 const PLACEHOLDER_IMAGES = Object.freeze({
   esim: '/images/art_esim_intro.png',
@@ -169,13 +167,6 @@ const claimProduct = (product, reuseState) => {
   return product;
 };
 
-const derivedCategoryIdFor = (operation, medium) => {
-  if (operation === 'topup') return 'cat-nap-them';
-  if (operation === 'new_subscription' && medium === 'esim') return 'cat-esim-du-lich';
-  if (operation === 'new_subscription' && medium === 'physical_sim') return 'cat-sim-vat-ly';
-  return null;
-};
-
 const enrichmentForRows = (rows, index, reuseState) => {
   const productKey = productSourceKeyFor(rows[0]?.normalizedData ?? {});
   const directCandidates = [
@@ -304,14 +295,15 @@ export const buildFullSyncCandidate = async ({
   now = () => new Date(),
   mediaAssetRepository = null,
 } = {}) => {
+  const mergedCategories = mergeCatalogCategories(categories, cloneSeedCategories());
   const preparedRows = resolveProviderRows({ rows, offers });
   const validRows = preparedRows.filter((row) => row.status === 'VALID');
   const index = createEnrichmentIndex(previousCatalog ?? {});
   const familyGroups = new Map();
   for (const row of validRows) {
-    const coverageFilter = coverageFilterFor(row.normalizedData?.coverageLabel ?? row.normalizedData?.networkLabel);
-    const packageFamilyKey = packageFamilyKeyFor({ ...row.normalizedData, coverageFilter });
-    row.normalizedData = { ...row.normalizedData, packageFamilyKey, coverageFilter };
+    const packageClass = row.normalizedData.packageClass ?? classifyHicoPackageClass(row.normalizedData.sourceCategoryLabel);
+    const packageFamilyKey = packageFamilyKeyFor({ ...row.normalizedData, packageClass });
+    row.normalizedData = { ...row.normalizedData, packageClass, packageFamilyKey };
     const key = `${packageFamilyKey}:${row.sourceMedium}`;
     familyGroups.set(key, [...(familyGroups.get(key) ?? []), row]);
   }
@@ -324,6 +316,7 @@ export const buildFullSyncCandidate = async ({
         ?? previousProductForRows([row], index, 'device_sale');
       const evidence = operationEvidenceFor({
         sourceCategoryLabel: row.normalizedData.sourceCategoryLabel,
+        packageClass: row.normalizedData.packageClass,
         providerOffer: row.providerOffer,
         previousOperation: previousProduct?.operation,
       });
@@ -400,13 +393,19 @@ export const buildFullSyncCandidate = async ({
     const productSourceKey = data.sourceKey;
     const operation = data.operation;
     const operationResolution = data.operationResolution ?? 'UNRESOLVED';
-    const derivedCategoryId = derivedCategoryIdFor(operation, first.sourceMedium);
-    const previousCategory = previousProduct?.categoryId ? categoryById(categories, previousProduct.categoryId) : null;
-    const previousCategoryId = previousCategory && operationForCategoryKind(previousCategory.kind) === operation ? previousCategory.id : null;
-    const categoryId = previousCategoryId ?? (operationResolution === 'RESOLVED' ? derivedCategoryId : null);
+    const packageClass = data.packageClass ?? 'UNKNOWN';
+    const categoryId = categoryIdForPackage(packageClass, first.sourceMedium, operation);
     const coverageLabels = [...new Set(groupRows.map((row) => row.normalizedData.coverageLabel).filter(nonEmpty))];
-    const coverageFilters = coverageLabels.map(coverageFilterFor).filter((filter) => filter.id);
-    const coverageIds = coverageFilters.map((filter) => filter.id);
+    const coverageDestinations = [...new Map(groupRows
+      .flatMap((row) => row.normalizedData.coverage?.destinations ?? [])
+      .filter((destination) => destination?.id && destination?.name)
+      .map((destination) => [destination.id, { id: destination.id, name: destination.name }])).values()];
+    const coverageFilters = coverageDestinations.map((destination) => ({
+      rawLabel: destination.name,
+      normalizedLabel: normalizeToken(destination.name),
+      id: destination.id,
+    }));
+    const coverageIds = coverageDestinations.map((destination) => destination.id);
     const previousCoverageIds = Array.isArray(previousProduct?.coverageIds) ? [...previousProduct.coverageIds] : [];
     const effectiveCoverageIds = coverageIds.length > 0 ? coverageIds : previousCoverageIds;
     const effectiveCoverageType = effectiveCoverageIds.length > 1
@@ -415,7 +414,9 @@ export const buildFullSyncCandidate = async ({
         ? 'country'
         : previousProduct?.coverageType ?? 'not_applicable';
     const dataPolicy = uniqueValue(groupRows, 'dataPolicy');
-    const networkValue = uniqueValue(groupRows, 'networkLabel');
+    const networks = [...new Set(groupRows.flatMap((row) => row.normalizedData.coverage?.networks ?? []).filter(nonEmpty))];
+    const networkValue = networks.join(', ');
+    const coverageNeedsReview = groupRows.some((row) => row.normalizedData.coverage?.needsReview === true);
     const productId = previousProduct?.id ?? `product-${sha(productSourceKey)}`;
     const sheetGallery = Array.isArray(galleryValue) ? galleryValue : [];
     const sheetImage = await resolveImage({ pathValue: imageValue ?? sheetGallery[0], mediaAssetRepository });
@@ -456,12 +457,15 @@ export const buildFullSyncCandidate = async ({
     const timestamp = now().toISOString();
     products.push({
       categoryId,
-      categoryNeedsReview: !categoryId || operationResolution !== 'RESOLVED',
+      categoryNeedsReview: !categoryId || packageClass === 'UNKNOWN',
       coverageType: effectiveCoverageType,
       coverageIds: effectiveCoverageIds,
       ...(coverageFilters.length ? { coverageFilter: coverageFilters.length === 1 ? coverageFilters[0] : coverageFilters } : {}),
       ...(coverageLabels.length === 1 ? { coverageLabel: coverageLabels[0] } : {}),
-      ...(typeof networkValue === 'string' ? { networkLabel: networkValue } : {}),
+      ...(coverageLabels.length ? { rawCoverageLabels: coverageLabels } : {}),
+      ...(coverageDestinations.length ? { coverageDestinations } : {}),
+      coverageNeedsReview,
+      ...(networkValue ? { networkLabel: networkValue } : {}),
       ...image,
       ...(previousProduct?.featured !== undefined ? { featured: previousProduct.featured } : { featured: false }),
       ...(previousProduct?.seoTitle ? { seoTitle: previousProduct.seoTitle } : {}),
@@ -470,6 +474,7 @@ export const buildFullSyncCandidate = async ({
       id: productId,
       sourceKey: productSourceKey,
       packageFamilyKey: data.packageFamilyKey,
+      packageClass,
       sourceCategoryLabel: data.sourceCategoryLabel,
       medium: first.sourceMedium,
       operationResolution,
@@ -497,6 +502,8 @@ export const buildFullSyncCandidate = async ({
         dataPolicy: variantData.dataPolicy,
         dataLimit: variantData.dataLimit,
         duration: variantData.duration,
+        ...(variantData.durationValue !== undefined ? { durationValue: variantData.durationValue } : {}),
+        ...(variantData.durationUnit ? { durationUnit: variantData.durationUnit } : {}),
         ...(variantData.tripDayOptions ? { tripDayOptions: variantData.tripDayOptions } : {}),
         price: variantData.price ?? 0,
         compareAtPrice: variantData.compareAtPrice ?? null,
@@ -511,6 +518,7 @@ export const buildFullSyncCandidate = async ({
         ...(row.providerOffer?.providerProductId ? { providerProductId: row.providerOffer.providerProductId } : {}),
         ...(variantData.activationPolicy ? { activationPolicy: variantData.activationPolicy } : {}),
         ...(variantData.networkLabel ? { networkLabel: variantData.networkLabel } : {}),
+        ...(variantData.rawCoverageLabel ? { coverageLabel: variantData.rawCoverageLabel } : {}),
         ...(variantData.apn ? { apnGuidance: variantData.apn } : {}),
         ...(variantData.publicNote ? { publicNote: variantData.publicNote } : {}),
         ...(variantData.speedLabel ? { speedLabel: variantData.speedLabel } : {}),
@@ -526,7 +534,7 @@ export const buildFullSyncCandidate = async ({
     }
   }
   const safeVariants = applySkuConflictMetadata(variants);
-  assertCanonicalCatalog({ products, variants: safeVariants, categories, providerOffers: offers, manualQrs: [] });
+  assertCanonicalCatalog({ products, variants: safeVariants, categories: mergedCategories, providerOffers: offers, manualQrs: [] });
   const provider = safeVariants.reduce((summary, variant) => {
     const resolution = variant.providerResolution ?? PROVIDER_RESOLUTIONS.UNRESOLVED;
     if (resolution === PROVIDER_RESOLUTIONS.RESOLVED) summary.resolved += 1;
@@ -553,11 +561,32 @@ export const buildFullSyncCandidate = async ({
       operations: Object.fromEntries([...new Set(products.map((product) => product.operation))].map((operation) => [operation, products.filter((product) => product.operation === operation).length])),
       mediums: Object.fromEntries([...new Set(variants.map((variant) => variant.medium ?? 'none'))].map((medium) => [medium, variants.filter((variant) => (variant.medium ?? 'none') === medium).length])),
       coverageFilters: [...new Set(products.flatMap((product) => product.coverageIds ?? []))],
+      packageClasses: Object.fromEntries([...new Set(products.map((product) => product.packageClass ?? 'UNKNOWN'))].map((packageClass) => [packageClass, products.filter((product) => (product.packageClass ?? 'UNKNOWN') === packageClass).length])),
+      categoryCounts: Object.fromEntries([...new Set(products.map((product) => product.categoryId ?? 'UNCLASSIFIED'))].map((categoryId) => [categoryId, products.filter((product) => (product.categoryId ?? 'UNCLASSIFIED') === categoryId).length])),
+      coverage: (() => {
+        const summary = products.reduce((result, product) => {
+          if (product.coverageNeedsReview) result.coverageNeedsReviewProducts += 1;
+          for (const destination of product.coverageDestinations ?? []) {
+            result.uniqueDestinations.add(destination.id);
+            result.destinationCounts[destination.id] = (result.destinationCounts[destination.id] ?? 0) + 1;
+          }
+          return result;
+        }, { coverageNeedsReviewProducts: 0, uniqueDestinations: new Set(), destinationCounts: {} });
+        return {
+          coverageNeedsReviewProducts: summary.coverageNeedsReviewProducts,
+          uniqueDestinations: [...summary.uniqueDestinations].sort(),
+          topDestinations: Object.entries(summary.destinationCounts)
+            .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+            .slice(0, 20)
+            .map(([id, count]) => ({ id, count })),
+        };
+      })(),
       sourceClassification: classifyHicoGocSourceRows(preparedRows),
       rejectionReasons: rejectionReasonsForRows(preparedRows),
       provider,
       ...enrichment,
     },
+    categories: mergedCategories,
   };
 };
 
@@ -616,7 +645,7 @@ export const createCatalogResyncService = ({
     const validation = validateReference(reference, settings);
     const parsed = parseHicoGocRowsWithDiagnostics(reference.values, settings);
     const collapsed = collapseHicoGocRows(parsed.rows);
-    const candidate = await buildFullSyncCandidate({ rows: collapsed, categories: current.categories, offers, previousCatalog, now, mediaAssetRepository });
+    const candidate = await buildFullSyncCandidate({ rows: collapsed, categories: current.categories ?? cloneSeedCategories(), offers, previousCatalog, now, mediaAssetRepository });
     const diagnostics = fullSyncDiagnostics({ reference, range: validation.range, parser: parsed.diagnostics, candidate, baselineCatalog: current.products.length > 0 ? current : previousCatalog });
     assertFullSyncCandidate(diagnostics);
     return { candidate, diagnostics };
@@ -700,7 +729,7 @@ export const createCatalogResyncService = ({
       try {
         const committed = await commitService.commit({
           versionId: newVersionId, parentVersionId: currentVersion(current.manifest), products: prepared.candidate.products, variants: prepared.candidate.variants,
-          categories: current.categories, providerOffers: offers, manualQrs, commandType: 'CATALOG_FULL_SYNC', commandId: id,
+          categories: prepared.candidate.categories, providerOffers: offers, manualQrs, commandType: 'CATALOG_FULL_SYNC', commandId: id,
           requestHash: batch.sourceHash, createdAt,
           beforePointer: () => auditRepository.append(audit),
           rollbackBeforePointer: () => auditRepository.remove(audit.id),

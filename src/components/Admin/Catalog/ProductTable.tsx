@@ -43,6 +43,14 @@ const statusLabels: Record<CatalogStatus, string> = {
   archived: 'Lưu trữ',
 };
 
+const packageClassLabels = {
+  STANDARD_TRAVEL: 'Gói du lịch',
+  PRELOADED: 'Sẵn gói',
+  VOICE: 'Có gọi',
+  DOMESTIC_VN: 'SIM Việt Nam',
+  UNKNOWN: 'Chưa xác định nhóm',
+} as const;
+
 const formatPrice = (product: CatalogAdminProductSummary) => {
   const activeVariants = product.variants.filter((variant) => variant.active);
   const variants = activeVariants.length > 0 ? activeVariants : product.variants;
@@ -126,8 +134,10 @@ const ProductTable = ({ products, onEdit, onClone, entityType, selectedIds, onTo
                   <div className="catalog-product-copy">
                     <strong>{product.name}</strong>
                     <span>{product.id}</span>
+                    <span>{packageClassLabels[product.packageClass ?? 'UNKNOWN']}</span>
                     <span>{product.medium === 'physical_sim' ? 'SIM vật lý' : product.medium === 'esim' ? 'eSIM' : product.operation === 'topup' ? 'Nạp thêm' : 'Chưa xác định medium'}</span>
                     {product.operationResolution === 'UNRESOLVED' && <span className="catalog-review-warning"><AlertTriangle size={12} /> Cần xác nhận nghiệp vụ</span>}
+                    {product.coverageNeedsReview && <span className="catalog-review-warning"><AlertTriangle size={12} /> Cần rà vùng phủ</span>}
                     {reviewCount > 0 && (
                       <span className="catalog-review-warning">
                         <AlertTriangle size={12} />

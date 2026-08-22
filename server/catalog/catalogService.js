@@ -8,6 +8,7 @@ import { createProviderOfferRepository } from '../providers/providerOfferReposit
 import {
   categoryFilterIds,
   cloneSeedCategories,
+  mergeCatalogCategories,
   projectProductCategory,
 } from './categories/catalogCategories.js';
 
@@ -46,6 +47,11 @@ const toAdminVariantSummary = (variant) => ({
   needsReview: variant.needsReview === true,
   archived: variant.archived === true,
   stock: Number.isInteger(variant.stock) ? variant.stock : null,
+  duration: variant.duration ?? null,
+  durationValue: variant.durationValue ?? null,
+  durationUnit: variant.durationUnit ?? null,
+  tripDayOptions: Array.isArray(variant.tripDayOptions) ? [...variant.tripDayOptions] : [],
+  operationResolution: variant.operationResolution ?? null,
 });
 
 const toAdminProductSummary = (product) => {
@@ -63,6 +69,7 @@ const toAdminProductSummary = (product) => {
   operation: product.operation,
   medium: product.medium ?? null,
   packageFamilyKey: product.packageFamilyKey,
+  packageClass: product.packageClass ?? 'UNKNOWN',
   sourceCategoryLabel: product.sourceCategoryLabel,
   operationResolution: product.operationResolution,
   categoryId: product.categoryId ?? null,
@@ -70,6 +77,11 @@ const toAdminProductSummary = (product) => {
   categoryNeedsReview: product.categoryNeedsReview === true,
   coverageType: product.coverageType,
   coverageIds: Array.isArray(product.coverageIds) ? [...product.coverageIds] : [],
+  coverageLabel: product.coverageLabel ?? null,
+  rawCoverageLabels: Array.isArray(product.rawCoverageLabels) ? [...product.rawCoverageLabels] : [],
+  coverageDestinations: Array.isArray(product.coverageDestinations) ? product.coverageDestinations.map(({ id, name }) => ({ id, name })) : [],
+  coverageNeedsReview: product.coverageNeedsReview === true,
+  networkLabel: product.networkLabel ?? null,
   image: product.image ?? null,
   featured: product.featured === true,
   status: product.status,
@@ -86,7 +98,7 @@ const matchesAdminFilters = (product, filters) => {
     : '';
   if (filters.operation && product.operation !== filters.operation) return false;
   if (filters.categoryIds?.size && !filters.categoryIds.has(product.categoryId)) return false;
-  if (filters.unresolved === true && product.categoryId && !product.categoryNeedsReview) return false;
+  if (filters.unresolved === true && product.categoryId && !product.categoryNeedsReview && product.operationResolution !== 'UNRESOLVED') return false;
   if (filters.coverage && product.coverageType !== filters.coverage) return false;
   if (filters.medium && !product.variants.some((variant) => variant.medium === filters.medium)) return false;
   if (filters.supplier && !product.variants.some((variant) => variant.supplier === filters.supplier)) return false;
@@ -117,7 +129,7 @@ export const createCatalogService = (
       : mapLegacyCatalog(await reader.readLegacyCatalog());
     const version = versionIdFor(catalog.manifest);
     if (!cachedModel || version === null || cachedVersion !== version) {
-      cachedCategories = catalog.categories ?? cloneSeedCategories();
+      cachedCategories = mergeCatalogCategories(catalog.categories ?? [], cloneSeedCategories());
       const attached = attachVariants({ ...catalog, categories: cachedCategories });
       cachedModel = attached.map((product) => ({
         ...product,

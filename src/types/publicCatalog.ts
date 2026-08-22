@@ -51,6 +51,8 @@ export interface PublicVariant {
   dataPolicy?: 'daily' | 'total';
   dataLimit: string | null;
   duration: string | null;
+  durationValue?: number;
+  durationUnit?: 'day' | 'month';
   tripDayOptions?: number[];
   cancellable?: boolean;
   medium: PublicMedium;
@@ -101,6 +103,7 @@ export interface PublicProduct {
   slug: string;
   name: string;
   dataPolicy?: 'daily' | 'total';
+  packageClass?: 'STANDARD_TRAVEL' | 'PRELOADED' | 'VOICE' | 'DOMESTIC_VN' | 'UNKNOWN';
   operation: PublicOperation;
   medium?: PublicMedium;
   familyProducts?: Array<{ id: string; slug: string; name: string; medium: PublicMedium; operation: PublicOperation }>;
@@ -109,6 +112,7 @@ export interface PublicProduct {
   status: 'active';
   coverageType: PublicCoverageType;
   coverageIds: string[];
+  coverageDestinations?: Array<{ id: string; name: string }>;
   coverageFilter?: { rawLabel: string; normalizedLabel?: string; id?: string } | Array<{ rawLabel: string; normalizedLabel?: string; id?: string }>;
   primaryImage: string | null;
   primaryMedia?: PublicProductMedia | null;
