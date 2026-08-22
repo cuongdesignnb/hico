@@ -48,6 +48,12 @@ export const getVariantPublishReadiness = ({
       message: 'Variant đang cần Admin review.',
     });
   }
+  if (variant.operationResolution === 'UNRESOLVED' || product?.operationResolution === 'UNRESOLVED') {
+    errors.push({
+      code: 'OPERATION_UNRESOLVED',
+      message: 'Product chưa được xác nhận loại nghiệp vụ.',
+    });
+  }
   if (variant.skuConflict) {
     errors.push({ code: 'SKU_CONFLICT', message: 'SKU đang bị trùng.' });
   }
@@ -93,6 +99,9 @@ export const getProductPublishReadiness = ({
       code: 'PRODUCT_ARCHIVED',
       message: 'Product đã được archive.',
     });
+  }
+  if (product.operationResolution === 'UNRESOLVED') {
+    errors.push({ code: 'OPERATION_UNRESOLVED', message: 'Product chưa được xác nhận loại nghiệp vụ.' });
   }
   if (products.some(
     (item) => item.id !== product.id && item.slug === product.slug,

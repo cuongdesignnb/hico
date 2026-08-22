@@ -50,3 +50,12 @@ test('canonical validation does not request shipping for a physical top-up', () 
   assert.equal(result.shipping, null);
   assert.deepEqual(result.topup, { simNum: '0900000000', day: 10 });
 });
+
+test('canonical checkout rejects unresolved operation with a typed reason', () => {
+  const unresolvedProduct = { ...product, operationResolution: 'UNRESOLVED' };
+  assert.throws(() => validateCanonicalCart({
+    catalog: { products: [unresolvedProduct], variants: [{ ...baseVariant, productId: unresolvedProduct.id, active: true, needsReview: false }] },
+    request: { items: [{ variantId: baseVariant.id, quantity: 1 }], customer: { name: 'A', email: 'a@example.com', phone: '0900000000' } },
+    requireCustomer: true,
+  }), (error) => error.code === 'CANONICAL_OPERATION_UNRESOLVED');
+});

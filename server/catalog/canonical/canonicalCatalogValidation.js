@@ -21,6 +21,7 @@ const CATALOG_STATUSES = new Set(['active', 'draft', 'archived']);
 const CURRENCIES = new Set(['VND', 'USD']);
 const MEDIUMS = new Set(['esim', 'physical_sim', null]);
 const DATA_POLICIES = new Set(['daily', 'total']);
+const PACKAGE_CLASSES = new Set(['STANDARD_TRAVEL', 'PRELOADED', 'VOICE', 'DOMESTIC_VN', 'UNKNOWN']);
 const SUPPLIERS = new Set(['worldmove', 'local_carrier', 'hico', 'other']);
 const FULFILLMENT_METHODS = new Set([
   'WORLDMOVE_ESIM_REDEEM',
@@ -139,6 +140,7 @@ export const validateCanonicalCatalog = ({
     if (!isNonEmptyString(product?.slug)) errors.push(`${label} has invalid slug.`);
     if (!isNonEmptyString(product?.name)) errors.push(`${label} has invalid name.`);
     if (product?.dataPolicy !== undefined && !DATA_POLICIES.has(product.dataPolicy)) errors.push(`${label} has invalid dataPolicy.`);
+    if (product?.packageClass !== undefined && !PACKAGE_CLASSES.has(product.packageClass)) errors.push(`${label} has invalid packageClass.`);
     if (!PRODUCT_OPERATIONS.has(product?.operation)) {
       errors.push(`${label} has invalid operation.`);
     }
@@ -175,6 +177,7 @@ export const validateCanonicalCatalog = ({
   const orphanVariants = [];
   for (const variant of variantList) {
     const label = `Variant ${variant?.id ?? '<missing>'}`;
+    if (variant?.operationResolution === 'UNRESOLVED') blockPublish(variant.id, 'operationUnresolved');
     if (variant?.needsReview) blockPublish(variant.id, 'needsReview');
     if (duplicateSkuSet.has(variant?.sku)) {
       blockPublish(variant.id, 'duplicateSku');
@@ -207,6 +210,8 @@ export const validateCanonicalCatalog = ({
     if (variant?.tripDayOptions !== undefined && (!Array.isArray(variant.tripDayOptions) || variant.tripDayOptions.some((value) => !Number.isInteger(value) || value < 1))) {
       errors.push(`${label} has invalid tripDayOptions.`);
     }
+    if (variant?.durationValue !== undefined && (!Number.isInteger(variant.durationValue) || variant.durationValue < 1 || variant.durationValue > 3650)) errors.push(`${label} has invalid durationValue.`);
+    if (variant?.durationUnit !== undefined && !['day', 'month'].includes(variant.durationUnit)) errors.push(`${label} has invalid durationUnit.`);
     if (variant?.cancellable !== undefined && typeof variant.cancellable !== 'boolean') errors.push(`${label} has invalid cancellable.`);
     if (
       variant?.compareAtPrice !== null

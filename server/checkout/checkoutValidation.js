@@ -134,6 +134,9 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
     const product = productsById.get(variant.productId);
     if (!product) throw new CheckoutError('Không tìm thấy sản phẩm.', 'PRODUCT_NOT_FOUND');
     if (product.status === 'archived') throw new CheckoutError('Sản phẩm đã được lưu trữ.', 'VARIANT_NOT_AVAILABLE');
+    if (product.operationResolution === 'UNRESOLVED' || variant.operationResolution === 'UNRESOLVED') {
+      throw new CheckoutError('Nghiệp vụ của sản phẩm chưa được xác nhận.', 'CANONICAL_OPERATION_UNRESOLVED');
+    }
     if (product.status !== 'active' || variant.active !== true || variant.needsReview === true || variant.skuConflict) {
       throw new CheckoutError('Sản phẩm không thể thanh toán lúc này.', 'VARIANT_NOT_AVAILABLE');
     }

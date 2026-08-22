@@ -39,6 +39,7 @@ const CAPABILITY_ORDER = [
 
 const MESSAGE_BY_REASON = Object.freeze({
   CANONICAL_MEDIUM_UNRESOLVED: 'Canonical variant medium could not be resolved.',
+  CANONICAL_OPERATION_UNRESOLVED: 'Nghiệp vụ của sản phẩm chưa được xác nhận.',
   CANONICAL_VARIANT_NOT_READY: 'Canonical variant is not ready for checkout.',
   ESIM_FULFILLMENT_NOT_READY: 'eSIM chưa sẵn sàng để cấp.',
   PHYSICAL_INVENTORY_NOT_CONFIGURED: 'Kho SIM vật lý chưa được cấu hình.',
@@ -216,6 +217,10 @@ export const createCheckoutReadinessService = ({
     for (const item of classifications) {
       if (!item.variant || !canonicalVariantReady(item)) {
         if (item.variant) blockingReasons.push('CANONICAL_VARIANT_NOT_READY');
+        continue;
+      }
+      if (item.product.operationResolution === 'UNRESOLVED' || item.variant.operationResolution === 'UNRESOLVED') {
+        blockingReasons.push('CANONICAL_OPERATION_UNRESOLVED');
         continue;
       }
       if (item.kind === CHECKOUT_FULFILLMENT_KINDS.PHYSICAL_SIM && !inventoryMatches({ rows: inventory, variant: item.variant })) {
