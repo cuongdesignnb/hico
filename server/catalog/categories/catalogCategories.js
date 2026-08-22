@@ -23,6 +23,11 @@ export const SEED_CATEGORIES = Object.freeze([
   seed({ id: 'cat-sim-esim', slug: 'sim-esim', name: 'SIM & eSIM', parentId: null, kind: null, sortOrder: 10 }),
   seed({ id: 'cat-esim-du-lich', slug: 'esim-du-lich', name: 'eSIM du lịch', parentId: 'cat-sim-esim', kind: 'esim', sortOrder: 10 }),
   seed({ id: 'cat-sim-vat-ly', slug: 'sim-vat-ly', name: 'SIM vật lý', parentId: 'cat-sim-esim', kind: 'physical_sim', sortOrder: 20 }),
+  seed({ id: 'cat-esim-san-goi', slug: 'esim-san-goi', name: 'eSIM sẵn gói', parentId: 'cat-sim-esim', kind: 'esim', sortOrder: 30 }),
+  seed({ id: 'cat-sim-vat-ly-san-goi', slug: 'sim-vat-ly-san-goi', name: 'SIM vật lý sẵn gói', parentId: 'cat-sim-esim', kind: 'physical_sim', sortOrder: 40 }),
+  seed({ id: 'cat-esim-co-goi', slug: 'esim-co-goi', name: 'eSIM có gọi', parentId: 'cat-sim-esim', kind: 'esim', sortOrder: 50 }),
+  seed({ id: 'cat-sim-vat-ly-co-goi', slug: 'sim-vat-ly-co-goi', name: 'SIM vật lý có gọi', parentId: 'cat-sim-esim', kind: 'physical_sim', sortOrder: 60 }),
+  seed({ id: 'cat-sim-viet-nam', slug: 'sim-viet-nam', name: 'SIM Việt Nam', parentId: 'cat-sim-esim', kind: 'physical_sim', sortOrder: 70 }),
   seed({ id: 'cat-dich-vu', slug: 'dich-vu', name: 'Dịch vụ', parentId: null, kind: null, sortOrder: 20 }),
   seed({ id: 'cat-nap-them', slug: 'nap-them', name: 'Nạp thêm', parentId: 'cat-dich-vu', kind: 'topup', sortOrder: 10 }),
   seed({ id: 'cat-thiet-bi', slug: 'thiet-bi', name: 'Thiết bị', parentId: null, kind: null, sortOrder: 30 }),
@@ -31,6 +36,28 @@ export const SEED_CATEGORIES = Object.freeze([
 ]);
 
 export const cloneSeedCategories = () => SEED_CATEGORIES.map((category) => ({ ...category }));
+
+export const mergeCatalogCategories = (currentCategories = [], seedCategories = SEED_CATEGORIES) => {
+  const current = Array.isArray(currentCategories) ? currentCategories.map((category) => ({ ...category })) : [];
+  const ids = new Set(current.map((category) => category?.id).filter(Boolean));
+  const slugs = new Set(current.map((category) => category?.slug).filter(Boolean));
+  for (const category of seedCategories) {
+    if (ids.has(category.id) || slugs.has(category.slug)) continue;
+    current.push({ ...category });
+    ids.add(category.id);
+    slugs.add(category.slug);
+  }
+  return current;
+};
+
+export const categoryIdForPackage = (packageClass, medium, operation) => {
+  if (operation === 'topup') return 'cat-nap-them';
+  if (packageClass === 'STANDARD_TRAVEL') return medium === 'esim' ? 'cat-esim-du-lich' : medium === 'physical_sim' ? 'cat-sim-vat-ly' : null;
+  if (packageClass === 'PRELOADED') return medium === 'esim' ? 'cat-esim-san-goi' : medium === 'physical_sim' ? 'cat-sim-vat-ly-san-goi' : null;
+  if (packageClass === 'VOICE') return medium === 'esim' ? 'cat-esim-co-goi' : medium === 'physical_sim' ? 'cat-sim-vat-ly-co-goi' : null;
+  if (packageClass === 'DOMESTIC_VN') return medium === 'physical_sim' ? 'cat-sim-viet-nam' : null;
+  return null;
+};
 
 export const operationForCategoryKind = (kind) => {
   if (kind === 'topup') return 'topup';

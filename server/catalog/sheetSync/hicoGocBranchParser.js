@@ -1,5 +1,9 @@
 import { parsePrice } from './sheetRowParser.js';
-import { mediumSourceMismatch } from './hicoGocSourceClassifier.js';
+import { parseHicoCoverage } from '../coverage/hicoCoverageParser.js';
+import { parseDurationMention, parseDurationValue } from './hicoGocDurationParser.js';
+import { classifyHicoPackageClass, mediumSourceMismatch } from './hicoGocSourceClassifier.js';
+
+export { parseDurationValue } from './hicoGocDurationParser.js';
 
 const FORMULA_ERROR = /^#(?:REF!|VALUE!|NAME\?|N\/A|DIV\/0!|NUM!|NULL!)/i;
 const MOJIBAKE = /(?:\u00c3\u0192.|\u00c3\u201a.|\u00c3\u00a1\u00c2\xBB|\u00c3\u00a2\u00e2\u201a\u00ac|[\u00c3\u00c2\u00e2\u00f0\ufffd])/;
@@ -18,16 +22,6 @@ const criticalClean = (value, field, errors, warnings) => {
   return text;
 };
 
-const number = (value, field, errors, warnings = errors) => {
-  const text = criticalClean(value, field, errors, warnings);
-  if (text === undefined) return undefined;
-  if (!/^\d+$/.test(text) || Number(text) < 1 || Number(text) > 3650) {
-    errors.push({ code: 'DURATION_INVALID', field });
-    return undefined;
-  }
-  return Number(text);
-};
-
 const amount = (value) => String(value).replace(',', '.').replace(/\.0+$/, '');
 const quota = (text, pattern) => {
   const match = String(text ?? '').match(pattern);
@@ -40,10 +34,8 @@ export const parseDataLimit = (productName, dataPolicy) => (
     : quota(productName, /tổng\s*(\d+(?:[.,]\d+)?)\s*(KB|MB|GB)/i)
 );
 
-export const parseActualDuration = (productName) => {
-  const match = String(productName ?? '').match(/(\d+)\s*(?:ngày|day|days)\b/i);
-  return match ? Number(match[1]) : undefined;
-};
+export const parseActualDurationDescriptor = parseDurationMention;
+export const parseActualDuration = (productName) => parseDurationMention(productName)?.value;
 
 export const parseSpeedLabel = (productName, warnings) => {
   const matches = [...String(productName ?? '').matchAll(/(\d+)\s*kbps\b/gi)];
@@ -103,6 +95,7 @@ export const makeHicoGocBranchCandidate = ({ cells, rowNumber, medium, mapping, 
   const errors = [];
   const warnings = [];
   const sourceCategoryLabel = criticalClean(valueAt(cells, mapping, 'simType'), 'simType', errors, warnings);
+  const packageClass = classifyHicoPackageClass(sourceCategoryLabel);
   const productName = criticalClean(valueAt(cells, mapping, 'productName'), 'productName', errors, warnings);
   const dataPolicy = parsePolicy(valueAt(cells, mapping, 'dataType'), errors, warnings);
   const sku = criticalClean(valueAt(cells, mapping, skuField), 'sku', errors, warnings);
@@ -117,17 +110,23 @@ export const makeHicoGocBranchCandidate = ({ cells, rowNumber, medium, mapping, 
     warnings.push({ code: 'COMPARE_PRICE_INVALID', field: 'compareAtPrice' });
   }
 
-  let durationDays;
+  let duration;
   let tripDayOptions;
   if (dataPolicy === 'daily') {
-    durationDays = number(valueAt(cells, mapping, 'durationDays'), 'durationDays', errors, warnings);
+    const rawDuration = criticalClean(valueAt(cells, mapping, 'durationDays'), 'duration', errors, warnings);
+    duration = parseDurationValue(rawDuration);
+    if (!duration) errors.push({ code: 'DURATION_INVALID', field: 'duration' });
   } else if (dataPolicy === 'total') {
-    durationDays = parseActualDuration(productName);
-    if (durationDays === undefined) warnings.push({ code: 'DURATION_AMBIGUOUS', field: 'duration' });
+    duration = parseDurationMention(productName);
+    if (duration === undefined) warnings.push({ code: 'DURATION_AMBIGUOUS', field: 'duration' });
     const option = clean(valueAt(cells, mapping, 'durationDays'), 'tripDayOptions', warnings, warnings);
-    if (option !== undefined && /^\d+$/.test(option) && Number(option) > 0 && Number(option) <= 3650) tripDayOptions = [Number(option)];
+    const parsedOption = parseDurationValue(option);
+    if (parsedOption?.unit === 'day') tripDayOptions = [parsedOption.value];
     else if (option !== undefined) warnings.push({ code: 'DURATION_AMBIGUOUS', field: 'tripDayOptions' });
   }
+
+  const rawCoverageLabel = clean(valueAt(cells, mapping, 'networkLabel'), 'rawCoverageLabel', warnings, warnings);
+  const coverage = parseHicoCoverage(rawCoverageLabel);
 
   const normalizedData = {
     sku,
@@ -135,15 +134,23 @@ export const makeHicoGocBranchCandidate = ({ cells, rowNumber, medium, mapping, 
     productName,
     rawPlanLabel: productName,
     sourceCategoryLabel,
+    packageClass,
     dataPolicy,
     dataLimit: parseDataLimit(productName, dataPolicy),
-    ...(durationDays ? { duration: `${durationDays} ngày`, durationDays } : {}),
+    ...(duration ? {
+      duration: duration.display,
+      durationValue: duration.value,
+      durationUnit: duration.unit,
+      ...(duration.unit === 'day' ? { durationDays: duration.value } : {}),
+    } : {}),
     ...(tripDayOptions ? { tripDayOptions } : {}),
     price,
     ...(compareAtPrice !== undefined ? { compareAtPrice } : {}),
     wmproductId,
-    coverageLabel: clean(valueAt(cells, mapping, 'networkLabel'), 'coverageLabel', warnings, warnings),
-    networkLabel: clean(valueAt(cells, mapping, 'networkLabel'), 'networkLabel', warnings, warnings),
+    coverageLabel: rawCoverageLabel,
+    rawCoverageLabel,
+    coverage,
+    ...(coverage.networks.length ? { networkLabel: coverage.networks.join(', ') } : {}),
     apn: clean(valueAt(cells, mapping, 'apn'), 'apn', warnings, warnings),
     publicNote: clean(valueAt(cells, mapping, 'publicNote'), 'publicNote', warnings, warnings),
     activationPolicy: clean(valueAt(cells, mapping, 'activationPolicy'), 'activationPolicy', warnings, warnings),
@@ -154,8 +161,15 @@ export const makeHicoGocBranchCandidate = ({ cells, rowNumber, medium, mapping, 
     ...(mapping.description !== null && mapping.description !== undefined ? { description: clean(valueAt(cells, mapping, 'description'), 'description', warnings, warnings) } : {}),
     ...(mapping.installationGuide !== null && mapping.installationGuide !== undefined ? { installationGuide: clean(valueAt(cells, mapping, 'installationGuide'), 'installationGuide', warnings, warnings) } : {}),
   };
-  if (!sku) errors.push({ code: 'MISSING_SKU', field: 'sku' });
-  if (!wmproductId) errors.push({ code: 'MISSING_WMID', field: 'wmproductId' });
+  const branchPrefix = medium === 'esim' ? 'ESIM' : 'PHYSICAL';
+  if (!sku) {
+    errors.push({ code: `MISSING_${branchPrefix}_SKU`, field: 'sku' });
+    errors.push({ code: 'MISSING_SKU', field: 'sku' });
+  }
+  if (!wmproductId) {
+    errors.push({ code: `MISSING_${branchPrefix}_WMID`, field: 'wmproductId' });
+    errors.push({ code: 'MISSING_WMID', field: 'wmproductId' });
+  }
   if (!productName) errors.push({ code: 'MISSING_PRODUCT_NAME', field: 'productName' });
   if (!sku || !wmproductId) errors.push({ code: 'INVALID_BRANCH_PAIR', field: medium });
   if (mediumSourceMismatch(sourceCategoryLabel, medium)) warnings.push({ code: 'MEDIUM_SOURCE_MISMATCH', field: 'simType' });
@@ -171,6 +185,7 @@ export const makeHicoGocBranchCandidate = ({ cells, rowNumber, medium, mapping, 
     rowHash: JSON.stringify([rowNumber, normalizedData]),
     errors,
     warnings,
+    needsReview: warnings.length > 0,
     diff: {},
     appliedFields: [],
     status: errors.length ? 'INVALID' : 'VALID',

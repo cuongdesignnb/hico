@@ -19,7 +19,9 @@ export const coverageFilterFor = (rawLabel) => {
 };
 
 export const packageFamilyPartsFor = (data = {}) => [
+  normalizeIdentityToken(data.packageClass),
   normalizeIdentityToken(data.productName ?? data.packageLabel),
+  normalizeIdentityToken(data.dataPolicy),
 ];
 
 export const packageFamilyKeyFor = (data = {}) => `hico-family:${hash(packageFamilyPartsFor(data))}`;
@@ -36,6 +38,8 @@ export const variantSourceKeyFor = (data = {}) => `hico-goc-variant:${hash([
   normalizeIdentityToken(data.wmproductId),
   normalizeIdentityToken(data.dataPolicy),
   normalizeIdentityToken(data.durationDays ?? data.duration),
+  normalizeIdentityToken(data.durationValue),
+  normalizeIdentityToken(data.durationUnit),
   normalizeIdentityToken(data.dataLimit),
 ])}`;
 

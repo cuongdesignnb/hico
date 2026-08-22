@@ -76,6 +76,15 @@ test('HICO GỐC parser maps total package duration and collapses trip-day optio
   assert.equal(rows[0].sourceRows.length, 2);
 });
 
+test('HICO GỐC parser preserves month duration without inventing duration days', () => {
+  const row = cells({ 1: 'Trung Quốc, 1 tháng, Tổng 3GB', 2: '1 tháng', 3: 'Gói tổng', 16: 'SKU-MONTH', 17: '', 23: 'WM-MONTH', 24: '' });
+  const [parsed] = parseHicoGocRows([Array(25).fill('header'), row]);
+  assert.equal(parsed.normalizedData.duration, '1 tháng');
+  assert.equal(parsed.normalizedData.durationValue, 1);
+  assert.equal(parsed.normalizedData.durationUnit, 'month');
+  assert.equal(parsed.normalizedData.durationDays, undefined);
+});
+
 test('HICO GỐC parser blocks ambiguous quota and invalid cancellable values', () => {
   assert.equal(parseDataLimit('5 ngày, Tổng 3GB', 'total'), '3GB');
   const [row] = parseHicoGocRows([Array(25).fill('header'), cells({ 1: 'Trung Quốc, gói data', 15: 'Có' })]);

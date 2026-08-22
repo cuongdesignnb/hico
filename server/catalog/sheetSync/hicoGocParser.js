@@ -10,7 +10,7 @@ import {
   makeHicoGocBranchCandidate,
 } from './hicoGocBranchParser.js';
 
-export { parseActualDuration, parseDataLimit, parseSpeedLabel } from './hicoGocBranchParser.js';
+export { parseActualDuration, parseActualDurationDescriptor, parseDataLimit, parseDurationValue, parseSpeedLabel } from './hicoGocBranchParser.js';
 
 const branchDefinitions = [
   { medium: 'physical_sim', skuField: 'skuPhysical', wmidField: 'wmproductIdPhysical', priceField: 'physical' },

@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   backfillProductCategories,
+  categoryIdForPackage,
   categoryFilterIds,
   cloneSeedCategories,
+  mergeCatalogCategories,
   inferCategoryId,
   operationForCategoryKind,
   validateCategories,
@@ -24,7 +26,35 @@ test('seed category tree is valid, limited to two levels and maps kind to operat
   assert.equal(operationForCategoryKind('topup'), 'topup');
   assert.equal(operationForCategoryKind('device'), 'device_sale');
   assert.equal(operationForCategoryKind('accessory'), 'device_sale');
-  assert.deepEqual([...categoryFilterIds(categories, 'sim-esim')], ['cat-esim-du-lich', 'cat-sim-vat-ly']);
+  assert.deepEqual([...categoryFilterIds(categories, 'sim-esim')], [
+    'cat-esim-du-lich',
+    'cat-sim-vat-ly',
+    'cat-esim-san-goi',
+    'cat-sim-vat-ly-san-goi',
+    'cat-esim-co-goi',
+    'cat-sim-vat-ly-co-goi',
+    'cat-sim-viet-nam',
+  ]);
+});
+
+test('package class maps to a medium leaf and top-up overrides the class', () => {
+  assert.equal(categoryIdForPackage('PRELOADED', 'esim', 'new_subscription'), 'cat-esim-san-goi');
+  assert.equal(categoryIdForPackage('VOICE', 'physical_sim', 'new_subscription'), 'cat-sim-vat-ly-co-goi');
+  assert.equal(categoryIdForPackage('DOMESTIC_VN', 'physical_sim', 'new_subscription'), 'cat-sim-viet-nam');
+  assert.equal(categoryIdForPackage('STANDARD_TRAVEL', 'esim', 'new_subscription'), 'cat-esim-du-lich');
+  assert.equal(categoryIdForPackage('UNKNOWN', 'esim', 'new_subscription'), null);
+  assert.equal(categoryIdForPackage('UNKNOWN', 'physical_sim', 'topup'), 'cat-nap-them');
+});
+
+test('category seed merge preserves custom categories and adds missing leaves', () => {
+  const custom = [{ ...cloneSeedCategories()[0], name: 'Tên tuỳ chỉnh' }, {
+    id: 'cat-custom', slug: 'custom', name: 'Tuỳ chỉnh', parentId: null, kind: null, sortOrder: 99, status: 'active', version: 1,
+    createdAt: '2026-08-15T00:00:00.000Z', updatedAt: '2026-08-15T00:00:00.000Z',
+  }];
+  const merged = mergeCatalogCategories(custom);
+  assert.equal(merged.find((category) => category.id === 'cat-sim-esim').name, 'Tên tuỳ chỉnh');
+  assert.equal(merged.some((category) => category.id === 'cat-esim-co-goi'), true);
+  assert.equal(merged.some((category) => category.id === 'cat-custom'), true);
 });
 
 test('category validation rejects duplicate slugs and a third hierarchy level', () => {
