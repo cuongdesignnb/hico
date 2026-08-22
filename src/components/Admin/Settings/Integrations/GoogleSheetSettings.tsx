@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, KeyRound, RefreshCw, Settings2, ShieldCheck, TestTube2 } from 'lucide-react';
 import { googleSheetSettingsApi, GoogleSheetSettingsApiError } from '../../../../services/googleSheetSettingsApi';
+import { CatalogSheetSyncApiError, catalogSheetSyncApi } from '../../../../services/catalogSheetSyncApi';
 import type { GoogleSheetConnectionTestResult, GoogleSheetDiscoveryResult, GoogleSheetHeaderDiscoveryResult, GoogleSheetSettingsStatus } from '../../../../types/googleSheetSettings';
+import type { CatalogPreviewJob } from '../../../../types/catalogPreviewJob';
 import { useAdminToast } from '../../../../hooks/useAdminToast';
 import { GoogleSheetConnectionStatus } from './GoogleSheetConnectionStatus';
 import { GoogleSheetCredentialForm } from './GoogleSheetCredentialForm';
@@ -10,6 +12,7 @@ import { GoogleSheetCredentialGuide } from './GoogleSheetCredentialGuide';
 import './GoogleSheetSettings.css';
 
 const errorText = (error: unknown) => error instanceof GoogleSheetSettingsApiError ? `${error.message}${error.code ? ` (${error.code})` : ''}` : 'Không thể xử lý tích hợp Google Sheet.';
+const previewErrorText = (error: unknown) => error instanceof CatalogSheetSyncApiError ? `${error.message}${error.code ? ` (${error.code})` : ''}` : 'Không thể theo dõi preview catalog.';
 const imageMappingKey = 'image' + 'Url';
 const columnNumber = (value: string) => String(value).toUpperCase().split('').reduce((total, char) => total * 26 + char.charCodeAt(0) - 64, 0);
 const rangeEndColumn = (value: string) => {
@@ -44,6 +47,7 @@ export const GoogleSheetSettings: React.FC = () => {
   const [testResult, setTestResult] = useState<GoogleSheetConnectionTestResult | null>(null);
   const [discovery, setDiscovery] = useState<GoogleSheetDiscoveryResult | null>(null);
   const [headerDiscovery, setHeaderDiscovery] = useState<GoogleSheetHeaderDiscoveryResult | null>(null);
+  const [previewJob, setPreviewJob] = useState<CatalogPreviewJob | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -53,6 +57,23 @@ export const GoogleSheetSettings: React.FC = () => {
     } catch (loadError) { toast.error(errorText(loadError)); } finally { setLoading(false); }
   }, [toast]);
   useEffect(() => { queueMicrotask(() => { void load(); }); }, [load]);
+  useEffect(() => {
+    const previewJobId = previewJob?.id;
+    const previewStatus = previewJob?.status;
+    if (!previewJobId || !previewStatus || ['SUCCEEDED', 'FAILED', 'CANCELLED', 'TIMED_OUT'].includes(previewStatus)) return undefined;
+    let active = true;
+    const poll = () => catalogSheetSyncApi.getPreviewJob(previewJobId)
+      .then(({ job }) => {
+        if (!active) return;
+        setPreviewJob(job);
+        if (job.status === 'SUCCEEDED') toast.success(`Preview đã hoàn tất. Batch ${job.batchId ?? 'không xác định'} sẵn sàng để review.`);
+        if (job.status === 'FAILED' || job.status === 'TIMED_OUT') toast.error(job.errorMessage ?? 'Preview không hoàn tất.');
+      })
+      .catch((pollError) => { if (active) toast.error(previewErrorText(pollError)); });
+    const timer = window.setInterval(poll, 1000);
+    void poll();
+    return () => { active = false; window.clearInterval(timer); };
+  }, [previewJob?.id, previewJob?.status, toast]);
 
   const saveSettings = async () => {
     setBusy(true);
@@ -102,9 +123,17 @@ export const GoogleSheetSettings: React.FC = () => {
   };
   const preview = async () => {
     setBusy(true);
-    try { const result = await googleSheetSettingsApi.preview(); toast.success(`Preview job ${result.job.id} đã được đưa vào hàng đợi.`); }
+    try { const result = await googleSheetSettingsApi.preview(); setPreviewJob(result.job); toast.info(`Preview job ${result.job.id} đã được đưa vào hàng đợi.`); }
     catch (previewError) { toast.error(errorText(previewError)); } finally { setBusy(false); }
   };
+  const cancelPreview = async () => {
+    if (!previewJob || !['QUEUED', 'RUNNING'].includes(previewJob.status)) return;
+    setBusy(true);
+    try { setPreviewJob((await catalogSheetSyncApi.cancelPreviewJob(previewJob.id)).job); }
+    catch (cancelError) { toast.error(previewErrorText(cancelError)); }
+    finally { setBusy(false); }
+  };
+  const previewActive = Boolean(previewJob && ['QUEUED', 'RUNNING'].includes(previewJob.status));
   const suggestedFullRange = headerDiscovery?.suggestedFullRange ?? headerDiscovery?.suggestedRange ?? '';
   const rangeNeedsExpansion = Boolean(headerDiscovery && suggestedFullRange && (
     rangeEndColumn(range) < rangeEndColumn(suggestedFullRange) || rangeEndRow(range) < rangeEndRow(suggestedFullRange)
@@ -137,6 +166,7 @@ export const GoogleSheetSettings: React.FC = () => {
       <div className="google-sheet-discovery-actions"><button type="button" className="admin-create-btn" disabled={busy || loading || !spreadsheetId.trim()} onClick={discoverSpreadsheet}>Đọc thông tin Sheet</button><button type="button" className="admin-create-btn" disabled={busy || loading || !discovery || !sheetName.trim()} onClick={discoverHeader}>Đọc header</button><button type="button" className="admin-create-btn" disabled={busy || loading || !headerDiscovery} onClick={validateRange}>Kiểm tra range</button></div>\r\n      <div className="google-sheet-action-row"><button type="button" className="admin-submit-btn" disabled={busy || loading} onClick={saveSettings}>Lưu cấu hình</button><button type="button" className="admin-create-btn" disabled={busy || loading || settings?.source === 'NONE'} onClick={testConnection}><TestTube2 size={16} /> Test connection</button><button type="button" className="admin-create-btn" disabled={busy || loading || settings?.source === 'NONE'} onClick={preview}><RefreshCw size={16} /> Chạy preview</button></div>
     </div>
     {settings && <GoogleSheetCredentialForm credentialText={credentialText} busy={busy} configured={settings.credentialConfigured} canRevoke={settings.source === 'ADMIN_SETTINGS' && settings.credentialConfigured} onCredentialChange={setCredentialText} onFileChange={(file) => { if (file) void file.text().then(setCredentialText); }} onReplace={replaceCredential} onRevoke={revokeCredential} />}
+    {previewJob && <p className="google-sheet-settings-hint" role="status">Preview: {previewJob.status} · {previewJob.stage}{previewJob.errorMessage ? ` · ${previewJob.errorMessage}` : ''}{previewActive && <button type="button" className="admin-create-btn" disabled={busy} onClick={() => void cancelPreview()}>Hủy preview</button>}</p>}
     <GoogleSheetTestResult result={testResult} />
   </section>;
 };
