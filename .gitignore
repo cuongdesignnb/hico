@@ -38,6 +38,7 @@ server/uploads/catalog_idempotency.json
 server/uploads/catalog_audit.json
 server/uploads/catalog_slug_history.json
 server/uploads/catalog_bulk_previews.json
+server/uploads/catalog_sheet_sync.json
 server/uploads/cutover_reports/
 server/backups/
 server/uploads/checkout_idempotency.json

@@ -225,6 +225,9 @@ const securityAudit = createSecurityAudit({ logger, onEvent: (event) => {
 const authStoreDriver = sessionStoreDriver(process.env);
 const authPool = authStoreDriver === 'postgres' ? createPostgresPool({ env: process.env }) : null;
 if (authPool && process.env.AUTH_RUN_MIGRATIONS_ON_START === 'true') await migrateDatabase({ pool: authPool });
+// Catalog Sheet preview storage follows DATABASE_URL, independently of the
+// session store, so parent and child preview processes share one backend.
+const catalogSheetSyncPool = authPool ?? (process.env.DATABASE_URL ? createPostgresPool({ env: process.env }) : null);
 const googleSheetSettingsRepository = authPool ? createGoogleSheetSettingsRepository({ pool: authPool }) : createUnavailableGoogleSheetSettingsRepository();
 const sepaySettingsRepository = authPool ? createSePaySettingsRepository({ pool: authPool }) : createUnavailableSePaySettingsRepository();
 const sepayCredentialService = createSePayCredentialService({ env: process.env });
@@ -239,10 +242,10 @@ const googleSheetConnectionService = createGoogleSheetConnectionService({
   env: process.env,
   audit: securityAudit,
 });
-const sheetSyncRepository = createSheetSyncRepository({ pool: authPool });
-const variantAliasRepository = createVariantAliasRepository({ pool: authPool });
+const sheetSyncRepository = createSheetSyncRepository({ pool: catalogSheetSyncPool });
+const variantAliasRepository = createVariantAliasRepository({ pool: catalogSheetSyncPool });
 const fulfillmentBindingRepository = createFulfillmentBindingRepository({ pool: authPool });
-const fulfillmentProfileRepository = createFulfillmentProfileRepository({ pool: authPool });
+const fulfillmentProfileRepository = createFulfillmentProfileRepository({ pool: catalogSheetSyncPool });
 const variantAliasService = createVariantAliasService({
   aliasRepository: variantAliasRepository,
   sheetSyncRepository,
@@ -2749,6 +2752,7 @@ const httpServer = app.listen(PORT, () => {
 const shutdown = async (signal) => {
   console.log(`[hico] ${signal} received; stopping preview jobs.`);
   await catalogPreviewJobManager.shutdown();
+  if (catalogSheetSyncPool && catalogSheetSyncPool !== authPool) await catalogSheetSyncPool.end().catch(() => undefined);
   httpServer.close(() => process.exit(0));
 };
 process.once('SIGTERM', () => { void shutdown('SIGTERM'); });

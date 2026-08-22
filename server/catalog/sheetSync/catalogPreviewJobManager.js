@@ -16,7 +16,7 @@ const safeErrorCodes = new Set([
   'CATALOG_PREVIEW_WORKER_FAILED', 'CATALOG_PREVIEW_WORKER_START_FAILED', 'CATALOG_PREVIEW_SHUTDOWN',
   'SHEET_SOURCE_TAB_INVALID', 'SHEET_RANGE_INCOMPLETE', 'SHEET_HEADER_REQUIRED', 'SHEET_HEADER_CHANGED',
   'FULL_SYNC_EMPTY_CANDIDATE', 'FULL_SYNC_GROUPING_FAILED', 'FULL_SYNC_SOURCE_EMPTY', 'FULL_SYNC_INVALID_ROWS',
-  'PROVIDER_SNAPSHOT_CHANGED',
+  'PROVIDER_SNAPSHOT_CHANGED', 'INTEGRATION_STORAGE_UNAVAILABLE', 'INTEGRATION_STORAGE_INVALID',
 ]);
 
 export class CatalogPreviewJobError extends Error {
@@ -30,7 +30,7 @@ export class CatalogPreviewJobError extends Error {
 }
 
 const safeError = (error, fallbackCode = 'CATALOG_PREVIEW_WORKER_FAILED') => ({
-  errorCode: typeof error?.code === 'string' && /^[A-Z0-9_]+$/.test(error.code) ? error.code : fallbackCode,
+  errorCode: safeErrorCodes.has(error?.code) ? error.code : fallbackCode,
   errorMessage: safeErrorCodes.has(error?.code) && typeof error?.message === 'string' && error.message.length <= 240
     ? error.message
     : 'Không thể hoàn tất preview catalog.',
@@ -64,6 +64,7 @@ export const createCatalogPreviewJobManager = ({
   deadlineMs = 8 * 60_000,
   terminateGraceMs = 3_000,
   terminalTtlMs = 20 * 60_000,
+  workerEnv = {},
 } = {}) => {
   const jobs = new Map();
   let activeJobId = null;
@@ -87,6 +88,25 @@ export const createCatalogPreviewJobManager = ({
     job.killTimer = null;
   };
 
+  const releaseActive = (job) => {
+    if (activeJobId === job.id) activeJobId = null;
+  };
+
+  const childIsRunning = (job) => Boolean(job.child && !job.childExited && job.child.exitCode === null && job.child.signalCode === null);
+
+  const signalTermination = (job) => {
+    const child = job.child;
+    if (!childIsRunning(job)) return;
+    if (job.killTimer) clearTimeout(job.killTimer);
+    try { child.kill('SIGTERM'); } catch { /* child may already have exited */ }
+    job.killTimer = setTimeout(() => {
+      if (childIsRunning(job)) {
+        try { child.kill('SIGKILL'); } catch { /* child may already have exited */ }
+      }
+    }, terminateGraceMs);
+    job.killTimer.unref?.();
+  };
+
   const finalize = (job, status, changes = {}) => {
     if (terminalStatuses.has(job.status)) return;
     clearRuntimeTimers(job);
@@ -94,27 +114,18 @@ export const createCatalogPreviewJobManager = ({
     Object.assign(job, changes);
     job.finishedAt = now().toISOString();
     job.expiresAt = new Date(now().getTime() + terminalTtlMs).toISOString();
-    if (activeJobId === job.id) activeJobId = null;
     scheduleCleanup(job);
   };
 
   const terminate = (job, { status, errorCode, errorMessage }) => {
     if (terminalStatuses.has(job.status)) return;
-    const child = job.child;
     finalize(job, status, { errorCode: errorCode ?? null, errorMessage: errorMessage ?? null });
-    if (!child || child.killed) return;
-    try { child.disconnect?.(); } catch { /* child may already be disconnected */ }
-    try { child.kill('SIGTERM'); } catch { /* child may already have exited */ }
-    job.killTimer = setTimeout(() => {
-      if (!child.killed) {
-        try { child.kill('SIGKILL'); } catch { /* child may already have exited */ }
-      }
-    }, terminateGraceMs);
-    job.killTimer.unref?.();
+    signalTermination(job);
   };
 
   const attachChild = (job, child) => {
     job.child = child;
+    job.childExited = false;
     child.on('message', (message) => {
       if (!message || message.jobId !== job.id || terminalStatuses.has(job.status)) return;
       if (message.type === 'STAGE' && PREVIEW_JOB_STAGES.includes(message.stage)) {
@@ -136,7 +147,11 @@ export const createCatalogPreviewJobManager = ({
     child.on('error', (error) => {
       if (!terminalStatuses.has(job.status)) finalize(job, 'FAILED', safeError(error));
     });
-    child.on('exit', (code, signal) => {
+    child.once('exit', (code, signal) => {
+      job.childExited = true;
+      releaseActive(job);
+      if (job.killTimer) clearTimeout(job.killTimer);
+      job.killTimer = null;
       if (terminalStatuses.has(job.status)) return;
       finalize(job, 'FAILED', {
         errorCode: 'CATALOG_PREVIEW_WORKER_FAILED',
@@ -158,15 +173,18 @@ export const createCatalogPreviewJobManager = ({
     jobs.set(job.id, job);
     activeJobId = job.id;
     try {
-      const child = fork(workerPath, [], { env: { ...process.env }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+      const child = fork(workerPath, [], { env: { ...process.env, ...workerEnv }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
       attachChild(job, child);
       job.status = 'RUNNING';
       job.startedAt = now().toISOString();
       job.deadlineTimer = setTimeout(() => terminate(job, { status: 'TIMED_OUT', errorCode: 'CATALOG_PREVIEW_TIMED_OUT', errorMessage: 'Preview catalog đã vượt quá thời gian cho phép.' }), deadlineMs);
       job.deadlineTimer.unref?.();
-      child.send({ type: 'START', jobId: job.id, mode, actorId: job.actorId, actorEmail: job.actorEmail });
+      child.send({ type: 'START', jobId: job.id, mode, actorId: job.actorId, actorEmail: job.actorEmail }, (error) => {
+        if (error && !terminalStatuses.has(job.status)) finalize(job, 'FAILED', safeError(error, 'CATALOG_PREVIEW_WORKER_START_FAILED'));
+      });
     } catch (error) {
       finalize(job, 'FAILED', safeError(error, 'CATALOG_PREVIEW_WORKER_START_FAILED'));
+      releaseActive(job);
     }
     return publicJob(job);
   };
@@ -187,14 +205,22 @@ export const createCatalogPreviewJobManager = ({
 
   const shutdown = async () => {
     stopped = true;
-    const active = [...jobs.values()].filter((job) => !terminalStatuses.has(job.status));
-    active.forEach((job) => terminate(job, { status: 'CANCELLED', errorCode: 'CATALOG_PREVIEW_SHUTDOWN', errorMessage: 'Preview bị dừng khi backend shutdown.' }));
+    const active = [...jobs.values()].filter((job) => !terminalStatuses.has(job.status) || childIsRunning(job));
+    active.filter((job) => !terminalStatuses.has(job.status)).forEach((job) => terminate(job, { status: 'CANCELLED', errorCode: 'CATALOG_PREVIEW_SHUTDOWN', errorMessage: 'Preview bị dừng khi backend shutdown.' }));
+    active.filter((job) => terminalStatuses.has(job.status)).forEach(signalTermination);
     await Promise.all(active.map((job) => new Promise((resolve) => {
-      if (!job.child || job.child.exitCode !== null) return resolve();
+      if (!childIsRunning(job)) return resolve();
       const timer = setTimeout(resolve, terminateGraceMs + 250);
       timer.unref?.();
       job.child.once('exit', () => { clearTimeout(timer); resolve(); });
     })));
+  };
+
+  const inspectRuntime = (id) => {
+    const job = jobs.get(id);
+    if (!job) throw new CatalogPreviewJobError('Không tìm thấy preview job hoặc job đã hết hạn.', { code: 'CATALOG_PREVIEW_JOB_NOT_FOUND', status: 404 });
+    const childRunning = childIsRunning(job);
+    return { id: job.id, status: job.status, childExited: Boolean(job.childExited), childRunning, killTimerActive: Boolean(job.killTimer) };
   };
 
   return {
@@ -204,6 +230,7 @@ export const createCatalogPreviewJobManager = ({
     shutdown,
     active: () => activeJobId ? get(activeJobId) : null,
     inspect: () => [...jobs.values()].map(publicJob),
+    inspectRuntime,
   };
 };
 

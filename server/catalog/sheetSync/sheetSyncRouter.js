@@ -6,8 +6,15 @@ import { SheetSyncError } from './sheetSyncTypes.js';
 import { CatalogPreviewJobError } from './catalogPreviewJobManager.js';
 
 const actor = (req) => ({ id: req.auth?.user?.id, email: req.auth?.user?.email, permission: req.auth?.permissionUsed });
+const previewJobDetails = (error) => error.code === 'CATALOG_PREVIEW_IN_PROGRESS' && typeof error.details?.jobId === 'string'
+  ? { jobId: error.details.jobId }
+  : undefined;
 const sendError = (res, error) => {
-  if (error instanceof SheetSyncError || error instanceof CatalogPreviewJobError) return res.status(error.status).json({ error: error.message, code: error.code, ...(error.details ? { details: error.details } : {}) });
+  if (error instanceof CatalogPreviewJobError) {
+    const details = previewJobDetails(error);
+    return res.status(error.status).json({ error: error.message, code: error.code, ...(details ? { details } : {}) });
+  }
+  if (error instanceof SheetSyncError) return res.status(error.status).json({ error: error.message, code: error.code, ...(error.details ? { details: error.details } : {}) });
   console.error(`[catalog-sheet-sync] ${error?.name ?? 'UnknownError'}`);
   return res.status(500).json({ error: 'Unable to process catalog Sheet synchronization.', code: 'SHEET_SYNC_FAILED' });
 };

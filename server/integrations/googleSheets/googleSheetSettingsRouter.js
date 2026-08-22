@@ -1,11 +1,19 @@
 import express from 'express';
 import { createRateLimiter } from '../../security/rateLimits.js';
 import { GoogleSheetSettingsError } from './googleSheetSecretCrypto.js';
+import { CatalogPreviewJobError } from '../../catalog/sheetSync/catalogPreviewJobManager.js';
 
 const actor = (req) => ({ id: req.auth?.user?.id, email: req.auth?.user?.email, permission: req.auth?.permissionUsed });
 const privateResponse = (res) => res.set('Cache-Control', 'no-store');
+const previewJobDetails = (error) => error.code === 'CATALOG_PREVIEW_IN_PROGRESS' && typeof error.details?.jobId === 'string'
+  ? { jobId: error.details.jobId }
+  : undefined;
 const sendError = (res, error) => {
   if (error instanceof GoogleSheetSettingsError) return privateResponse(res).status(error.status).json({ error: error.message, code: error.code, ...(error.details ? { details: error.details } : {}) });
+  if (error instanceof CatalogPreviewJobError) {
+    const details = previewJobDetails(error);
+    return privateResponse(res).status(error.status).json({ error: error.message, code: error.code, ...(details ? { details } : {}) });
+  }
   console.error(`[google-sheet-settings] ${error?.name ?? 'UnknownError'}`);
   return privateResponse(res).status(500).json({ error: 'Unable to process Google Sheet settings.', code: 'GOOGLE_SHEET_SETTINGS_FAILED' });
 };

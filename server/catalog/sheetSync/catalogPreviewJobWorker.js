@@ -5,10 +5,13 @@ const send = (message) => {
 };
 
 const run = async ({ jobId, mode, actorId, actorEmail }) => {
-  const { sheetSyncService, resyncService, authPool } = createCatalogPreviewServices();
+  let previewPool = null;
   const actor = { id: actorId ?? null, email: actorEmail ?? null };
   const onStage = (stage) => send({ type: 'STAGE', jobId, stage });
   try {
+    const services = await createCatalogPreviewServices();
+    const { sheetSyncService, resyncService } = services;
+    previewPool = services.previewPool;
     onStage('STARTING');
     const result = mode === 'full'
       ? await resyncService.fullPreview({ actor, onStage })
@@ -17,7 +20,7 @@ const run = async ({ jobId, mode, actorId, actorEmail }) => {
   } catch (error) {
     send({ type: 'ERROR', jobId, code: error?.code ?? 'CATALOG_PREVIEW_FAILED', message: error?.message ?? 'Không thể hoàn tất preview catalog.' });
   } finally {
-    await authPool?.end?.().catch?.(() => undefined);
+    await previewPool?.end?.().catch?.(() => undefined);
     setImmediate(() => process.exit(0));
   }
 };
