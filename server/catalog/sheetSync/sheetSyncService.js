@@ -30,7 +30,8 @@ export const createSheetSyncService = ({
   variantAliasRepository = null,
   now = () => new Date(), idFactory = () => randomUUID(), logger = console,
 } = {}) => ({
-  async preview({ actor = {}, mode = 'legacy', settings = {} } = {}) {
+  async preview({ actor = {}, mode = 'legacy', settings = {}, onStage = () => {} } = {}) {
+    onStage('READING_SHEET');
     const reference = await referenceClient.readRows();
     const quick = mode === 'quick';
     if (quick && reference.sheetTab !== HICO_GOC_SHEET) throw new SheetSyncError(`Quick sync requires the ${HICO_GOC_SHEET} tab.`, { code: 'SHEET_SOURCE_TAB_INVALID', status: 422 });
@@ -43,11 +44,13 @@ export const createSheetSyncService = ({
       throw new SheetSyncError('HICO GỐC header đã thay đổi sau khi lưu mapping.', { code: 'SHEET_HEADER_CHANGED', status: 409 });
     }
     const aliases = await (variantAliasRepository?.listActive?.() ?? Promise.resolve([]));
+    onStage('LOADING_CATALOG');
     const [catalog, offers, profiles] = await Promise.all([canonicalRepository.readCatalog({ required: true }), providerRepository.listOffers(), fulfillmentProfileRepository.listActive('WORLDMOVE')]);
     const hash = sourceHash(reference, aliases, [...offers, ...profiles], quickSettings ?? { mode });
     const existing = await repository.findBySourceHash(hash);
     if (existing) return { batch: publicBatch(existing), rows: (await repository.listRows(existing.id)).map(publicRow), idempotent: true };
     const profilesByVariant = new Map(profiles.map((profile) => [profile.variantId, profile]));
+    onStage('PARSING');
     const parsed = quick
       ? collapseHicoGocRows(parseHicoGocRows(reference.values, quickSettings))
       : parseSheetRows(reference.values);
@@ -99,15 +102,23 @@ export const createSheetSyncService = ({
         }
       }
     }
+    onStage('VALIDATING');
     const summary = summarize(rows);
     const providerSnapshotHash = providerSnapshotHashFor(offers, profiles);
     const batch = { id: idFactory(), mode, sourceHash: hash, providerSnapshotHash, spreadsheetId: reference.spreadsheetId, sheetTab: reference.sheetTab, sheetRange: reference.sheetRange, status: 'READY_FOR_REVIEW', createdBy: actor.id ?? null, createdAt: now().toISOString(), validatedAt: now().toISOString(), catalogVersionId: catalog.manifest?.versionId ?? catalog.manifest?.migrationId ?? null, summary, ...(quickSettings ? { fieldMapping: quickSettings.fieldMapping, priceMapping: quickSettings.priceMapping, headerHash: quickSettings.headerHash } : {}) };
+    onStage('PERSISTING');
     await repository.createBatch(batch, rows);
     logger.info?.('[catalog-sheet-sync] preview', { batchId: batch.id, status: batch.status, rowCount: summary.total, matchedCount: summary.valid, errorCount: summary.invalid });
+    onStage('COMPLETED');
     return { batch: publicBatch(batch), rows: rows.map(publicRow), idempotent: false };
   },
   async getBatch(id) { const batch = await repository.getBatch(id); if (!batch) throw new SheetSyncError('Sheet batch was not found.', { code: 'SHEET_BATCH_NOT_FOUND', status: 404 }); return publicBatch(batch); },
-  async listRows(id) { await this.getBatch(id); return (await repository.listRows(id)).map(publicRow); },
+  async listRows(id, { page, pageSize } = {}) {
+    await this.getBatch(id);
+    if (page === undefined && pageSize === undefined) return (await repository.listRows(id)).map(publicRow);
+    const result = await repository.listRowsPage(id, { page, pageSize });
+    return { ...result, items: result.items.map(publicRow) };
+  },
   async apply(id, { selection, actor = {} } = {}) {
     const batch = await repository.getBatch(id); if (!batch) throw new SheetSyncError('Sheet batch was not found.', { code: 'SHEET_BATCH_NOT_FOUND', status: 404 });
     if (['APPLIED', 'PARTIALLY_APPLIED'].includes(batch.status)) return { batch: publicBatch(batch), rows: (await repository.listRows(id)).map(publicRow), versionId: batch.catalogVersionId, idempotent: true };

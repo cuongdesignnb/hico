@@ -102,7 +102,7 @@ export const GoogleSheetSettings: React.FC = () => {
   };
   const preview = async () => {
     setBusy(true);
-    try { const result = await googleSheetSettingsApi.preview(); toast.success(`Preview batch ${result.batch.id} đã tạo: ${result.rows.length} dòng.`); }
+    try { const result = await googleSheetSettingsApi.preview(); toast.success(`Preview job ${result.job.id} đã được đưa vào hàng đợi.`); }
     catch (previewError) { toast.error(errorText(previewError)); } finally { setBusy(false); }
   };
   const suggestedFullRange = headerDiscovery?.suggestedFullRange ?? headerDiscovery?.suggestedRange ?? '';

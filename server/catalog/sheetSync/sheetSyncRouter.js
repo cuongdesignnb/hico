@@ -3,10 +3,11 @@ import { verifyPassword } from '../../auth/passwordService.js';
 import { createSheetSyncService } from './sheetSyncService.js';
 import { createCatalogResyncService } from './catalogResyncService.js';
 import { SheetSyncError } from './sheetSyncTypes.js';
+import { CatalogPreviewJobError } from './catalogPreviewJobManager.js';
 
 const actor = (req) => ({ id: req.auth?.user?.id, email: req.auth?.user?.email, permission: req.auth?.permissionUsed });
 const sendError = (res, error) => {
-  if (error instanceof SheetSyncError) return res.status(error.status).json({ error: error.message, code: error.code, ...(error.details ? { details: error.details } : {}) });
+  if (error instanceof SheetSyncError || error instanceof CatalogPreviewJobError) return res.status(error.status).json({ error: error.message, code: error.code, ...(error.details ? { details: error.details } : {}) });
   console.error(`[catalog-sheet-sync] ${error?.name ?? 'UnknownError'}`);
   return res.status(500).json({ error: 'Unable to process catalog Sheet synchronization.', code: 'SHEET_SYNC_FAILED' });
 };
@@ -18,15 +19,42 @@ const reauth = async (req) => {
   }
 };
 
-export const createSheetSyncRouter = ({ sheetSyncService = createSheetSyncService(), resyncService = createCatalogResyncService(), catalogGuard = (_req, _res, next) => next() } = {}) => {
+export const createSheetSyncRouter = ({ sheetSyncService = createSheetSyncService(), resyncService = createCatalogResyncService(), previewJobManager, catalogGuard = (_req, _res, next) => next() } = {}) => {
   const router = express.Router();
   router.use('/admin/catalog-sheet-sync', catalogGuard);
-  router.post('/admin/catalog-sheet-sync/preview', async (req, res) => { try { res.json(await sheetSyncService.preview({ actor: actor(req) })); } catch (error) { sendError(res, error); } });
-  router.post('/admin/catalog-sheet-sync/quick-preview', async (req, res) => { try { res.json(await sheetSyncService.preview({ actor: actor(req), mode: 'quick' })); } catch (error) { sendError(res, error); } });
-  router.post('/admin/catalog-sheet-sync/full-preview', async (req, res) => { try { res.json(await resyncService.fullPreview({ actor: actor(req) })); } catch (error) { sendError(res, error); } });
+  const startPreview = (req, res, mode) => {
+    try {
+      if (!previewJobManager) throw new CatalogPreviewJobError('Preview job manager chưa được cấu hình.', { code: 'CATALOG_PREVIEW_MANAGER_UNAVAILABLE', status: 503 });
+      const job = previewJobManager.start({ mode, actor: actor(req) });
+      return res.status(202).set('Cache-Control', 'no-store').set('Location', `/api/admin/catalog-sheet-sync/preview-jobs/${job.id}`).json({ job });
+    } catch (error) { return sendError(res, error); }
+  };
+  router.post('/admin/catalog-sheet-sync/preview-jobs', (req, res) => startPreview(req, res, req.body?.mode ?? 'legacy'));
+  router.get('/admin/catalog-sheet-sync/preview-jobs/active', (req, res) => {
+    try { return res.status(200).set('Cache-Control', 'no-store').json({ job: previewJobManager?.active?.() ?? null }); }
+    catch (error) { return sendError(res, error); }
+  });
+  router.get('/admin/catalog-sheet-sync/preview-jobs/:jobId', (req, res) => {
+    try { return res.status(200).set('Cache-Control', 'no-store').json({ job: previewJobManager.get(req.params.jobId) }); }
+    catch (error) { return sendError(res, error); }
+  });
+  router.post('/admin/catalog-sheet-sync/preview-jobs/:jobId/cancel', (req, res) => {
+    try { return res.status(200).set('Cache-Control', 'no-store').json({ job: previewJobManager.cancel(req.params.jobId) }); }
+    catch (error) { return sendError(res, error); }
+  });
+  router.post('/admin/catalog-sheet-sync/preview', (req, res) => startPreview(req, res, 'legacy'));
+  router.post('/admin/catalog-sheet-sync/quick-preview', (req, res) => startPreview(req, res, 'quick'));
+  router.post('/admin/catalog-sheet-sync/full-preview', (req, res) => startPreview(req, res, 'full'));
   router.post('/admin/catalog-sheet-sync/:batchId/full-apply', async (req, res) => { try { await reauth(req); res.json(await resyncService.fullApply(req.params.batchId, { actor: actor(req) })); } catch (error) { sendError(res, error); } });
   router.get('/admin/catalog-sheet-sync/:batchId', async (req, res) => { try { res.json(await sheetSyncService.getBatch(req.params.batchId)); } catch (error) { sendError(res, error); } });
-  router.get('/admin/catalog-sheet-sync/:batchId/rows', async (req, res) => { try { res.json({ items: await sheetSyncService.listRows(req.params.batchId) }); } catch (error) { sendError(res, error); } });
+  router.get('/admin/catalog-sheet-sync/:batchId/rows', async (req, res) => {
+    try {
+      const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+      const pageSize = Math.min(200, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 100));
+      const result = await sheetSyncService.listRows(req.params.batchId, { page, pageSize });
+      res.json(result);
+    } catch (error) { sendError(res, error); }
+  });
   router.post('/admin/catalog-sheet-sync/:batchId/apply', async (req, res) => { try { res.json(await sheetSyncService.apply(req.params.batchId, { selection: req.body?.selection, actor: actor(req) })); } catch (error) { sendError(res, error); } });
   router.post('/admin/catalog-sheet-sync/:batchId/quick-apply', async (req, res) => { try { res.json(await sheetSyncService.apply(req.params.batchId, { selection: { rowIds: req.body?.rowIds }, actor: actor(req) })); } catch (error) { sendError(res, error); } });
   router.post('/admin/catalog-sheet-sync/:batchId/reject', async (req, res) => { try { res.json(await sheetSyncService.reject(req.params.batchId, { actor: actor(req) })); } catch (error) { sendError(res, error); } });

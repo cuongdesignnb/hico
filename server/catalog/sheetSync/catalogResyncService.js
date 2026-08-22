@@ -693,7 +693,8 @@ export const createCatalogResyncService = ({
     return { candidate, diagnostics };
   };
   return {
-    async fullPreview({ actor = {} } = {}) {
+    async fullPreview({ actor = {}, onStage = () => {} } = {}) {
+      onStage('READING_SHEET');
       const reference = await referenceClient.readRows();
       const initialSettings = {
         ...normalizeHicoGocSettings(reference.syncSettings ?? {}),
@@ -701,10 +702,12 @@ export const createCatalogResyncService = ({
       };
       const validation = validateReference(reference, initialSettings);
       const settings = { ...initialSettings, headerHash: validation.headerHash };
+      onStage('LOADING_CATALOG');
       const [current, offers] = await Promise.all([
         canonicalRepository.readCatalog({ required: true }),
         providerRepository.listOffers(),
       ]);
+      onStage('LOADING_PROVIDER');
       const previousCatalog = await loadPreviousCatalog({ current });
       const sourceHash = sourceHashFor(reference, settings, offers);
       const existing = await repository.findBySourceHash(sourceHash);
@@ -712,7 +715,10 @@ export const createCatalogResyncService = ({
         if (existing.mode === 'full') assertPersistedFullSyncSummary(existing.summary);
         return { batch: publicBatch(existing), rows: (await repository.listRows(existing.id)).map(publicRow), idempotent: true };
       }
+      onStage('PARSING');
+      onStage('BUILDING_CANDIDATE');
       const candidate = await build({ reference, settings, current, previousCatalog, offers });
+      onStage('VALIDATING');
       const summary = {
         total: candidate.candidate.rows.length,
         valid: candidate.candidate.rows.filter((row) => row.status === 'VALID').length,
@@ -731,8 +737,10 @@ export const createCatalogResyncService = ({
         headerHash: settings.headerHash, summary,
       };
       const rows = candidate.candidate.rows.map((row) => ({ ...row, id: idFactory(), variantId: null, raw: undefined, diff: {}, appliedFields: [], createdAt: now().toISOString() }));
+      onStage('PERSISTING');
       await repository.createBatch(batch, rows);
       logger.info?.('[catalog-full-sync] preview', { batchId: batch.id, products: summary.products, variants: summary.variants, invalidRows: summary.invalid });
+      onStage('COMPLETED');
       return { batch: publicBatch(batch), rows: rows.map(publicRow), idempotent: false };
     },
 

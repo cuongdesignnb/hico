@@ -10,7 +10,7 @@ const sendError = (res, error) => {
   return privateResponse(res).status(500).json({ error: 'Unable to process Google Sheet settings.', code: 'GOOGLE_SHEET_SETTINGS_FAILED' });
 };
 
-export const createGoogleSheetSettingsRouter = ({ settingsService, sheetSyncService, securityAudit = () => {}, rateLimit = createRateLimiter({ windowMs: 15 * 60_000, max: 10, key: (req) => `${req.auth?.user?.id ?? 'unknown'}:${req.ip ?? 'unknown'}`, audit: securityAudit }) } = {}) => {
+export const createGoogleSheetSettingsRouter = ({ settingsService, previewJobManager, securityAudit = () => {}, rateLimit = createRateLimiter({ windowMs: 15 * 60_000, max: 10, key: (req) => `${req.auth?.user?.id ?? 'unknown'}:${req.ip ?? 'unknown'}`, audit: securityAudit }) } = {}) => {
   const router = express.Router();
   const path = '/settings/integrations/google-sheet';
   router.get(path, async (req, res) => { try { return privateResponse(res).json(await settingsService.getPublicSettings()); } catch (error) { return sendError(res, error); } });
@@ -45,7 +45,11 @@ export const createGoogleSheetSettingsRouter = ({ settingsService, sheetSyncServ
     } catch (error) { return sendError(res, error); }
   });
   router.post(`${path}/preview`, async (req, res) => {
-    try { return privateResponse(res).json(await sheetSyncService.preview({ actor: actor(req) })); }
+    try {
+      if (!previewJobManager) return privateResponse(res).status(503).json({ error: 'Preview job manager chưa được cấu hình.', code: 'CATALOG_PREVIEW_MANAGER_UNAVAILABLE' });
+      const job = previewJobManager.start({ mode: 'legacy', actor: actor(req) });
+      return privateResponse(res).status(202).set('Location', `/api/admin/catalog-sheet-sync/preview-jobs/${job.id}`).json({ job });
+    }
     catch (error) { return sendError(res, error); }
   });
   return router;

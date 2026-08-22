@@ -22,11 +22,19 @@ const mapRow = (row) => ({
 
 export const createInMemorySheetSyncRepository = () => {
   const batches = new Map(); const rows = new Map();
+  const pageRows = (batchId, { page = 1, pageSize = 100 } = {}) => {
+    const all = rows.get(batchId) ?? [];
+    const safePage = Math.max(1, Number(page) || 1);
+    const safePageSize = Math.min(200, Math.max(1, Number(pageSize) || 100));
+    const offset = (safePage - 1) * safePageSize;
+    return { items: all.slice(offset, offset + safePageSize), page: safePage, pageSize: safePageSize, total: all.length };
+  };
   return {
     async findBySourceHash(sourceHash) { return [...batches.values()].find((batch) => batch.sourceHash === sourceHash) ?? null; },
     async createBatch(batch, batchRows) { batches.set(batch.id, batch); rows.set(batch.id, batchRows); return batch; },
     async getBatch(id) { return batches.get(id) ?? null; },
     async listRows(batchId) { return rows.get(batchId) ?? []; },
+    async listRowsPage(batchId, options) { return pageRows(batchId, options); },
     async listBatches({ limit = 100 } = {}) { return [...batches.values()].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, limit); },
     async getRow(id) { for (const [batchId, batchRows] of rows.entries()) { const row = batchRows.find((item) => item.id === id); if (row) return { ...row, sheetName: batches.get(batchId)?.sheetTab ?? null }; } return null; },
     async updateBatch(id, changes) { const next = { ...batches.get(id), ...changes }; batches.set(id, next); return next; },
@@ -60,6 +68,13 @@ export const createSheetSyncRepository = ({ pool = null, idFactory = () => rando
     },
     async getBatch(id) { const result = await pool.query('SELECT * FROM catalog_sheet_sync_batches WHERE id = $1', [id]); return result.rows[0] ? mapBatch(result.rows[0]) : null; },
     async listRows(batchId) { const result = await pool.query('SELECT * FROM catalog_sheet_sync_rows WHERE batch_id = $1 ORDER BY sheet_row_number', [batchId]); return result.rows.map(mapRow); },
+    async listRowsPage(batchId, { page = 1, pageSize = 100 } = {}) {
+      const safePage = Math.max(1, Number(page) || 1);
+      const safePageSize = Math.min(200, Math.max(1, Number(pageSize) || 100));
+      const offset = (safePage - 1) * safePageSize;
+      const result = await pool.query('SELECT r.*, COUNT(*) OVER()::int AS total_count FROM catalog_sheet_sync_rows r WHERE r.batch_id = $1 ORDER BY r.sheet_row_number LIMIT $2 OFFSET $3', [batchId, safePageSize, offset]);
+      return { items: result.rows.map(mapRow), page: safePage, pageSize: safePageSize, total: result.rows[0]?.total_count ?? 0 };
+    },
     async listBatches({ limit = 100 } = {}) { const result = await pool.query('SELECT * FROM catalog_sheet_sync_batches ORDER BY created_at DESC LIMIT $1', [limit]); return result.rows.map(mapBatch); },
     async getRow(id) { const result = await pool.query('SELECT r.*, b.sheet_tab FROM catalog_sheet_sync_rows r JOIN catalog_sheet_sync_batches b ON b.id = r.batch_id WHERE r.id = $1', [id]); return result.rows[0] ? { ...mapRow(result.rows[0]), sheetName: result.rows[0].sheet_tab } : null; },
     async updateBatch(id, changes) {

@@ -25,6 +25,7 @@ import { createSheetSyncRouter } from './catalog/sheetSync/sheetSyncRouter.js';
 import { createSheetSyncService } from './catalog/sheetSync/sheetSyncService.js';
 import { createSheetSyncRepository } from './catalog/sheetSync/sheetSyncRepository.js';
 import { createCatalogResyncService } from './catalog/sheetSync/catalogResyncService.js';
+import { createCatalogPreviewJobManager } from './catalog/sheetSync/catalogPreviewJobManager.js';
 import { createCatalogResetRouter } from './catalog/reset/catalogResetRouter.js';
 import { createCatalogMaintenanceRouter } from './catalog/maintenance/catalogMaintenanceRouter.js';
 import { createCatalogMaintenanceGuard } from './catalog/maintenance/catalogMaintenanceGuard.js';
@@ -288,6 +289,7 @@ const catalogResyncService = createCatalogResyncService({
   mediaAssetRepository,
   uploadsDirectory: catalogUploadsDirectory,
 });
+const catalogPreviewJobManager = createCatalogPreviewJobManager();
 const catalogResetService = createCatalogResetService({
   canonicalRepository: canonicalCatalogRepository,
   commitService: catalogCommitService,
@@ -570,7 +572,7 @@ app.use('/api/admin',
   createAdminRequestAudit({ securityAudit }),
 );
 app.use('/api/admin/auth', createAdminSecurityRouter({ sessionService, securityAudit }));
-app.use('/api/admin', createGoogleSheetSettingsRouter({ settingsService: googleSheetConnectionService, sheetSyncService, securityAudit }));
+app.use('/api/admin', createGoogleSheetSettingsRouter({ settingsService: googleSheetConnectionService, previewJobManager: catalogPreviewJobManager, securityAudit }));
 app.use('/api/admin', createSePayAdminRouter({ settingsService: sepaySettingsService, paymentRepository: sepayPaymentRepository }));
 app.use('/api/admin', createVariantAliasRouter({ service: variantAliasService }));
 app.use('/api/admin', createFulfillmentProfileRouter({ service: fulfillmentProfileService }));
@@ -578,7 +580,7 @@ app.use('/api/admin', createFulfillmentBindingRouter({ service: fulfillmentBindi
 app.use('/api', createCatalogHealthRouter({ catalogHealthService }));
 app.use('/api', createCatalogMaintenanceRouter({ env: process.env, catalogHealthService, readinessService: readinessDelegate }));
 app.use('/api', createCatalogRouter({ catalogGuard, mediaAssetRepository, providerRepository: providerOfferRepository }));
-app.use('/api', createSheetSyncRouter({ sheetSyncService, resyncService: catalogResyncService, catalogGuard }));
+app.use('/api', createSheetSyncRouter({ sheetSyncService, resyncService: catalogResyncService, previewJobManager: catalogPreviewJobManager, catalogGuard }));
 app.use('/api', createCatalogResetRouter({ catalogResetService, catalogGuard }));
 app.use('/api', createProviderRouter());
 app.use('/api', createReconciliationRouter());
@@ -2740,6 +2742,14 @@ if (customerSessionCleanupService) {
   customerCleanupTimer.unref();
 }
 
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`HICO Backend Server running on http://localhost:${PORT}`);
 });
+
+const shutdown = async (signal) => {
+  console.log(`[hico] ${signal} received; stopping preview jobs.`);
+  await catalogPreviewJobManager.shutdown();
+  httpServer.close(() => process.exit(0));
+};
+process.once('SIGTERM', () => { void shutdown('SIGTERM'); });
+process.once('SIGINT', () => { void shutdown('SIGINT'); });
