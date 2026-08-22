@@ -109,17 +109,18 @@ const mediaFields = (product) => ({
 });
 
 export const createEnrichmentIndex = ({ products = [], variants = [] } = {}) => {
-  const productsById = new Map(products.map((product) => [product.id, product]));
+  const productsById = new Map();
   const byProductSourceKey = new Map();
   const byVariantSourceKey = new Map();
   const byVariantRecordSourceKey = new Map();
   const setUnique = (map, key, value) => {
     if (!nonEmpty(key)) return;
     const existing = map.get(key);
-    if (!map.has(key) || existing?.id === value?.id) map.set(key, value);
+    if (!map.has(key) || existing === value) map.set(key, value);
     else map.set(key, null);
   };
   for (const product of products) {
+    setUnique(productsById, product.id, product);
     setUnique(byProductSourceKey, product.sourceKey, product);
     setUnique(byProductSourceKey, productSourceKeyFor({
       productName: product.name,
@@ -152,6 +153,22 @@ export const createEnrichmentIndex = ({ products = [], variants = [] } = {}) => 
   return { byProductSourceKey, byVariantSourceKey, byVariantRecordSourceKey };
 };
 
+const createEnrichmentReuseState = () => ({
+  claimedProductIds: new Set(),
+  claimedVariantIds: new Set(),
+  usedSlugs: new Set(),
+});
+
+const availableProduct = (product, reuseState) => (
+  product && (!reuseState || !reuseState.claimedProductIds.has(product.id)) ? product : null
+);
+
+const claimProduct = (product, reuseState) => {
+  if (!availableProduct(product, reuseState)) return null;
+  reuseState?.claimedProductIds.add(product.id);
+  return product;
+};
+
 const derivedCategoryIdFor = (operation, medium) => {
   if (operation === 'topup') return 'cat-nap-them';
   if (operation === 'new_subscription' && medium === 'esim') return 'cat-esim-du-lich';
@@ -159,28 +176,70 @@ const derivedCategoryIdFor = (operation, medium) => {
   return null;
 };
 
-const enrichmentForRows = (rows, index) => {
+const enrichmentForRows = (rows, index, reuseState) => {
   const productKey = productSourceKeyFor(rows[0]?.normalizedData ?? {});
-  const direct = index.byProductSourceKey.get(productKey)
-    ?? index.byProductSourceKey.get(legacyProductSourceKeyFor(rows[0]?.normalizedData ?? {}));
+  const directCandidates = [
+    index.byProductSourceKey.get(productKey),
+    index.byProductSourceKey.get(legacyProductSourceKeyFor(rows[0]?.normalizedData ?? {})),
+  ];
+  const direct = directCandidates.find((product) => availableProduct(product, reuseState));
   if (direct) return direct;
   const matches = new Map();
   for (const row of rows) {
-    const product = index.byVariantSourceKey.get(variantSourceKeyFor(row.normalizedData))
-      ?? index.byVariantSourceKey.get(legacyVariantSourceKeyFor(row.normalizedData));
+    const variantCandidates = [
+      index.byVariantSourceKey.get(variantSourceKeyFor(row.normalizedData)),
+      index.byVariantSourceKey.get(legacyVariantSourceKeyFor(row.normalizedData)),
+    ];
+    const product = variantCandidates.find((candidate) => availableProduct(candidate, reuseState));
     if (product) matches.set(product.id, product);
   }
   return matches.size === 1 ? [...matches.values()][0] : null;
 };
 
-const previousProductForRows = (rows, index, operation) => {
+const previousProductForRows = (rows, index, operation, reuseState = null, { claim = false } = {}) => {
   for (const row of rows) {
     const data = { ...row.normalizedData, operation };
-    const direct = index.byProductSourceKey.get(productSourceKeyFor(data))
-      ?? index.byProductSourceKey.get(legacyProductSourceKeyFor(data));
-    if (direct) return direct;
+    const directCandidates = [
+      index.byProductSourceKey.get(productSourceKeyFor(data)),
+      index.byProductSourceKey.get(legacyProductSourceKeyFor(data)),
+    ];
+    const direct = directCandidates.find((product) => availableProduct(product, reuseState));
+    if (direct) return claim ? claimProduct(direct, reuseState) : direct;
   }
-  return enrichmentForRows(rows, index);
+  const enriched = enrichmentForRows(rows, index, reuseState);
+  return claim ? claimProduct(enriched, reuseState) : enriched;
+};
+
+const previousVariantFor = (variantData, previousProduct, index, reuseState) => {
+  if (!previousProduct) return null;
+  const candidates = [
+    index.byVariantRecordSourceKey.get(variantData.variantSourceKey),
+    index.byVariantRecordSourceKey.get(legacyVariantSourceKeyFor(variantData)),
+  ];
+  const variant = candidates.find((candidate) => (
+    candidate
+    && candidate.productId === previousProduct.id
+    && !reuseState.claimedVariantIds.has(candidate.id)
+  ));
+  if (!variant) return null;
+  reuseState.claimedVariantIds.add(variant.id);
+  return variant;
+};
+
+const uniqueSlugFor = (preferredSlug, name, sourceKey, usedSlugs) => {
+  const preferred = nonEmpty(preferredSlug) ? preferredSlug : slugFor(name, sourceKey);
+  if (!usedSlugs.has(preferred)) {
+    usedSlugs.add(preferred);
+    return preferred;
+  }
+  const generated = slugFor(name, sourceKey);
+  if (!usedSlugs.has(generated)) {
+    usedSlugs.add(generated);
+    return generated;
+  }
+  const fallback = `${generated}-${sha([sourceKey, preferred]).slice(-8)}`;
+  usedSlugs.add(fallback);
+  return fallback;
 };
 
 const resolveImage = async ({ pathValue, mediaAssetRepository }) => {
@@ -292,6 +351,7 @@ export const buildFullSyncCandidate = async ({
   }
   const products = [];
   const variants = [];
+  const reuseState = createEnrichmentReuseState();
   let exactDuplicatesCollapsed = 0;
   let groupingCollisions = 0;
   const enrichment = {
@@ -327,7 +387,7 @@ export const buildFullSyncCandidate = async ({
     if (groupRows.length === 0) continue;
     const first = groupRows[0];
     const data = first.normalizedData;
-    const previousProduct = previousProductForRows(groupRows, index, data.operation);
+    const previousProduct = previousProductForRows(groupRows, index, data.operation, reuseState, { claim: true });
     const description = uniqueValue(groupRows, 'description');
     const installationGuide = uniqueValue(groupRows, 'installationGuide');
     const imageValue = uniqueValue(groupRows, 'imageUrl');
@@ -414,7 +474,7 @@ export const buildFullSyncCandidate = async ({
       medium: first.sourceMedium,
       operationResolution,
       ...(dataPolicy && !dataPolicy.conflict && dataPolicy !== undefined ? { dataPolicy } : {}),
-      slug: previousProduct?.slug ?? slugFor(data.productName, productSourceKey),
+      slug: uniqueSlugFor(previousProduct?.slug, data.productName, productSourceKey, reuseState.usedSlugs),
       name: data.productName,
       operation,
       description: productDescription,
@@ -426,9 +486,7 @@ export const buildFullSyncCandidate = async ({
     });
     for (const row of groupRows) {
       const variantData = row.normalizedData;
-      const previousVariant = index.byVariantRecordSourceKey.get(variantData.variantSourceKey)
-        ?? index.byVariantRecordSourceKey.get(legacyVariantSourceKeyFor(variantData))
-        ?? null;
+      const previousVariant = previousVariantFor(variantData, previousProduct, index, reuseState);
       const fulfillment = fulfillmentFor(row.providerOffer, row.sourceMedium, operation);
       variants.push({
         ...(previousVariant?.publicSku ? { publicSku: previousVariant.publicSku } : {}),

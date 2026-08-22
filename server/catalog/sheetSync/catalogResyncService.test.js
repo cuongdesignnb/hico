@@ -114,6 +114,57 @@ test('full sync splits one package family by medium and uses operation-aware ful
   assert.equal(candidate.variants.find((variant) => variant.medium === 'esim')?.shippingRequired, false);
 });
 
+test('full sync does not reuse one legacy product identity across operations', async () => {
+  const subscription = { ...rowData, sourceCategoryLabel: 'Sim & eSIM' };
+  const topup = { ...rowData, sourceCategoryLabel: 'Nạp thêm', sku: 'SKU-TOPUP-LEGACY', wmproductId: 'WM-TOPUP-LEGACY' };
+  const previousProduct = {
+    id: 'product-legacy',
+    sourceKey: productSourceKeyFor({ ...rowData, operation: 'new_subscription' }),
+    slug: 'trung-quoc-legacy',
+    name: rowData.productName,
+    operation: 'new_subscription',
+    medium: rowData.medium,
+    categoryId: 'cat-sim-vat-ly',
+    coverageType: 'not_applicable',
+    coverageIds: [],
+    status: 'active',
+    version: 2,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const previousVariant = {
+    id: 'variant-legacy',
+    sourceKey: variantSourceKeyFor(rowData),
+    productId: previousProduct.id,
+    sku: rowData.sku,
+    medium: rowData.medium,
+    wmproductId: rowData.wmproductId,
+    stock: 3,
+  };
+  const candidate = await buildFullSyncCandidate({
+    rows: [
+      { id: 'row-subscription', sourceMedium: subscription.medium, normalizedData: subscription, errors: [], warnings: [], status: 'VALID' },
+      { id: 'row-topup', sourceMedium: topup.medium, normalizedData: topup, errors: [], warnings: [], status: 'VALID' },
+    ],
+    categories: cloneSeedCategories(),
+    offers: [
+      { id: 'offer-subscription', provider: 'worldmove', wmproductId: subscription.wmproductId, providerProductType: 1, active: true, leSIM: false },
+      { id: 'offer-topup', provider: 'worldmove', wmproductId: topup.wmproductId, providerProductType: 2, active: true, leSIM: false },
+    ],
+    previousCatalog: { products: [previousProduct], variants: [previousVariant] },
+  });
+
+  assert.equal(candidate.products.length, 2);
+  assert.equal(new Set(candidate.products.map((product) => product.id)).size, 2);
+  assert.equal(new Set(candidate.products.map((product) => product.slug)).size, 2);
+  assert.equal(candidate.products.find((product) => product.id === previousProduct.id)?.operation, 'new_subscription');
+  assert.notEqual(candidate.products.find((product) => product.operation === 'topup')?.id, previousProduct.id);
+  assert.equal(new Set(candidate.variants.map((variant) => variant.id)).size, 2);
+  assert.equal(candidate.variants.filter((variant) => variant.id === previousVariant.id).length, 1);
+  assert.equal(candidate.summary.products, 2);
+  assert.equal(candidate.summary.variants, 2);
+});
+
 test('full sync keeps physical top-up as a no-shipping operation', async () => {
   const topup = { ...rowData, sourceCategoryLabel: 'Nạp thêm', sku: 'SKU-TOPUP', wmproductId: 'WM-TOPUP', medium: 'physical_sim' };
   const candidate = await buildFullSyncCandidate({
