@@ -5,7 +5,9 @@ const folded = (value) => normalize(value)
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/đ/g, 'd');
 
-const COUNTRY_ALIASES = new Map([
+// These aliases only canonicalize familiar labels. A structured `destination: network`
+// segment is accepted even when its destination is not in this map.
+const DESTINATION_ALIASES = new Map([
   ['china', 'Trung Quốc'],
   ['mainland china', 'Trung Quốc'],
   ['trung quoc', 'Trung Quốc'],
@@ -18,6 +20,8 @@ const COUNTRY_ALIASES = new Map([
   ['nhat ban', 'Nhật Bản'],
 ]);
 
+// Only used for legacy, unstructured carrier-only labels. It never gates a
+// structured destination on the left side of `destination: network`.
 const NETWORK_HINTS = new Set([
   'china mobile', 'china unicom', 'china telecom', 'dtac', 'softbank', 'rakuten mobile',
   'vodafone', 'meteor', 'elisa', 'telia', 'tele2', 'lg', 'skt', 'viettel', 'vinaphone',
@@ -32,10 +36,13 @@ const slug = (value) => folded(value)
   .replace(/^-+|-+$/g, '')
   || 'unknown';
 
-const destinationNameFor = (value) => COUNTRY_ALIASES.get(folded(value));
-const destinationFor = (value) => {
-  const name = destinationNameFor(value);
-  return name ? { id: `coverage-${slug(name)}`, name } : null;
+const destinationFor = (value, { structural = false } = {}) => {
+  const rawName = normalize(value);
+  if (!rawName) return null;
+  const canonicalName = DESTINATION_ALIASES.get(folded(rawName));
+  if (!canonicalName && !structural) return null;
+  const name = canonicalName ?? rawName;
+  return { id: `coverage-${slug(name)}`, name };
 };
 
 const splitList = (value) => normalize(value)
@@ -74,9 +81,9 @@ export const parseHicoCoverage = (value) => {
   const networks = [];
   let structured = false;
   let unresolvedDestination = false;
-  const addDestination = (item) => {
-    const destination = destinationFor(item);
-    if (!destination && normalize(item)) unresolvedDestination = true;
+  const addDestination = (item, { structural = false } = {}) => {
+    const destination = destinationFor(item, { structural });
+    if (!destination && normalize(item) && !structural) unresolvedDestination = true;
     if (destination && !destinations.some((entry) => entry.id === destination.id)) destinations.push(destination);
   };
   const addNetwork = (item) => {
@@ -88,16 +95,16 @@ export const parseHicoCoverage = (value) => {
     const separator = segment.indexOf(':');
     if (separator > 0) {
       structured = true;
-      addDestination(segment.slice(0, separator));
+      addDestination(segment.slice(0, separator), { structural: true });
       splitList(segment.slice(separator + 1)).forEach(addNetwork);
       continue;
     }
     const items = splitList(segment);
-    if (items.length > 0 && (networkPrefix || !listPrefix) && items.every((item) => NETWORK_HINTS.has(folded(item)))) {
+    if (items.length > 0 && (networkPrefix || (!listPrefix && items.every((item) => NETWORK_HINTS.has(folded(item)))))) {
       items.forEach(addNetwork);
       continue;
     }
-    items.forEach(addDestination);
+    items.forEach((item) => addDestination(item, { structural: listPrefix }));
   }
 
   const carrierOnly = destinations.length === 0 && networks.length > 0 && !structured;

@@ -24,17 +24,24 @@ test('coverage parser strips deterministic prefixes and flags carrier-only label
   assert.equal(carrierOnly.needsReview, true);
 });
 
-test('coverage parser does not fuzzy-create a destination for an unknown label', () => {
+test('coverage parser treats a structured left-hand label as an exact destination', () => {
   const result = parseHicoCoverage('Atlantis: Example Telecom');
-  assert.deepEqual(result.destinations, []);
+  assert.deepEqual(result.destinations, [{ id: 'coverage-atlantis', name: 'Atlantis' }]);
   assert.deepEqual(result.networks, ['Example Telecom']);
-  assert.equal(result.needsReview, true);
-  assert.equal(result.status, 'UNKNOWN_DESTINATION');
+  assert.equal(result.needsReview, false);
+  assert.equal(result.status, 'RESOLVED');
 });
 
-test('coverage parser distinguishes missing coverage from an unresolved country', () => {
+test('coverage parser distinguishes missing coverage from an unstructured destination', () => {
   assert.equal(parseHicoCoverage('').status, 'MISSING');
-  assert.equal(parseHicoCoverage('Narnia: Example Telecom').status, 'UNKNOWN_DESTINATION');
+  assert.equal(parseHicoCoverage('Narnia').status, 'UNKNOWN_DESTINATION');
   assert.equal(parseHicoCoverage('Trung Quốc').status, 'RESOLVED');
   assert.equal(parseHicoCoverage('Trung Quốc: China Unicom').status, 'RESOLVED');
+});
+
+test('coverage parser keeps an auto-network label as carrier-only without a network whitelist', () => {
+  const result = parseHicoCoverage('Tự động nhận mạng: Carrier Anywhere');
+  assert.deepEqual(result.destinations, []);
+  assert.deepEqual(result.networks, ['Carrier Anywhere']);
+  assert.equal(result.status, 'CARRIER_ONLY');
 });
