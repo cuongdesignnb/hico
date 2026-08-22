@@ -12,7 +12,9 @@ const safeMutationKeys = new Set([
   'POST /catalog-sheet-sync/preview',
   'POST /catalog-sheet-sync/quick-preview',
   'POST /catalog-sheet-sync/full-preview',
+  'POST /catalog-sheet-sync/preview-jobs',
 ]);
+const previewJobCancelPath = /^\/catalog-sheet-sync\/preview-jobs\/[^/]+\/cancel$/;
 
 const pathWithoutAdminPrefix = (request) => {
   const originalPath = String(request.originalUrl ?? '').split('?')[0];
@@ -24,6 +26,9 @@ export const SAFE_ADMIN_MUTATIONS = Object.freeze([...safeMutationKeys]);
 
 export const isProductionSafeAdminMutation = (request) => (
   safeMutationKeys.has(`${request.method} ${pathWithoutAdminPrefix(request)}`)
+  || (request.method === 'POST'
+    && previewJobCancelPath.test(pathWithoutAdminPrefix(request))
+    && !/%2f|%5c/i.test(pathWithoutAdminPrefix(request)))
 );
 
 export { isCatalogMaintenanceMutation };

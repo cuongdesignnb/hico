@@ -7,6 +7,22 @@ test('safe Google Sheet and preview mutations are explicitly allowlisted', () =>
   assert.equal(isProductionSafeAdminMutation({ method: 'PUT', originalUrl: '/api/admin/settings/integrations/google-sheet' }), true);
   assert.equal(isProductionSafeAdminMutation({ method: 'POST', originalUrl: '/api/admin/settings/integrations/google-sheet/discover' }), true);
   assert.equal(isProductionSafeAdminMutation({ method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/full-preview' }), true);
+  assert.equal(isProductionSafeAdminMutation({ method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/preview-jobs' }), true);
+  assert.equal(isProductionSafeAdminMutation({ method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/preview-jobs/job-123/cancel' }), true);
+  assert.equal(isProductionSafeAdminMutation({ method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/preview-jobs/job-123/cancel?source=admin' }), true);
+});
+
+test('preview job cancellation allowlist is method- and path-scoped', () => {
+  for (const request of [
+    { method: 'PUT', originalUrl: '/api/admin/catalog-sheet-sync/preview-jobs/job-123/cancel' },
+    { method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/preview-jobs/job-123/apply' },
+    { method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/preview-jobs/job-123/delete' },
+    { method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/job-123/full-apply' },
+    { method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/job-123/quick-apply' },
+    { method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/preview-jobs/job-123%2Fother/cancel' },
+  ]) {
+    assert.equal(isProductionSafeAdminMutation(request), false, `${request.method} ${request.originalUrl}`);
+  }
 });
 
 test('catalog mutations are not allowlisted by name similarity', () => {

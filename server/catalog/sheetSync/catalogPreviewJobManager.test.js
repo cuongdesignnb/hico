@@ -37,19 +37,23 @@ test('preview manager starts one job and returns a summary without rows', async 
 });
 
 test('preview manager exposes failure and timeout/cancel terminal states', async (t) => {
-  const manager = createCatalogPreviewJobManager({ workerPath: fixture, deadlineMs: 120, terminateGraceMs: 50, terminalTtlMs: 10_000 });
+  const manager = createCatalogPreviewJobManager({ workerPath: fixture, deadlineMs: 2_000, terminateGraceMs: 50, terminalTtlMs: 10_000 });
   const failing = manager.start({ mode: 'legacy' });
-  const failed = await waitFor(manager, failing.id, (job) => job.status === 'FAILED');
+  const failed = await waitFor(manager, failing.id, (job) => job.status === 'FAILED', 4_000);
   assert.equal(failed.errorCode, 'CATALOG_PREVIEW_FAILED');
   await waitFor(manager, failing.id, () => manager.inspectRuntime(failing.id).childExited);
   const slow = manager.start({ mode: 'quick' });
   const cancelled = manager.cancel(slow.id);
   assert.equal(cancelled.status, 'CANCELLED');
   await waitFor(manager, slow.id, () => manager.inspectRuntime(slow.id).childExited);
-  const timed = manager.start({ mode: 'full' });
-  const timedOut = await waitFor(manager, timed.id, (job) => job.status === 'TIMED_OUT');
-  assert.equal(timedOut.errorCode, 'CATALOG_PREVIEW_TIMED_OUT');
   await manager.shutdown();
+
+  const timeoutManager = createCatalogPreviewJobManager({ workerPath: ignoreSigtermFixture, deadlineMs: 40, terminateGraceMs: 50, terminalTtlMs: 10_000 });
+  const timed = timeoutManager.start({ mode: 'full' });
+  const timedOut = await waitFor(timeoutManager, timed.id, (job) => job.status === 'TIMED_OUT');
+  assert.equal(timedOut.errorCode, 'CATALOG_PREVIEW_TIMED_OUT');
+  await waitFor(timeoutManager, timed.id, () => timeoutManager.inspectRuntime(timed.id).childExited);
+  await timeoutManager.shutdown();
   t.diagnostic('manager terminal states verified');
 });
 

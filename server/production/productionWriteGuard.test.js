@@ -34,6 +34,8 @@ test('maintenance mutations reach the dedicated maintenance gate before readines
 test('safe Google Sheet write proceeds while production readiness is not ready', async () => {
   assert.deepEqual(await runGuard({ method: 'PUT', originalUrl: '/api/admin/settings/integrations/google-sheet' }), { next: true, readinessCalls: 0 });
   assert.deepEqual(await runGuard({ method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/full-preview' }), { next: true, readinessCalls: 0 });
+  assert.deepEqual(await runGuard({ method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/preview-jobs' }), { next: true, readinessCalls: 0 });
+  assert.deepEqual(await runGuard({ method: 'POST', originalUrl: '/api/admin/catalog-sheet-sync/preview-jobs/job-123/cancel' }), { next: true, readinessCalls: 0 });
 });
 
 test('catalog mutation remains blocked while production readiness is not ready', async () => {
