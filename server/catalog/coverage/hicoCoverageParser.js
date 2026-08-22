@@ -52,6 +52,9 @@ const splitList = (value) => normalize(value)
 
 const countPrefix = /^(?:\d+)\s+quốc gia\s*\/\s*vùng lãnh thổ\s*:\s*/i;
 const autoNetworkPrefix = /^tự động nhận mạng\s*:\s*/i;
+const autoSelectDestinationPrefix = /^tự động chọn nhà mạng(?:\s+tại các quốc gia\s*\/\s*vùng lãnh thổ)?\s*:\s*/i;
+const destinationToken = (value) => normalize(value).replace(/[.;:]+$/, '').trim();
+const isCarrierToken = (value) => NETWORK_HINTS.has(folded(value));
 
 export const parseHicoCoverage = (value) => {
   const rawLabel = normalize(value);
@@ -71,10 +74,14 @@ export const parseHicoCoverage = (value) => {
   if (countPrefix.test(text)) {
     text = text.replace(countPrefix, '');
     listPrefix = true;
+  } else if (autoSelectDestinationPrefix.test(text)) {
+    text = text.replace(autoSelectDestinationPrefix, '');
+    listPrefix = true;
   } else if (autoNetworkPrefix.test(text)) {
     text = text.replace(autoNetworkPrefix, '');
+    const tokens = splitList(text);
     listPrefix = true;
-    networkPrefix = true;
+    networkPrefix = tokens.length > 0 && tokens.every(isCarrierToken);
   }
 
   const destinations = [];
@@ -82,7 +89,7 @@ export const parseHicoCoverage = (value) => {
   let structured = false;
   let unresolvedDestination = false;
   const addDestination = (item, { structural = false } = {}) => {
-    const destination = destinationFor(item, { structural });
+    const destination = destinationFor(destinationToken(item), { structural });
     if (!destination && normalize(item) && !structural) unresolvedDestination = true;
     if (destination && !destinations.some((entry) => entry.id === destination.id)) destinations.push(destination);
   };
@@ -95,12 +102,12 @@ export const parseHicoCoverage = (value) => {
     const separator = segment.indexOf(':');
     if (separator > 0) {
       structured = true;
-      addDestination(segment.slice(0, separator), { structural: true });
+      splitList(segment.slice(0, separator)).forEach((item) => addDestination(item, { structural: true }));
       splitList(segment.slice(separator + 1)).forEach(addNetwork);
       continue;
     }
     const items = splitList(segment);
-    if (items.length > 0 && (networkPrefix || (!listPrefix && items.every((item) => NETWORK_HINTS.has(folded(item)))))) {
+    if (items.length > 0 && (networkPrefix || (!listPrefix && items.every(isCarrierToken)))) {
       items.forEach(addNetwork);
       continue;
     }
@@ -108,7 +115,7 @@ export const parseHicoCoverage = (value) => {
   }
 
   const carrierOnly = destinations.length === 0 && networks.length > 0 && !structured;
-  const needsReview = carrierOnly || unresolvedDestination || (destinations.length === 0 && !structured && !listPrefix);
+  const needsReview = carrierOnly || unresolvedDestination || (destinations.length === 0 && networks.length === 0);
   const status = !rawLabel
     ? 'MISSING'
     : carrierOnly
