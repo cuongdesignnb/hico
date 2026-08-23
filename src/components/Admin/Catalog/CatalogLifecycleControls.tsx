@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Circle, Eye, LoaderCircle, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
 import { catalogLifecycleApi, CatalogLifecycleApiError } from '../../../services/catalogLifecycleApi';
 import type { CatalogMaintenanceStatus, CatalogResetPreview } from '../../../types/catalogLifecycle';
-import { CATALOG_PREVIEW_MODE_LABELS, CATALOG_PREVIEW_STAGE_LABELS, CATALOG_PREVIEW_STAGE_ORDER, formatCatalogPreviewElapsed, isFullCatalogPreviewJob } from '../../../types/catalogPreviewJob';
-import type { CatalogPreviewJob, CatalogPreviewJobStage } from '../../../types/catalogPreviewJob';
+import { CATALOG_PREVIEW_MODE_LABELS, CATALOG_PREVIEW_STAGE_LABELS, CATALOG_PREVIEW_STAGE_ORDER, formatCatalogPreviewElapsed, getCatalogPreviewStageIndex, isFullCatalogPreviewJob } from '../../../types/catalogPreviewJob';
+import type { CatalogPreviewJob } from '../../../types/catalogPreviewJob';
 import { useAdminToast } from '../../../hooks/useAdminToast';
 import './CatalogLifecycleControls.css';
 
@@ -23,7 +23,6 @@ const fullSyncErrorText = (error: unknown) => error instanceof CatalogLifecycleA
         ? 'Kho dữ liệu từ chối Preview do xung đột dữ liệu. Hãy tạo Preview mới.'
   : maintenanceErrorText(error);
 const idempotencyKey = () => (globalThis.crypto?.randomUUID?.() ?? `catalog-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-const stageIndex = (stage: CatalogPreviewJobStage) => CATALOG_PREVIEW_STAGE_ORDER.indexOf(stage);
 const terminalPreviewStatuses = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'TIMED_OUT'] as const;
 const activePreviewStatuses = ['QUEUED', 'RUNNING'] as const;
 const categoryLabels: Record<string, string> = {
@@ -153,12 +152,26 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
     } catch (resetError) { setError(maintenanceErrorText(resetError)); toast.error(maintenanceErrorText(resetError)); }
     finally { setBusy(false); }
   };
+  const clearAppliedPreviewState = () => {
+    setFullJob(null);
+    setConflictingPreview(null);
+    setPassword('');
+    setConfirmation('');
+    setError('');
+    setMode(null);
+  };
   const fullApply = async () => {
     const fullBatch = fullJob?.batch;
     if (!isFullCatalogPreviewJob(fullJob) || !fullBatch || fullBatch.mode !== 'full' || fullJob.status !== 'SUCCEEDED' || fullBatch.status !== 'READY_FOR_REVIEW') return;
     setBusy(true); setError('');
-    try { await catalogLifecycleApi.fullApply(fullBatch.id, password); toast.success('Đã đồng bộ lại toàn bộ catalog từ HICO GỐC.'); setBusy(false); close(); onChanged?.(); void loadMaintenanceStatus(); }
-    catch (applyError) { setError(fullSyncErrorText(applyError)); toast.error(fullSyncErrorText(applyError)); }
+    try {
+      await catalogLifecycleApi.fullApply(fullBatch.id, password);
+      clearAppliedPreviewState();
+      toast.success('Đã đồng bộ lại toàn bộ catalog từ HICO GỐC.');
+      onChanged?.();
+      void loadMaintenanceStatus();
+    }
+    catch (applyError) { setBusy(false); setError(fullSyncErrorText(applyError)); toast.error(fullSyncErrorText(applyError)); }
     finally { setBusy(false); }
   };
   const fullBatch = fullJob?.batch ?? null;
@@ -177,8 +190,8 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
   const sourceTypeDiagnostics = diagnostics?.sourceAudit?.sourceTypeDiagnostics ?? {};
   const renderStageStepper = (className = '') => <ol className={`catalog-preview-stepper ${className}`.trim()} aria-label="Tiến trình Preview">
     {CATALOG_PREVIEW_STAGE_ORDER.map((stage, index) => {
-      const currentIndex = stageIndex(previewStage);
-      const state = fullJob?.status === 'SUCCEEDED' || currentIndex > index ? 'done' : currentIndex === index ? 'active' : 'pending';
+      const currentIndex = getCatalogPreviewStageIndex(previewStage);
+      const state = fullJob?.status === 'SUCCEEDED' || currentIndex > index ? 'done' : previewRunning && currentIndex === index ? 'active' : 'pending';
       return <li className={`is-${state}`} key={stage}><span className="catalog-preview-step-icon">{state === 'done' ? <CheckCircle2 size={14} /> : state === 'active' ? <LoaderCircle size={14} /> : <Circle size={12} />}</span><span>{CATALOG_PREVIEW_STAGE_LABELS[stage]}</span></li>;
     })}
   </ol>;

@@ -12,7 +12,7 @@
 .catalog-preview-banner.is-cancelled .catalog-preview-banner-heading p { color: #c2410c; }
 .catalog-preview-banner-summary { display: flex; flex-wrap: wrap; gap: 8px; }
 .catalog-preview-banner-summary strong { padding: 8px 10px; border: 1px solid #bbf7d0; border-radius: 6px; color: #166534; background: #dcfce7; font-size: 13px; }
-.catalog-preview-stepper { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.catalog-preview-stepper { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
 .catalog-preview-stepper li { display: grid; gap: 5px; min-width: 0; color: #7b8794; font-size: 11px; line-height: 1.3; }
 .catalog-preview-stepper li.is-done { color: #0f766e; }
 .catalog-preview-stepper li.is-active { color: #115e59; font-weight: 800; }
@@ -40,7 +40,7 @@
 .catalog-lifecycle-message { color: #14532d; background: #ecfdf3; border: 1px solid #a7f3d0; }
 .catalog-lifecycle-error { color: #991b1b; background: #fff1f2; border: 1px solid #fecaca; }
 .catalog-lifecycle-backdrop { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px; background: rgb(15 23 42 / 55%); }
-.catalog-lifecycle-dialog { width: min(720px, 100%); max-height: min(760px, 90vh); overflow: auto; background: #fff; border: 1px solid #d8e2e8; border-radius: 10px; box-shadow: 0 24px 70px rgb(15 23 42 / 28%); }
+.catalog-lifecycle-dialog { width: min(880px, 100%); max-height: min(760px, 90vh); overflow: auto; background: #fff; border: 1px solid #d8e2e8; border-radius: 10px; box-shadow: 0 24px 70px rgb(15 23 42 / 28%); }
 .catalog-lifecycle-dialog > header { display: flex; justify-content: space-between; gap: 16px; padding: 22px 24px 18px; border-bottom: 1px solid #e7eef1; }
 .catalog-lifecycle-dialog h2 { margin: 0; color: #102a43; font-size: 22px; }
 .catalog-lifecycle-eyebrow { margin: 0 0 5px; color: #116b70; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
@@ -58,5 +58,7 @@
 .catalog-lifecycle-field input { width: 100%; box-sizing: border-box; min-height: 40px; border: 1px solid #bcccdc; border-radius: 6px; padding: 0 11px; font: inherit; font-weight: 400; }
 .catalog-lifecycle-dialog > .catalog-lifecycle-error { margin: 16px 24px 0; }
 .catalog-lifecycle-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 22px 24px; margin-top: 20px; border-top: 1px solid #e7eef1; }
+@media (max-width: 920px) { .catalog-preview-stepper { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .catalog-preview-stepper { grid-template-columns: repeat(3, minmax(0, 1fr)); } .catalog-preview-banner-heading { flex-direction: column; } .catalog-lifecycle-diagnostics { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .catalog-preview-stepper { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .catalog-lifecycle-backdrop { padding: 10px; align-items: end; } .catalog-lifecycle-dialog { max-height: 92vh; } .catalog-lifecycle-grid { grid-template-columns: 1fr; } .catalog-lifecycle-dialog > footer { flex-direction: column-reverse; } .catalog-lifecycle-dialog > footer button { width: 100%; } }

@@ -31,9 +31,19 @@ export const CATALOG_PREVIEW_STAGE_LABELS: Record<CatalogPreviewJobStage, string
   COMPLETED: 'Hoàn tất',
 };
 
-export const CATALOG_PREVIEW_STAGE_ORDER: CatalogPreviewJobStage[] = [
-  'READING_SHEET', 'PARSING', 'BUILDING_CANDIDATE', 'VALIDATING', 'PERSISTING', 'COMPLETED',
-];
+export const CATALOG_PREVIEW_STAGE_ORDER = [
+  'STARTING',
+  'READING_SHEET',
+  'LOADING_CATALOG',
+  'LOADING_PROVIDER',
+  'PARSING',
+  'BUILDING_CANDIDATE',
+  'VALIDATING',
+  'PERSISTING',
+  'COMPLETED',
+] as const satisfies readonly CatalogPreviewJobStage[];
+
+export const getCatalogPreviewStageIndex = (stage: CatalogPreviewJobStage) => CATALOG_PREVIEW_STAGE_ORDER.indexOf(stage);
 
 export const formatCatalogPreviewElapsed = (startedAt: string | null, now = Date.now()) => {
   if (!startedAt) return '00:00';
