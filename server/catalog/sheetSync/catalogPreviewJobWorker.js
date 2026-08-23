@@ -18,7 +18,7 @@ const run = async ({ jobId, mode, actorId, actorEmail }) => {
       : await sheetSyncService.preview({ actor, mode, onStage });
     send({ type: 'RESULT', jobId, batch: result.batch });
   } catch (error) {
-    send({ type: 'ERROR', jobId, code: error?.code ?? 'CATALOG_PREVIEW_FAILED', message: error?.message ?? 'Không thể hoàn tất preview catalog.' });
+    send({ type: 'ERROR', jobId, code: error?.code ?? 'CATALOG_PREVIEW_FAILED', message: error?.message ?? 'Không thể hoàn tất preview catalog.', ...(error?.details?.event === 'catalog_preview_persist_failed' ? { details: error.details } : {}) });
   } finally {
     await previewPool?.end?.().catch?.(() => undefined);
     setImmediate(() => process.exit(0));

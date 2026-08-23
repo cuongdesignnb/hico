@@ -9,7 +9,7 @@ import { createSheetSyncRouter } from './sheetSyncRouter.js';
 
 const workerFixture = path.join(path.dirname(fileURLToPath(import.meta.url)), 'catalogPreviewJobManager.testWorker.js');
 
-const createServer = async () => {
+const createServer = async (activeJob = null) => {
   const starts = [];
   const app = express();
   app.use(express.json());
@@ -21,7 +21,7 @@ const createServer = async () => {
     start: ({ mode, actor }) => { starts.push({ mode, actor }); return { id: `job-${starts.length}`, mode, status: 'RUNNING', stage: 'STARTING' }; },
     get: (id) => ({ id, mode: 'quick', status: 'RUNNING', stage: 'PARSING' }),
     cancel: (id) => ({ id, mode: 'quick', status: 'CANCELLED', stage: 'PARSING' }),
-    active: () => null,
+    active: () => activeJob,
   };
   const sheetSyncService = {
     getBatch: async () => ({ id: 'batch-1', status: 'READY_FOR_REVIEW' }),
@@ -54,6 +54,15 @@ test('row endpoint enforces bounded pagination and returns no unbounded array co
     assert.equal(body.pageSize, 200);
     assert.equal(body.total, 201);
     assert.equal(body.items.length, 1);
+  } finally { server.close(); await once(server, 'close'); }
+});
+
+test('active preview route exposes the reconnectable running job', async () => {
+  const { server, baseUrl } = await createServer({ id: 'job-active', mode: 'full', status: 'RUNNING', stage: 'BUILDING_CANDIDATE' });
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/catalog-sheet-sync/preview-jobs/active`);
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).job, { id: 'job-active', mode: 'full', status: 'RUNNING', stage: 'BUILDING_CANDIDATE' });
   } finally { server.close(); await once(server, 'close'); }
 });
 

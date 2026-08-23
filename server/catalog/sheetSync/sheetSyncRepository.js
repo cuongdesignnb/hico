@@ -26,11 +26,12 @@ const mapRow = (row) => ({
 const emptyFileState = () => ({ version: 1, batches: {}, rows: {} });
 
 export class CatalogPreviewStorageError extends Error {
-  constructor(message, { code = 'INTEGRATION_STORAGE_UNAVAILABLE', status = 503 } = {}) {
+  constructor(message, { code = 'INTEGRATION_STORAGE_UNAVAILABLE', status = 503, details = null } = {}) {
     super(message);
     this.name = 'CatalogPreviewStorageError';
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -56,6 +57,62 @@ const assertBatchPayload = (batch, batchRows) => {
 };
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+export const PREVIEW_ROW_INSERT_CHUNK_SIZE = 250;
+
+const storageErrorFor = (error, { batchId, rowCount, logger }) => {
+  if (error instanceof CatalogPreviewStorageError) return error;
+  const dbCode = error?.code;
+  const timeout = dbCode === '57014';
+  const conflict = ['23505', '23503', '23514', '55P03'].includes(dbCode);
+  const code = timeout
+    ? 'CATALOG_PREVIEW_STORAGE_TIMEOUT'
+    : conflict
+      ? 'CATALOG_PREVIEW_STORAGE_CONFLICT'
+      : 'CATALOG_PREVIEW_PERSIST_FAILED';
+  const message = timeout
+    ? 'Catalog preview storage timed out.'
+    : conflict
+      ? 'Catalog preview storage rejected the batch.'
+      : 'Catalog preview could not be persisted.';
+  const details = {
+    event: 'catalog_preview_persist_failed',
+    stage: 'PERSISTING',
+    errorName: error?.name ?? 'DatabaseError',
+    dbCode: dbCode ?? null,
+    constraint: error?.constraint ?? null,
+    table: error?.table ?? 'catalog_sheet_sync_rows',
+    batchId,
+    rowCount,
+    chunkSize: PREVIEW_ROW_INSERT_CHUNK_SIZE,
+  };
+  logger?.error?.('[catalog-preview] persistence failed', details);
+  return new CatalogPreviewStorageError(message, { code, status: 503, details });
+};
+
+const insertRowChunk = async (client, batchId, rows) => {
+  const values = [];
+  const placeholders = rows.map((row, rowIndex) => {
+    const offset = rowIndex * 12;
+    values.push(
+      row.id,
+      batchId,
+      row.sheetRowNumber,
+      row.rowHash,
+      row.variantId ?? null,
+      row.status,
+      JSON.stringify(row.normalizedData ?? {}),
+      JSON.stringify(row.raw ?? {}),
+      JSON.stringify(row.diff ?? {}),
+      JSON.stringify(row.errors ?? []),
+      JSON.stringify(row.appliedFields ?? []),
+      row.createdAt,
+    );
+    return `(${Array.from({ length: 12 }, (_, index) => `$${offset + index + 1}`).join(',')})`;
+  }).join(',');
+  await client.query(`INSERT INTO catalog_sheet_sync_rows (id,batch_id,sheet_row_number,row_hash,variant_id,status,normalized_data,raw_data,diff,errors,applied_fields,created_at)
+    VALUES ${placeholders}`, values);
+};
 
 const withFileLock = async (filePath, callback, { timeoutMs = 10_000, staleLockMs = 15 * 60_000 } = {}) => {
   const lockPath = `${filePath}.lock`;
@@ -206,7 +263,7 @@ export const assertPostgresSheetSyncStorage = async ({ pool } = {}) => {
   }
 };
 
-export const createSheetSyncRepository = ({ pool = null, storageFile = defaultSheetSyncStorageFile, idFactory = () => randomUUID() } = {}) => {
+export const createSheetSyncRepository = ({ pool = null, storageFile = defaultSheetSyncStorageFile, idFactory = () => randomUUID(), logger = console } = {}) => {
   if (!pool) return createFileSheetSyncRepository({ storageFile });
   return {
     async findBySourceHash(sourceHash) {
@@ -219,10 +276,14 @@ export const createSheetSyncRepository = ({ pool = null, storageFile = defaultSh
       try {
         await client.query(`INSERT INTO catalog_sheet_sync_batches (id, source_hash, spreadsheet_id, sheet_tab, sheet_range, status, created_by, created_at, validated_at, catalog_version_id, summary, mode, field_mapping, price_mapping, header_hash, provider_snapshot_hash)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16)`, [batch.id, batch.sourceHash, batch.spreadsheetId, batch.sheetTab, batch.sheetRange, batch.status, batch.createdBy ?? null, batch.createdAt, batch.validatedAt ?? null, batch.catalogVersionId ?? null, JSON.stringify(batch.summary ?? {}), batch.mode ?? 'legacy', JSON.stringify(batch.fieldMapping ?? null), JSON.stringify(batch.priceMapping ?? null), batch.headerHash ?? null, batch.providerSnapshotHash ?? null]);
-        for (const row of batchRows) await client.query(`INSERT INTO catalog_sheet_sync_rows (id,batch_id,sheet_row_number,row_hash,variant_id,status,normalized_data,raw_data,diff,errors,applied_fields,created_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [row.id, batch.id, row.sheetRowNumber, row.rowHash, row.variantId ?? null, row.status, JSON.stringify(row.normalizedData ?? {}), JSON.stringify(row.raw ?? {}), JSON.stringify(row.diff ?? {}), JSON.stringify(row.errors ?? []), JSON.stringify(row.appliedFields ?? []), row.createdAt]);
+        for (let offset = 0; offset < batchRows.length; offset += PREVIEW_ROW_INSERT_CHUNK_SIZE) {
+          await insertRowChunk(client, batch.id, batchRows.slice(offset, offset + PREVIEW_ROW_INSERT_CHUNK_SIZE));
+        }
         await client.query('COMMIT'); return batch;
-      } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw storageErrorFor(error, { batchId: batch.id, rowCount: batchRows.length, logger });
+      } finally { client.release(); }
     },
     async getBatch(id) { const result = await pool.query('SELECT * FROM catalog_sheet_sync_batches WHERE id = $1', [id]); return result.rows[0] ? mapBatch(result.rows[0]) : null; },
     async listRows(batchId) { const result = await pool.query('SELECT * FROM catalog_sheet_sync_rows WHERE batch_id = $1 ORDER BY sheet_row_number', [batchId]); return result.rows.map(mapRow); },

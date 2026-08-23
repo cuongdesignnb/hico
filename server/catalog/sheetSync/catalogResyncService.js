@@ -25,6 +25,7 @@ import {
   variantSourceKeyFor,
 } from './packageFamilyIdentity.js';
 import { classifyHicoGocSourceRows, classifyHicoPackageClass, operationEvidenceFor } from './hicoGocSourceClassifier.js';
+import { auditHicoGocValues } from './hicoGocContractAudit.js';
 
 const PLACEHOLDER_IMAGES = Object.freeze({
   esim: '/images/art_esim_intro.png',
@@ -688,7 +689,8 @@ export const createCatalogResyncService = ({
     const parsed = parseHicoGocRowsWithDiagnostics(reference.values, settings);
     const collapsed = collapseHicoGocRows(parsed.rows);
     const candidate = await buildFullSyncCandidate({ rows: collapsed, categories: current.categories ?? cloneSeedCategories(), offers, previousCatalog, now, mediaAssetRepository });
-    const diagnostics = fullSyncDiagnostics({ reference, range: validation.range, parser: parsed.diagnostics, candidate, baselineCatalog: current.products.length > 0 ? current : previousCatalog });
+    const sourceAudit = auditHicoGocValues(reference.values, settings);
+    const diagnostics = fullSyncDiagnostics({ reference, range: validation.range, parser: parsed.diagnostics, candidate, baselineCatalog: current.products.length > 0 ? current : previousCatalog, sourceAudit });
     assertFullSyncCandidate(diagnostics);
     return { candidate, diagnostics };
   };

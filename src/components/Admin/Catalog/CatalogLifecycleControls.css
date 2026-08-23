@@ -1,4 +1,25 @@
 .catalog-lifecycle-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.catalog-preview-banner { display: grid; gap: 14px; margin: 14px 0; padding: 16px; border: 1px solid #99f6e4; border-radius: 8px; background: #f0fdfa; color: #134e4a; }
+.catalog-preview-banner-heading { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.catalog-preview-banner-heading p { margin: 0 0 4px; color: #0f766e; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.catalog-preview-banner-heading strong { font-size: 17px; }
+.catalog-preview-banner-heading time { color: #0f766e; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.catalog-preview-stepper { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.catalog-preview-stepper li { display: grid; gap: 5px; min-width: 0; color: #7b8794; font-size: 11px; line-height: 1.3; }
+.catalog-preview-stepper li.is-done { color: #0f766e; }
+.catalog-preview-stepper li.is-active { color: #115e59; font-weight: 800; }
+.catalog-preview-step-icon { display: inline-flex; align-items: center; min-height: 16px; }
+.catalog-preview-stepper li.is-active .catalog-preview-step-icon svg { animation: catalog-preview-spin 1.1s linear infinite; }
+.catalog-preview-banner-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.catalog-preview-stepper-dialog { margin: 16px 24px 0; }
+.catalog-lifecycle-safe > div { display: grid; gap: 4px; }
+.catalog-lifecycle-safe strong { color: inherit; }
+.catalog-lifecycle-diagnostics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 24px; }
+.catalog-lifecycle-diagnostics section { display: grid; gap: 7px; padding: 12px; border: 1px solid #e5edf0; border-radius: 6px; background: #f8fafb; }
+.catalog-lifecycle-diagnostics h3 { margin: 0 0 2px; color: #243b53; font-size: 14px; }
+.catalog-lifecycle-diagnostics section > div { display: flex; justify-content: space-between; gap: 10px; color: #627d98; font-size: 12px; }
+.catalog-lifecycle-diagnostics section > div strong { color: #243b53; text-align: right; }
+@keyframes catalog-preview-spin { to { transform: rotate(360deg); } }
 .catalog-maintenance-status { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin-bottom: 10px; padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 6px; color: #334e68; background: #f8fafc; font-size: 13px; }
 .catalog-maintenance-status span { color: #627d98; }
 .catalog-maintenance-status.is-enabled { border-color: #99f6e4; color: #115e59; background: #f0fdfa; }
@@ -29,4 +50,5 @@
 .catalog-lifecycle-field input { width: 100%; box-sizing: border-box; min-height: 40px; border: 1px solid #bcccdc; border-radius: 6px; padding: 0 11px; font: inherit; font-weight: 400; }
 .catalog-lifecycle-dialog > .catalog-lifecycle-error { margin: 16px 24px 0; }
 .catalog-lifecycle-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 22px 24px; margin-top: 20px; border-top: 1px solid #e7eef1; }
+@media (max-width: 760px) { .catalog-preview-stepper { grid-template-columns: repeat(3, minmax(0, 1fr)); } .catalog-preview-banner-heading { flex-direction: column; } .catalog-lifecycle-diagnostics { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .catalog-lifecycle-backdrop { padding: 10px; align-items: end; } .catalog-lifecycle-dialog { max-height: 92vh; } .catalog-lifecycle-grid { grid-template-columns: 1fr; } .catalog-lifecycle-dialog > footer { flex-direction: column-reverse; } .catalog-lifecycle-dialog > footer button { width: 100%; } }

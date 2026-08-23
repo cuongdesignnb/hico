@@ -172,7 +172,7 @@ export const makeHicoGocBranchCandidate = ({ cells, rowNumber, medium, mapping, 
   }
   if (!productName) errors.push({ code: 'MISSING_PRODUCT_NAME', field: 'productName' });
   if (!sku || !wmproductId) errors.push({ code: 'INVALID_BRANCH_PAIR', field: medium });
-  if (mediumSourceMismatch(sourceCategoryLabel, medium)) warnings.push({ code: 'MEDIUM_SOURCE_MISMATCH', field: 'simType' });
+  if (mediumSourceMismatch(sourceCategoryLabel, medium)) errors.push({ code: 'SOURCE_MEDIUM_CONFLICT', field: 'simType' });
   if (!normalizedData.dataLimit) warnings.push({ code: 'DATA_LIMIT_AMBIGUOUS', field: 'dataLimit' });
 
   return {

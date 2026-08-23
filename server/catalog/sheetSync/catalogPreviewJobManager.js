@@ -17,6 +17,7 @@ const safeErrorCodes = new Set([
   'SHEET_SOURCE_TAB_INVALID', 'SHEET_RANGE_INCOMPLETE', 'SHEET_HEADER_REQUIRED', 'SHEET_HEADER_CHANGED',
   'FULL_SYNC_EMPTY_CANDIDATE', 'FULL_SYNC_GROUPING_FAILED', 'FULL_SYNC_SOURCE_EMPTY', 'FULL_SYNC_INVALID_ROWS',
   'PROVIDER_SNAPSHOT_CHANGED', 'INTEGRATION_STORAGE_UNAVAILABLE', 'INTEGRATION_STORAGE_INVALID',
+  'CATALOG_PREVIEW_PERSIST_FAILED', 'CATALOG_PREVIEW_STORAGE_TIMEOUT', 'CATALOG_PREVIEW_STORAGE_CONFLICT',
 ]);
 
 export class CatalogPreviewJobError extends Error {
@@ -65,6 +66,7 @@ export const createCatalogPreviewJobManager = ({
   terminateGraceMs = 3_000,
   terminalTtlMs = 20 * 60_000,
   workerEnv = {},
+  logger = console,
 } = {}) => {
   const jobs = new Map();
   let activeJobId = null;
@@ -141,6 +143,19 @@ export const createCatalogPreviewJobManager = ({
         return;
       }
       if (message.type === 'ERROR') {
+        if (message.details?.event === 'catalog_preview_persist_failed') {
+          logger.error?.('[catalog-preview] persistence failed', {
+            event: message.details.event,
+            jobId: job.id,
+            stage: message.details.stage,
+            errorName: message.details.errorName,
+            dbCode: message.details.dbCode,
+            constraint: message.details.constraint,
+            table: message.details.table,
+            rowCount: message.details.rowCount,
+            chunkSize: message.details.chunkSize,
+          });
+        }
         finalize(job, 'FAILED', { ...safeError(message, 'CATALOG_PREVIEW_FAILED') });
       }
     });

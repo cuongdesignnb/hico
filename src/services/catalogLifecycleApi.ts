@@ -21,6 +21,7 @@ export const catalogLifecycleApi = {
   resetPreview: () => request<CatalogResetPreview>('/admin/catalog/reset/preview'),
   reset: (input: { catalogVersionId: string; confirmation: string; currentPassword: string; idempotencyKey: string }) => request<CatalogResetResult>('/admin/catalog/reset', { method: 'POST', body: JSON.stringify(input) }),
   startPreview: (mode: CatalogPreviewJobMode) => request<{ job: CatalogPreviewJob }>('/admin/catalog-sheet-sync/preview-jobs', { method: 'POST', body: JSON.stringify({ mode }) }),
+  getActivePreviewJob: () => request<{ job: CatalogPreviewJob | null }>('/admin/catalog-sheet-sync/preview-jobs/active'),
   getPreviewJob: (jobId: string) => request<{ job: CatalogPreviewJob }>(`/admin/catalog-sheet-sync/preview-jobs/${encodeURIComponent(jobId)}`),
   cancelPreviewJob: (jobId: string) => request<{ job: CatalogPreviewJob }>(`/admin/catalog-sheet-sync/preview-jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST', body: '{}' }),
   fullPreview: () => request<{ job: CatalogPreviewJob }>('/admin/catalog-sheet-sync/full-preview', { method: 'POST', body: '{}' }),

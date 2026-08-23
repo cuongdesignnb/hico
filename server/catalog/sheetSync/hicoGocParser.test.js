@@ -34,6 +34,35 @@ test('HICO GỐC parser emits independent physical and eSIM branches from one Sh
   assert.equal(esim.status, 'VALID');
 });
 
+test('HICO GỐC parser blocks a physical branch that conflicts with an eSim source type', () => {
+  const rows = parseHicoGocRows([Array(25).fill('header'), cells({ 0: 'eSim' })]);
+  assert.equal(rows.find((row) => row.sourceMedium === 'physical_sim')?.status, 'INVALID');
+  assert.ok(rows.find((row) => row.sourceMedium === 'physical_sim')?.errors.some((error) => error.code === 'SOURCE_MEDIUM_CONFLICT'));
+  assert.equal(rows.find((row) => row.sourceMedium === 'esim')?.status, 'VALID');
+});
+
+test('HICO GỐC parser blocks an eSIM branch that conflicts with a Sim source type', () => {
+  const rows = parseHicoGocRows([Array(25).fill('header'), cells({ 0: 'Sim' })]);
+  assert.equal(rows.find((row) => row.sourceMedium === 'physical_sim')?.status, 'VALID');
+  assert.ok(rows.find((row) => row.sourceMedium === 'esim')?.errors.some((error) => error.code === 'SOURCE_MEDIUM_CONFLICT'));
+  assert.equal(rows.find((row) => row.sourceMedium === 'esim')?.status, 'INVALID');
+});
+
+test('HICO GỐC source types keep explicit package and medium semantics', () => {
+  const sourceTypes = [
+    ['Sim & eSim', 'STANDARD_TRAVEL', 2],
+    ['Sẵn gói', 'PRELOADED', 2],
+    ['sim VN', 'DOMESTIC_VN', 1],
+    ['eSIM+ gọi', 'VOICE', 1],
+    ['Sim/eSim + gọi', 'VOICE', 2],
+  ];
+  for (const [sourceType, packageClass, validBranchCount] of sourceTypes) {
+    const rows = parseHicoGocRows([Array(25).fill('header'), cells({ 0: sourceType })]);
+    assert.equal(rows.filter((row) => row.status === 'VALID').length, validBranchCount, sourceType);
+    assert.ok(rows.every((row) => row.normalizedData.packageClass === packageClass), sourceType);
+  }
+});
+
 test('HICO GỐC parser keeps a valid branch when the other branch has a partial identity', () => {
   const result = parseHicoGocRowsWithDiagnostics([Array(25).fill('header'), cells({ 24: '' })]);
   assert.equal(result.rows.length, 2);

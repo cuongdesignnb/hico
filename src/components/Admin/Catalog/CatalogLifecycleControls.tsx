@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Circle, Eye, LoaderCircle, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
 import { catalogLifecycleApi, CatalogLifecycleApiError } from '../../../services/catalogLifecycleApi';
 import type { CatalogMaintenanceStatus, CatalogResetPreview } from '../../../types/catalogLifecycle';
-import type { CatalogPreviewJob } from '../../../types/catalogPreviewJob';
+import { CATALOG_PREVIEW_STAGE_LABELS, CATALOG_PREVIEW_STAGE_ORDER, formatCatalogPreviewElapsed } from '../../../types/catalogPreviewJob';
+import type { CatalogPreviewJob, CatalogPreviewJobStage } from '../../../types/catalogPreviewJob';
 import { useAdminToast } from '../../../hooks/useAdminToast';
 import './CatalogLifecycleControls.css';
 
@@ -14,8 +15,21 @@ const maintenanceErrorText = (error: unknown) => error instanceof CatalogLifecyc
   : errorText(error);
 const fullSyncErrorText = (error: unknown) => error instanceof CatalogLifecycleApiError && ['FULL_SYNC_EMPTY_CANDIDATE', 'FULL_SYNC_GROUPING_FAILED', 'FULL_SYNC_SOURCE_EMPTY'].includes(error.code)
   ? 'Không thể tạo catalog từ HICO GỐC: dữ liệu đọc được nhưng không tạo được sản phẩm.'
+  : error instanceof CatalogLifecycleApiError && error.code === 'CATALOG_PREVIEW_PERSIST_FAILED'
+    ? 'Không thể lưu Preview vào kho dữ liệu.'
+    : error instanceof CatalogLifecycleApiError && error.code === 'CATALOG_PREVIEW_STORAGE_TIMEOUT'
+      ? 'Kho dữ liệu lưu Preview phản hồi quá chậm. Hãy thử lại.'
+      : error instanceof CatalogLifecycleApiError && error.code === 'CATALOG_PREVIEW_STORAGE_CONFLICT'
+        ? 'Kho dữ liệu từ chối Preview do xung đột dữ liệu. Hãy tạo Preview mới.'
   : maintenanceErrorText(error);
 const idempotencyKey = () => (globalThis.crypto?.randomUUID?.() ?? `catalog-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+const stageIndex = (stage: CatalogPreviewJobStage) => CATALOG_PREVIEW_STAGE_ORDER.indexOf(stage);
+const categoryLabels: Record<string, string> = {
+  'cat-esim-du-lich': 'eSIM du lịch', 'cat-sim-vat-ly': 'SIM vật lý',
+  'cat-esim-san-goi': 'eSIM sẵn gói', 'cat-sim-vat-ly-san-goi': 'SIM vật lý sẵn gói',
+  'cat-esim-co-goi': 'eSIM có gọi', 'cat-sim-vat-ly-co-goi': 'SIM vật lý có gọi',
+  'cat-sim-viet-nam': 'SIM Việt Nam', 'cat-nap-them': 'Nạp thêm',
+};
 
 export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void }) => {
   const [mode, setMode] = useState<Mode>(null);
@@ -27,6 +41,7 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
   const [fullJob, setFullJob] = useState<CatalogPreviewJob | null>(null);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
+  const [clockNow, setClockNow] = useState(() => Date.now());
 
   const loadMaintenanceStatus = useCallback(async () => {
     try { setMaintenanceStatus(await catalogLifecycleApi.maintenanceStatus()); } catch { setMaintenanceStatus(null); }
@@ -34,15 +49,19 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
 
   useEffect(() => {
     let active = true;
-    catalogLifecycleApi.maintenanceStatus()
-      .then((status) => { if (active) setMaintenanceStatus(status); })
-      .catch(() => { if (active) setMaintenanceStatus(null); });
+    Promise.allSettled([catalogLifecycleApi.maintenanceStatus(), catalogLifecycleApi.getActivePreviewJob()])
+      .then(([maintenanceResult, activeResult]) => {
+        if (!active) return;
+        if (maintenanceResult.status === 'fulfilled') setMaintenanceStatus(maintenanceResult.value);
+        else setMaintenanceStatus(null);
+        if (activeResult.status === 'fulfilled' && activeResult.value.job) setFullJob(activeResult.value.job);
+      });
     return () => { active = false; };
   }, []);
 
+  const previewJobId = fullJob?.id;
+  const previewStatus = fullJob?.status;
   useEffect(() => {
-    const previewJobId = fullJob?.id;
-    const previewStatus = fullJob?.status;
     if (!previewJobId || !previewStatus || !['QUEUED', 'RUNNING'].includes(previewStatus)) return undefined;
     let active = true;
     const poll = () => catalogLifecycleApi.getPreviewJob(previewJobId)
@@ -51,7 +70,13 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
     const timer = window.setInterval(poll, 1000);
     void poll();
     return () => { active = false; window.clearInterval(timer); };
-  }, [fullJob?.id, fullJob?.status]);
+  }, [previewJobId, previewStatus]);
+
+  useEffect(() => {
+    if (!previewStatus || !['QUEUED', 'RUNNING'].includes(previewStatus)) return undefined;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [previewJobId, previewStatus]);
 
   const openReset = async () => {
     setBusy(true); setError('');
@@ -60,7 +85,21 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
   };
   const openFull = async () => {
     setBusy(true); setError('');
-    try { const result = await catalogLifecycleApi.startPreview('full'); setFullJob(result.job); setMode('full'); } catch (loadError) { toast.error(fullSyncErrorText(loadError)); }
+    try {
+      const result = await catalogLifecycleApi.startPreview('full');
+      setFullJob(result.job); setMode('full'); setPassword('');
+    } catch (loadError) {
+      if (loadError instanceof CatalogLifecycleApiError && loadError.code === 'CATALOG_PREVIEW_IN_PROGRESS') {
+        const activeResult = await catalogLifecycleApi.getActivePreviewJob().catch(() => ({ job: null }));
+        if (activeResult.job) {
+          setFullJob(activeResult.job); setMode('full'); setPassword('');
+          toast.success('Đã kết nối lại Preview đang chạy.');
+          setBusy(false);
+          return;
+        }
+      }
+      toast.error(fullSyncErrorText(loadError));
+    }
     finally { setBusy(false); }
   };
   const cancelFull = async () => {
@@ -70,7 +109,7 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
     catch (cancelError) { setError(fullSyncErrorText(cancelError)); }
     finally { setBusy(false); }
   };
-  const close = () => { if (busy || previewRunning) return; setMode(null); setFullJob(null); setPassword(''); setConfirmation(''); setError(''); };
+  const close = () => { if (busy) return; setMode(null); setPassword(''); setConfirmation(''); setError(''); };
   const reset = async () => {
     if (!resetPreview?.currentVersionId) return;
     setBusy(true); setError('');
@@ -95,7 +134,25 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
   const provider = summary.provider ?? diagnostics?.provider ?? {};
   const providerIssueCount = (provider.unresolved ?? 0) + (provider.ambiguous ?? 0) + (provider.inactive ?? 0);
   const candidateEmpty = (summary.products ?? 0) <= 0 || (summary.variants ?? 0) <= 0;
+  const previewStage = fullJob?.stage ?? 'STARTING';
+  const previewElapsed = formatCatalogPreviewElapsed(fullJob?.startedAt ?? null, clockNow);
+  const canApply = fullJob?.status === 'SUCCEEDED' && fullBatch?.status === 'READY_FOR_REVIEW';
+  const categoryCounts = summary.categoryCounts ?? diagnostics?.candidate?.categoryCounts ?? {};
+  const mediumCounts = summary.mediums ?? diagnostics?.candidate?.mediums ?? {};
+  const sourceTypeDiagnostics = diagnostics?.sourceAudit?.sourceTypeDiagnostics ?? {};
+  const renderStageStepper = (className = '') => <ol className={`catalog-preview-stepper ${className}`.trim()} aria-label="Tiến trình Preview">
+    {CATALOG_PREVIEW_STAGE_ORDER.map((stage, index) => {
+      const currentIndex = stageIndex(previewStage);
+      const state = fullJob?.status === 'SUCCEEDED' || currentIndex > index ? 'done' : currentIndex === index ? 'active' : 'pending';
+      return <li className={`is-${state}`} key={stage}><span className="catalog-preview-step-icon">{state === 'done' ? <CheckCircle2 size={14} /> : state === 'active' ? <LoaderCircle size={14} /> : <Circle size={12} />}</span><span>{CATALOG_PREVIEW_STAGE_LABELS[stage]}</span></li>;
+    })}
+  </ol>;
   return <>
+    {previewRunning && fullJob && <section className="catalog-preview-banner" role="status" aria-live="polite">
+      <div className="catalog-preview-banner-heading"><div><p>ĐANG ĐỒNG BỘ HICO GỐC</p><strong>{CATALOG_PREVIEW_STAGE_LABELS[previewStage]}</strong></div><time dateTime={fullJob.startedAt ?? undefined}>Đã chạy: {previewElapsed}</time></div>
+      {renderStageStepper()}
+      <div className="catalog-preview-banner-actions"><button type="button" className="catalog-secondary-button" onClick={() => setMode('full')}><Eye size={16} /> Xem chi tiết</button><button type="button" className="catalog-secondary-button" onClick={() => void cancelFull()} disabled={busy}><X size={16} /> Hủy Preview</button></div>
+    </section>}
     <div className={`catalog-maintenance-status ${maintenanceStatus?.enabled ? 'is-enabled' : 'is-disabled'}`} role="status">
       <strong>Catalog Maintenance: {maintenanceStatus ? (maintenanceStatus.enabled ? 'Đã bật' : 'Đang khóa') : 'Đang kiểm tra'}</strong>
       {maintenanceStatus?.enabled && <span>Chỉ sử dụng để Reset hoặc Full Sync HICO GỐC.</span>}
@@ -114,22 +171,25 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
           <label className="catalog-lifecycle-field">Nhập đúng nội dung xác nhận<input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder={resetPreview.confirmation} autoComplete="off" /></label>
         </>}
         {mode === 'full' && fullJob && <>
-          <div className="catalog-lifecycle-safe"><ShieldCheck size={20} /><span>Preview đang chạy tách khỏi HTTP backend: {fullJob.stage} · {fullJob.status}</span></div>
-          {!fullBatch && previewRunning && <p className="catalog-lifecycle-message" role="status">Đang đọc và kiểm tra HICO GỐC. Bạn có thể hủy tác vụ này; backend vẫn tiếp tục phục vụ các API khác.</p>}
-          {fullJob.status === 'FAILED' && <p className="catalog-lifecycle-error" role="alert">{fullJob.errorMessage} ({fullJob.errorCode})</p>}
+          <div className="catalog-lifecycle-safe"><ShieldCheck size={20} /><div><strong>{fullJob.status === 'SUCCEEDED' ? 'Preview hoàn tất' : fullJob.status === 'FAILED' || fullJob.status === 'TIMED_OUT' ? 'Preview thất bại' : 'Preview đang chạy'}</strong><span>{CATALOG_PREVIEW_STAGE_LABELS[previewStage]} · {fullJob.status} · Đã chạy {previewElapsed}</span></div></div>
+          {previewRunning && renderStageStepper('catalog-preview-stepper-dialog')}
+          {!fullBatch && previewRunning && <p className="catalog-lifecycle-message" role="status">Tác vụ đang chạy tách khỏi HTTP backend. Bạn có thể ẩn cửa sổ; tiến trình vẫn tiếp tục trên trang Catalog.</p>}
+          {fullJob.status === 'FAILED' && <p className="catalog-lifecycle-error" role="alert"><strong>Bước:</strong> {CATALOG_PREVIEW_STAGE_LABELS[previewStage]}<br /><strong>Mã lỗi:</strong> {fullJob.errorCode}<br /><strong>Thông báo:</strong> {fullSyncErrorText(new CatalogLifecycleApiError(fullJob.errorMessage ?? 'Không thể hoàn tất preview catalog.', fullJob.errorCode ?? 'CATALOG_PREVIEW_FAILED'))}</p>}
           {fullJob.status === 'TIMED_OUT' && <p className="catalog-lifecycle-error" role="alert">Preview quá thời gian cho phép. Hãy thử lại.</p>}
           {fullJob.status === 'CANCELLED' && <p className="catalog-lifecycle-warning" role="status">Preview đã được hủy.</p>}
           {fullBatch && <>
           <div className="catalog-lifecycle-safe"><ShieldCheck size={20} /><span>Preview đã đọc tab HICO GỐC. Apply atomic, tạo draft/inactive và không xóa version cũ.</span></div>
-          <div className="catalog-lifecycle-grid"><div><span>Nguồn</span><strong>{fullBatch.sheetTab}</strong></div><div><span>Logical range</span><strong>{diagnostics?.source?.range ?? fullBatch.sheetRange}</strong></div><div><span>Số batch</span><strong>{(diagnostics?.source?.batching?.batchCount ?? 1).toLocaleString('vi-VN')}</strong></div><div><span>Rows đã tải</span><strong>{(diagnostics?.source?.batching?.rowsFetched ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Rows đọc được</span><strong>{(diagnostics?.source?.rowsRead ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Rows đã parse</span><strong>{(diagnostics?.parser?.rowsParsed ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Physical branch</span><strong>{(diagnostics?.parser?.physicalBranches ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>eSIM branch</span><strong>{(diagnostics?.parser?.esimBranches ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Rows có cả hai nhánh</span><strong>{(diagnostics?.parser?.bothBranchRows ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Rows lỗi</span><strong>{(diagnostics?.parser?.rowsRejected ?? summary.invalid ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Package family</span><strong>{(diagnostics?.candidate?.packageFamilies ?? summary.packageFamilies ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Products mới</span><strong>{(summary.products ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Variants mới</span><strong>{(summary.variants ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Duplicate giống nhau đã gộp</span><strong>{(diagnostics?.candidate?.exactDuplicatesCollapsed ?? summary.exactDuplicatesCollapsed ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Collision bị chặn</span><strong>{(diagnostics?.candidate?.groupingCollisions ?? summary.groupingCollisions ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Nghiệp vụ cần xác nhận</span><strong>{(diagnostics?.candidate?.operationUnresolved ?? summary.operationUnresolved ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh giữ lại</span><strong>{(summary.imagesReused ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh từ Sheet</span><strong>{(summary.imagesFromSheet ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh fallback</span><strong>{(summary.imagesFallback ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả giữ lại</span><strong>{(summary.descriptionsReused ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả từ Sheet</span><strong>{(summary.descriptionsFromSheet ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả fallback</span><strong>{(summary.descriptionsFallback ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Hướng dẫn giữ lại</span><strong>{(summary.installationGuideReused ?? 0).toLocaleString('vi-VN')}</strong></div></div>
+          <div className="catalog-lifecycle-grid"><div><span>Nguồn</span><strong>{fullBatch.sheetTab}</strong></div><div><span>Logical range</span><strong>{diagnostics?.source?.range ?? fullBatch.sheetRange}</strong></div><div><span>Số batch</span><strong>{(diagnostics?.source?.batching?.batchCount ?? 1).toLocaleString('vi-VN')}</strong></div><div><span>Rows đã tải</span><strong>{(diagnostics?.source?.batching?.rowsFetched ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Rows đọc được</span><strong>{(diagnostics?.source?.rowsRead ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Rows đã parse</span><strong>{(diagnostics?.parser?.rowsParsed ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Physical branch</span><strong>{(diagnostics?.parser?.physicalBranches ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>eSIM branch</span><strong>{(diagnostics?.parser?.esimBranches ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Rows có cả hai nhánh</span><strong>{(diagnostics?.parser?.bothBranchRows ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Rows lỗi</span><strong>{(diagnostics?.parser?.rowsRejected ?? summary.invalid ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Package family</span><strong>{(diagnostics?.candidate?.packageFamilies ?? summary.packageFamilies ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Products mới</span><strong>{(summary.products ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Variants mới</span><strong>{(summary.variants ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>eSIM Variants</span><strong>{(mediumCounts.esim ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Physical SIM Variants</span><strong>{(mediumCounts.physical_sim ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Duplicate giống nhau đã gộp</span><strong>{(diagnostics?.candidate?.exactDuplicatesCollapsed ?? summary.exactDuplicatesCollapsed ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Collision bị chặn</span><strong>{(diagnostics?.candidate?.groupingCollisions ?? summary.groupingCollisions ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Nghiệp vụ cần xác nhận</span><strong>{(diagnostics?.candidate?.operationUnresolved ?? summary.operationUnresolved ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh giữ lại</span><strong>{(summary.imagesReused ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh từ Sheet</span><strong>{(summary.imagesFromSheet ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Ảnh fallback</span><strong>{(summary.imagesFallback ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả giữ lại</span><strong>{(summary.descriptionsReused ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả từ Sheet</span><strong>{(summary.descriptionsFromSheet ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Mô tả fallback</span><strong>{(summary.descriptionsFallback ?? 0).toLocaleString('vi-VN')}</strong></div><div><span>Hướng dẫn giữ lại</span><strong>{(summary.installationGuideReused ?? 0).toLocaleString('vi-VN')}</strong></div></div>
+          <div className="catalog-lifecycle-diagnostics"><section><h3>Category</h3>{Object.entries(categoryCounts).map(([id, count]) => <div key={id}><span>{categoryLabels[id] ?? id}</span><strong>{Number(count).toLocaleString('vi-VN')}</strong></div>)}</section><section><h3>Source Type × Medium</h3>{Object.values(sourceTypeDiagnostics).map((source) => <div key={String(source.rawValue)}><span>{String(source.rawValue)}</span><strong>SIM {Number(source.physicalCompleteCount ?? 0).toLocaleString('vi-VN')} · eSIM {Number(source.esimCompleteCount ?? 0).toLocaleString('vi-VN')} · conflict {Number(source.sourceMediumConflictCount ?? 0).toLocaleString('vi-VN')}</strong></div>)}</section></div>
           {providerIssueCount > 0 && <div className="catalog-lifecycle-warning" role="alert"><AlertTriangle size={20} /><div><strong>{providerIssueCount.toLocaleString('vi-VN')} variant chưa sẵn sàng Provider.</strong><span>Candidate vẫn được tạo thành draft/inactive để Admin tiếp tục đối soát. Các variant này cần kiểm tra nguồn trước khi publish hoặc checkout.</span><span>Chưa match: {(provider.unresolved ?? 0).toLocaleString('vi-VN')} · Ambiguous: {(provider.ambiguous ?? 0).toLocaleString('vi-VN')} · Inactive: {(provider.inactive ?? 0).toLocaleString('vi-VN')}</span></div></div>}
           {diagnostics?.sizeDropWarning && <p className="catalog-lifecycle-warning" role="alert">Cảnh báo {diagnostics.sizeDropWarning.code}: candidate giảm mạnh so với catalog hiện tại ({diagnostics.sizeDropWarning.previousProducts} → {diagnostics.sizeDropWarning.candidateProducts} Product, {diagnostics.sizeDropWarning.previousVariants} → {diagnostics.sizeDropWarning.candidateVariants} Variant).</p>}
           {(summary.invalid ?? 0) > 0 && <p className="catalog-lifecycle-error">Full Sync bị chặn vì còn dòng lỗi. Hãy sửa mapping/provider rồi tạo preview mới.</p>}
           </>}
         </>}
-        <label className="catalog-lifecycle-field">Mật khẩu Admin để xác nhận<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>
+        {mode === 'reset' && <label className="catalog-lifecycle-field">Mật khẩu Admin để xác nhận<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>}
+        {mode === 'full' && canApply && <label className="catalog-lifecycle-field">Mật khẩu Admin để xác nhận rebuild<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>}
         {error && <p className="catalog-lifecycle-error" role="alert">{error}</p>}
-        <footer><button type="button" className="catalog-secondary-button" onClick={previewRunning ? () => void cancelFull() : close} disabled={busy}>{previewRunning ? 'Hủy preview' : 'Hủy'}</button>{mode === 'reset' ? <button type="button" className="catalog-danger-button" onClick={() => void reset()} disabled={busy || confirmation !== resetPreview?.confirmation || !password}>Xác nhận xóa catalog</button> : <button type="button" className="catalog-primary-button" onClick={() => void fullApply()} disabled={busy || fullJob?.status !== 'SUCCEEDED' || !password || candidateEmpty || (summary.invalid ?? 0) > 0}>Xác nhận và rebuild</button>}</footer>
+        <footer><button type="button" className="catalog-secondary-button" onClick={previewRunning ? () => void cancelFull() : close} disabled={busy}>{previewRunning ? 'Hủy preview' : 'Đóng'}</button>{mode === 'reset' ? <button type="button" className="catalog-danger-button" onClick={() => void reset()} disabled={busy || confirmation !== resetPreview?.confirmation || !password}>Xác nhận xóa catalog</button> : <>{['FAILED', 'TIMED_OUT', 'CANCELLED'].includes(fullJob?.status ?? '') && <button type="button" className="catalog-secondary-button" onClick={() => void openFull()} disabled={busy}><RefreshCw size={16} /> Thử lại</button>}{canApply && <button type="button" className="catalog-primary-button" onClick={() => void fullApply()} disabled={busy || !password || candidateEmpty || (summary.invalid ?? 0) > 0}>Xác nhận và rebuild</button>}</>}</footer>
       </section>
     </div>}
   </>;

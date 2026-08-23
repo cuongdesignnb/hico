@@ -13,6 +13,17 @@ test('HICO GỐC contract audit reports safe branch and identity counts without 
   assert.equal(result.esimBranches, 1);
   assert.equal(result.partialPhysicalIdentity, 0);
   assert.equal(result.partialEsimIdentity, 0);
+  assert.equal(result.sourceContract.length, 25);
+  assert.deepEqual(result.sourceContract.at(-1), {
+    column: 'Y', rawHeader: 'header', normalizedBusinessMeaning: 'WMID eSIM', currentCodeMapping: 'wmproductIdEsim', match: 'MATCH',
+  });
+  assert.deepEqual(result.sourceTypeDiagnostics['Sim & eSIM'], {
+    rawValue: 'Sim & eSIM', normalizedValue: 'Sim & eSIM', rowCount: 1,
+    physicalIdentityCount: 1, esimIdentityCount: 1, bothIdentityCount: 1,
+    noIdentityCount: 0, partialPhysicalIdentityCount: 0, partialEsimIdentityCount: 0,
+    physicalCompleteCount: 1, esimCompleteCount: 1, sourceMediumConflictCount: 0,
+    packageClass: 'STANDARD_TRAVEL',
+  });
   assert.equal('sku' in result, false);
 });
 
@@ -31,4 +42,14 @@ test('HICO GỐC contract audit separates physical and eSIM branch defects', () 
   assert.equal(result.branchDiagnostics.esim.missingWmid, 0);
   assert.equal(result.branchDiagnostics.esim.complete, 0);
   assert.deepEqual(result.coverage.destinationNames, { 'coverage-trung-quoc': 'Trung Quốc' });
+});
+
+test('HICO GỐC contract audit records exclusive source and medium conflicts without raw rows', () => {
+  const row = Array(25).fill('');
+  row[0] = 'eSim'; row[1] = 'Japan 1GB'; row[3] = 'Chia ngày';
+  row[4] = '70000'; row[5] = '80000'; row[16] = 'PHYSICAL-RUBBISH'; row[23] = 'WM-PHYSICAL-RUBBISH';
+  row[17] = 'ESIM-1'; row[24] = 'WM-ESIM-1';
+  const result = auditHicoGocValues([Array(25).fill('header'), row]);
+  assert.equal(result.sourceTypeDiagnostics.eSim.sourceMediumConflictCount, 1);
+  assert.equal('rawRows' in result, false);
 });
