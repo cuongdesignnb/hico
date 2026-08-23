@@ -34,6 +34,7 @@ test('customer readiness reports healthy only for real shared dependencies', asy
         { version: '016_catalog_variant_fulfillment_bindings.sql' },
         { version: '017_catalog_variant_fulfillment_profiles.sql' },
         { version: '019_catalog_sheet_sync_mapping.sql' },
+        { version: '020_catalog_sheet_sync_multi_branch_rows.sql' },
         { version: '018_sepay_payment_integration.sql' },
         { version: '007_order_ownership.sql' },
         { version: '008_customer_assets.sql' },

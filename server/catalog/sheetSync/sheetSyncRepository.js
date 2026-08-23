@@ -257,6 +257,22 @@ export const assertPostgresSheetSyncStorage = async ({ pool } = {}) => {
       to_regclass('public.catalog_sheet_sync_rows') AS rows_table`);
     const row = result.rows[0] ?? {};
     if (!row.batches_table || !row.rows_table) throw new CatalogPreviewStorageError('Catalog preview tables are not available.', { code: 'INTEGRATION_STORAGE_UNAVAILABLE' });
+    const constraintResult = await pool.query(`SELECT conname
+      FROM pg_constraint
+      WHERE conrelid = 'public.catalog_sheet_sync_rows'::regclass
+        AND contype = 'u'
+        AND conname IN (
+          'catalog_sheet_sync_rows_batch_id_sheet_row_number_key',
+          'catalog_sheet_sync_rows_batch_id_row_hash_key',
+          'catalog_sheet_sync_rows_batch_row_hash_key'
+        )`);
+    const incompatibleConstraints = constraintResult.rows.map((constraint) => constraint.conname).filter(Boolean);
+    if (incompatibleConstraints.length) {
+      throw new CatalogPreviewStorageError('Catalog preview storage schema is outdated.', {
+        code: 'INTEGRATION_STORAGE_INVALID',
+        details: { requiredMigration: '020_catalog_sheet_sync_multi_branch_rows.sql', incompatibleConstraints },
+      });
+    }
   } catch (error) {
     if (error instanceof CatalogPreviewStorageError) throw error;
     throw new CatalogPreviewStorageError('Catalog preview PostgreSQL storage is unavailable.');

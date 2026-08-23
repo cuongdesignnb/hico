@@ -72,6 +72,28 @@ test('postgres preview repository persists 20k rows in bounded chunks inside one
   assert.equal(queries.filter((query) => query.startsWith('INSERT INTO catalog_sheet_sync_rows')).length, Math.ceil(rows.length / PREVIEW_ROW_INSERT_CHUNK_SIZE));
 });
 
+test('postgres preview repository preserves physical and eSIM branches from one Sheet row', async () => {
+  const inserts = [];
+  const client = {
+    async query(text, values) {
+      if (text.startsWith('INSERT INTO catalog_sheet_sync_rows')) inserts.push({ text, values });
+    },
+    release() {},
+  };
+  const repository = createSheetSyncRepository({ pool: { async connect() { return client; } } });
+  await repository.createBatch(batch('batch-multi-branch'), [
+    { ...row('batch-multi-branch', 'row-physical'), rowHash: 'duplicate-invalid', status: 'INVALID', errors: [{ code: 'DUPLICATE_CONFLICT' }], normalizedData: { medium: 'physical_sim' } },
+    { ...row('batch-multi-branch', 'row-esim'), rowHash: 'duplicate-invalid', status: 'INVALID', errors: [{ code: 'DUPLICATE_CONFLICT' }], normalizedData: { medium: 'esim' } },
+  ]);
+  assert.equal(inserts.length, 1);
+  assert.equal(inserts[0].values.length, 24);
+  assert.deepEqual(inserts[0].values.filter((_, index) => index % 12 === 2), [2, 2]);
+  assert.deepEqual(inserts[0].values.filter((_, index) => index % 12 === 3), ['duplicate-invalid', 'duplicate-invalid']);
+  assert.deepEqual(inserts[0].values.filter((_, index) => index % 12 === 5), ['INVALID', 'INVALID']);
+  assert.deepEqual(inserts[0].values.filter((_, index) => index % 12 === 6).map((value) => JSON.parse(value)), [{ medium: 'physical_sim' }, { medium: 'esim' }]);
+  assert.deepEqual(inserts[0].values.filter((_, index) => index % 12 === 0), ['row-physical', 'row-esim']);
+});
+
 test('postgres preview repository rolls back the complete batch on a chunk failure', async () => {
   const queries = [];
   let rowInsertCount = 0;
@@ -88,4 +110,43 @@ test('postgres preview repository rolls back the complete batch on a chunk failu
   await assert.rejects(() => repository.createBatch(batch('batch-timeout'), Array.from({ length: 500 }, (_, index) => row('batch-timeout', `row-${index}`))), (error) => error.code === 'CATALOG_PREVIEW_STORAGE_TIMEOUT');
   assert.equal(queries.at(-1), 'ROLLBACK');
   assert.equal(queries.includes('COMMIT'), false);
+});
+
+test('postgres preview storage fails fast when migration 020 constraints remain', async () => {
+  const { assertPostgresSheetSyncStorage } = await import('./sheetSyncRepository.js');
+  const queries = [];
+  const pool = {
+    async query(text) {
+      queries.push(text);
+      if (text.includes('to_regclass')) return { rows: [{ batches_table: 'catalog_sheet_sync_batches', rows_table: 'catalog_sheet_sync_rows' }] };
+      return { rows: [{ conname: 'catalog_sheet_sync_rows_batch_id_sheet_row_number_key' }] };
+    },
+  };
+  await assert.rejects(() => assertPostgresSheetSyncStorage({ pool }), (error) => error.code === 'INTEGRATION_STORAGE_INVALID'
+    && error.message === 'Catalog preview storage schema is outdated.'
+    && error.details.requiredMigration === '020_catalog_sheet_sync_multi_branch_rows.sql');
+  assert.equal(queries.length, 2);
+});
+
+test('postgres preview storage accepts the migrated multi-branch schema', async () => {
+  const { assertPostgresSheetSyncStorage } = await import('./sheetSyncRepository.js');
+  let queryCount = 0;
+  const pool = {
+    async query(text) {
+      queryCount += 1;
+      if (text.includes('to_regclass')) return { rows: [{ batches_table: 'catalog_sheet_sync_batches', rows_table: 'catalog_sheet_sync_rows' }] };
+      return { rows: [] };
+    },
+  };
+  await assertPostgresSheetSyncStorage({ pool });
+  assert.equal(queryCount, 2);
+});
+
+test('migration 020 drops legacy unique constraints without adding a unique replacement', async () => {
+  const migration = await readFile(new URL('../../migrations/020_catalog_sheet_sync_multi_branch_rows.sql', import.meta.url), 'utf8');
+  assert.match(migration, /DROP CONSTRAINT IF EXISTS catalog_sheet_sync_rows_batch_id_sheet_row_number_key/);
+  assert.match(migration, /DROP CONSTRAINT IF EXISTS catalog_sheet_sync_rows_batch_id_row_hash_key/);
+  assert.match(migration, /DROP CONSTRAINT IF EXISTS catalog_sheet_sync_rows_batch_row_hash_key/);
+  assert.match(migration, /CREATE INDEX IF NOT EXISTS catalog_sheet_sync_rows_batch_sheet_row_idx/);
+  assert.doesNotMatch(migration, /CREATE UNIQUE INDEX|UNIQUE\s*\(/i);
 });
