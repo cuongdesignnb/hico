@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Circle, Eye, LoaderCircle, RefreshCw, ShieldCheck, Trash2, X } from 'lucide-react';
 import { catalogLifecycleApi, CatalogLifecycleApiError } from '../../../services/catalogLifecycleApi';
 import type { CatalogMaintenanceStatus, CatalogResetPreview } from '../../../types/catalogLifecycle';
-import { CATALOG_PREVIEW_STAGE_LABELS, CATALOG_PREVIEW_STAGE_ORDER, formatCatalogPreviewElapsed } from '../../../types/catalogPreviewJob';
+import { CATALOG_PREVIEW_MODE_LABELS, CATALOG_PREVIEW_STAGE_LABELS, CATALOG_PREVIEW_STAGE_ORDER, formatCatalogPreviewElapsed, isFullCatalogPreviewJob } from '../../../types/catalogPreviewJob';
 import type { CatalogPreviewJob, CatalogPreviewJobStage } from '../../../types/catalogPreviewJob';
 import { useAdminToast } from '../../../hooks/useAdminToast';
 import './CatalogLifecycleControls.css';
@@ -24,6 +24,8 @@ const fullSyncErrorText = (error: unknown) => error instanceof CatalogLifecycleA
   : maintenanceErrorText(error);
 const idempotencyKey = () => (globalThis.crypto?.randomUUID?.() ?? `catalog-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 const stageIndex = (stage: CatalogPreviewJobStage) => CATALOG_PREVIEW_STAGE_ORDER.indexOf(stage);
+const terminalPreviewStatuses = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'TIMED_OUT'] as const;
+const activePreviewStatuses = ['QUEUED', 'RUNNING'] as const;
 const categoryLabels: Record<string, string> = {
   'cat-esim-du-lich': 'eSIM du lịch', 'cat-sim-vat-ly': 'SIM vật lý',
   'cat-esim-san-goi': 'eSIM sẵn gói', 'cat-sim-vat-ly-san-goi': 'SIM vật lý sẵn gói',
@@ -39,6 +41,7 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
   const [maintenanceStatus, setMaintenanceStatus] = useState<CatalogMaintenanceStatus | null>(null);
   const [resetPreview, setResetPreview] = useState<CatalogResetPreview | null>(null);
   const [fullJob, setFullJob] = useState<CatalogPreviewJob | null>(null);
+  const [conflictingPreview, setConflictingPreview] = useState<CatalogPreviewJob | null>(null);
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [clockNow, setClockNow] = useState(() => Date.now());
@@ -54,15 +57,19 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
         if (!active) return;
         if (maintenanceResult.status === 'fulfilled') setMaintenanceStatus(maintenanceResult.value);
         else setMaintenanceStatus(null);
-        if (activeResult.status === 'fulfilled' && activeResult.value.job) setFullJob(activeResult.value.job);
+        if (activeResult.status === 'fulfilled' && activeResult.value.job) {
+          if (isFullCatalogPreviewJob(activeResult.value.job)) setFullJob(activeResult.value.job);
+          else setConflictingPreview(activeResult.value.job);
+        }
       });
     return () => { active = false; };
   }, []);
 
   const previewJobId = fullJob?.id;
   const previewStatus = fullJob?.status;
+  const fullJobMode = fullJob?.mode;
   useEffect(() => {
-    if (!previewJobId || !previewStatus || !['QUEUED', 'RUNNING'].includes(previewStatus)) return undefined;
+    if (!previewJobId || !previewStatus || fullJobMode !== 'full' || !activePreviewStatuses.includes(previewStatus as typeof activePreviewStatuses[number])) return undefined;
     let active = true;
     const poll = () => catalogLifecycleApi.getPreviewJob(previewJobId)
       .then(({ job }) => { if (active) setFullJob(job); })
@@ -70,13 +77,35 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
     const timer = window.setInterval(poll, 1000);
     void poll();
     return () => { active = false; window.clearInterval(timer); };
-  }, [previewJobId, previewStatus]);
+  }, [fullJobMode, previewJobId, previewStatus]);
 
   useEffect(() => {
-    if (!previewStatus || !['QUEUED', 'RUNNING'].includes(previewStatus)) return undefined;
+    if (!previewStatus || !activePreviewStatuses.includes(previewStatus as typeof activePreviewStatuses[number])) return undefined;
     const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, [previewJobId, previewStatus]);
+
+  const conflictingPreviewId = conflictingPreview?.id;
+  const conflictingPreviewMode = conflictingPreview?.mode;
+  useEffect(() => {
+    if (!conflictingPreviewId) return undefined;
+    let active = true;
+    const refresh = () => catalogLifecycleApi.getActivePreviewJob()
+      .then(({ job }) => {
+        if (!active) return;
+        if (!job) {
+          setConflictingPreview(null);
+        } else if (isFullCatalogPreviewJob(job)) {
+          setFullJob(job);
+          setConflictingPreview(null);
+        } else {
+          setConflictingPreview(job);
+        }
+      })
+      .catch(() => undefined);
+    const timer = window.setInterval(refresh, 1500);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [conflictingPreviewId, conflictingPreviewMode]);
 
   const openReset = async () => {
     setBusy(true); setError('');
@@ -87,13 +116,18 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
     setBusy(true); setError('');
     try {
       const result = await catalogLifecycleApi.startPreview('full');
-      setFullJob(result.job); setMode('full'); setPassword('');
+      setFullJob(result.job); setConflictingPreview(null); setMode('full'); setPassword('');
     } catch (loadError) {
       if (loadError instanceof CatalogLifecycleApiError && loadError.code === 'CATALOG_PREVIEW_IN_PROGRESS') {
         const activeResult = await catalogLifecycleApi.getActivePreviewJob().catch(() => ({ job: null }));
         if (activeResult.job) {
-          setFullJob(activeResult.job); setMode('full'); setPassword('');
-          toast.success('Đã kết nối lại Preview đang chạy.');
+          if (isFullCatalogPreviewJob(activeResult.job)) {
+            setFullJob(activeResult.job); setConflictingPreview(null); setMode('full'); setPassword('');
+            toast.success('Đã kết nối lại Preview toàn bộ Catalog đang chạy.');
+          } else {
+            setConflictingPreview(activeResult.job);
+            toast.info(`${CATALOG_PREVIEW_MODE_LABELS[activeResult.job.mode]} đang chạy ở màn Đồng bộ Sheet. Hãy chờ hoặc hủy Preview đó trước khi chạy Full Preview.`);
+          }
           setBusy(false);
           return;
         }
@@ -103,7 +137,7 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
     finally { setBusy(false); }
   };
   const cancelFull = async () => {
-    if (!fullJob || !['QUEUED', 'RUNNING'].includes(fullJob.status)) return;
+    if (!isFullCatalogPreviewJob(fullJob) || !activePreviewStatuses.includes(fullJob.status as typeof activePreviewStatuses[number])) return;
     setBusy(true);
     try { const result = await catalogLifecycleApi.cancelPreviewJob(fullJob.id); setFullJob(result.job); }
     catch (cancelError) { setError(fullSyncErrorText(cancelError)); }
@@ -121,7 +155,7 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
   };
   const fullApply = async () => {
     const fullBatch = fullJob?.batch;
-    if (!fullBatch || fullJob?.status !== 'SUCCEEDED') return;
+    if (!isFullCatalogPreviewJob(fullJob) || !fullBatch || fullBatch.mode !== 'full' || fullJob.status !== 'SUCCEEDED' || fullBatch.status !== 'READY_FOR_REVIEW') return;
     setBusy(true); setError('');
     try { await catalogLifecycleApi.fullApply(fullBatch.id, password); toast.success('Đã đồng bộ lại toàn bộ catalog từ HICO GỐC.'); setBusy(false); close(); onChanged?.(); void loadMaintenanceStatus(); }
     catch (applyError) { setError(fullSyncErrorText(applyError)); toast.error(fullSyncErrorText(applyError)); }
@@ -129,6 +163,7 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
   };
   const fullBatch = fullJob?.batch ?? null;
   const previewRunning = Boolean(fullJob && ['QUEUED', 'RUNNING'].includes(fullJob.status));
+  const previewTerminal = Boolean(fullJob && terminalPreviewStatuses.includes(fullJob.status as typeof terminalPreviewStatuses[number]));
   const summary = fullBatch?.summary ?? {};
   const diagnostics = summary.diagnostics;
   const provider = summary.provider ?? diagnostics?.provider ?? {};
@@ -136,7 +171,7 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
   const candidateEmpty = (summary.products ?? 0) <= 0 || (summary.variants ?? 0) <= 0;
   const previewStage = fullJob?.stage ?? 'STARTING';
   const previewElapsed = formatCatalogPreviewElapsed(fullJob?.startedAt ?? null, clockNow);
-  const canApply = fullJob?.status === 'SUCCEEDED' && fullBatch?.status === 'READY_FOR_REVIEW';
+  const canApply = isFullCatalogPreviewJob(fullJob) && fullJob.status === 'SUCCEEDED' && fullBatch?.mode === 'full' && fullBatch.status === 'READY_FOR_REVIEW';
   const categoryCounts = summary.categoryCounts ?? diagnostics?.candidate?.categoryCounts ?? {};
   const mediumCounts = summary.mediums ?? diagnostics?.candidate?.mediums ?? {};
   const sourceTypeDiagnostics = diagnostics?.sourceAudit?.sourceTypeDiagnostics ?? {};
@@ -148,17 +183,19 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
     })}
   </ol>;
   return <>
-    {previewRunning && fullJob && <section className="catalog-preview-banner" role="status" aria-live="polite">
-      <div className="catalog-preview-banner-heading"><div><p>ĐANG ĐỒNG BỘ HICO GỐC</p><strong>{CATALOG_PREVIEW_STAGE_LABELS[previewStage]}</strong></div><time dateTime={fullJob.startedAt ?? undefined}>Đã chạy: {previewElapsed}</time></div>
+    {fullJob && (previewRunning || previewTerminal) && <section className={`catalog-preview-banner is-${fullJob.status.toLowerCase()}`} role="status" aria-live="polite">
+      <div className="catalog-preview-banner-heading"><div><p>{fullJob.status === 'SUCCEEDED' ? 'PREVIEW HICO GỐC HOÀN TẤT' : fullJob.status === 'FAILED' || fullJob.status === 'TIMED_OUT' ? 'PREVIEW HICO GỐC THẤT BẠI' : fullJob.status === 'CANCELLED' ? 'PREVIEW HICO GỐC ĐÃ HỦY' : 'ĐANG ĐỒNG BỘ HICO GỐC'}</p><strong>{CATALOG_PREVIEW_STAGE_LABELS[previewStage]}</strong><span>{CATALOG_PREVIEW_MODE_LABELS.full} · {fullJob.status}</span></div><time dateTime={fullJob.startedAt ?? undefined}>Đã chạy: {previewElapsed}</time></div>
+      {fullJob.status === 'SUCCEEDED' && <div className="catalog-preview-banner-summary"><strong>{(summary.products ?? 0).toLocaleString('vi-VN')} Products</strong><strong>{(summary.variants ?? 0).toLocaleString('vi-VN')} Variants</strong></div>}
       {renderStageStepper()}
-      <div className="catalog-preview-banner-actions"><button type="button" className="catalog-secondary-button" onClick={() => setMode('full')}><Eye size={16} /> Xem chi tiết</button><button type="button" className="catalog-secondary-button" onClick={() => void cancelFull()} disabled={busy}><X size={16} /> Hủy Preview</button></div>
+      <div className="catalog-preview-banner-actions"><button type="button" className="catalog-secondary-button" onClick={() => setMode('full')}><Eye size={16} /> {fullJob.status === 'SUCCEEDED' ? 'Xem kết quả Preview' : 'Xem chi tiết'}</button>{previewRunning && <button type="button" className="catalog-secondary-button" onClick={() => void cancelFull()} disabled={busy}><X size={16} /> Hủy Preview</button>}</div>
     </section>}
     <div className={`catalog-maintenance-status ${maintenanceStatus?.enabled ? 'is-enabled' : 'is-disabled'}`} role="status">
       <strong>Catalog Maintenance: {maintenanceStatus ? (maintenanceStatus.enabled ? 'Đã bật' : 'Đang khóa') : 'Đang kiểm tra'}</strong>
       {maintenanceStatus?.enabled && <span>Chỉ sử dụng để Reset hoặc Full Sync HICO GỐC.</span>}
     </div>
+    {conflictingPreview && <p className="catalog-lifecycle-message" role="status">{CATALOG_PREVIEW_MODE_LABELS[conflictingPreview.mode]} đang chạy ở màn Đồng bộ Sheet. Hãy chờ hoặc hủy Preview đó trước khi chạy Full Preview.</p>}
     <div className="catalog-lifecycle-actions" aria-label="Thao tác toàn bộ catalog">
-      <button type="button" className="catalog-secondary-button" onClick={() => void openFull()} disabled={busy || previewRunning}><RefreshCw size={16} /> Đồng bộ lại toàn bộ HICO GỐC</button>
+      <button type="button" className="catalog-secondary-button" onClick={() => { if (fullJob?.status === 'SUCCEEDED') setMode('full'); else void openFull(); }} disabled={busy || previewRunning || Boolean(conflictingPreview)}><RefreshCw size={16} /> {conflictingPreview ? 'Đang chờ Preview khác' : previewRunning ? 'Đang tạo Preview...' : fullJob?.status === 'SUCCEEDED' ? 'Xem kết quả Preview' : fullJob && previewTerminal ? 'Chạy lại Preview' : 'Đồng bộ lại toàn bộ HICO GỐC'}</button>
       <button type="button" className="catalog-danger-button" onClick={() => void openReset()} disabled={busy}><Trash2 size={16} /> Xóa toàn bộ sản phẩm</button>
     </div>
     {error && !mode && <p className="catalog-lifecycle-error" role="alert">{error}</p>}

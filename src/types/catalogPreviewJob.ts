@@ -3,6 +3,21 @@ import type { CatalogSheetSyncBatch } from './catalogSheetSync';
 export type CatalogPreviewJobMode = 'legacy' | 'quick' | 'full';
 export type CatalogPreviewJobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED' | 'TIMED_OUT';
 export type CatalogPreviewJobStage = 'STARTING' | 'READING_SHEET' | 'LOADING_CATALOG' | 'LOADING_PROVIDER' | 'PARSING' | 'BUILDING_CANDIDATE' | 'VALIDATING' | 'PERSISTING' | 'COMPLETED';
+export type CatalogPreviewJobForMode<Mode extends CatalogPreviewJobMode> = CatalogPreviewJob & { mode: Mode };
+
+export const CATALOG_PREVIEW_MODE_LABELS: Record<CatalogPreviewJobMode, string> = {
+  legacy: 'Đọc Sheet cũ',
+  quick: 'Đồng bộ nhanh HICO GỐC',
+  full: 'Đồng bộ lại toàn bộ HICO GỐC',
+};
+
+export const isFullCatalogPreviewJob = (
+  job: CatalogPreviewJob | null | undefined,
+): job is CatalogPreviewJobForMode<'full'> => job?.mode === 'full';
+
+export const isSheetCatalogPreviewJob = (
+  job: CatalogPreviewJob | null | undefined,
+): job is CatalogPreviewJobForMode<'legacy'> | CatalogPreviewJobForMode<'quick'> => job?.mode === 'legacy' || job?.mode === 'quick';
 
 export const CATALOG_PREVIEW_STAGE_LABELS: Record<CatalogPreviewJobStage, string> = {
   STARTING: 'Đang khởi tạo',

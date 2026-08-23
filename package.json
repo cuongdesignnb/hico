@@ -14,6 +14,7 @@
     "check:google-sheet-no-drive": "node scripts/check-google-sheet-no-drive-dependency.mjs",
     "check:sim-hico-sheet-contract": "node scripts/check-sim-hico-sheet-contract.mjs",
     "check:sheet-variant-identity": "node scripts/check-sheet-variant-identity.mjs",
+    "check:catalog-preview-mode-scope": "node scripts/check-catalog-preview-mode-scope.mjs",
     "check:fulfillment-family-contract": "node scripts/check-fulfillment-family-contract.mjs",
     "provider:reference:audit": "node scripts/audit-provider-reference.mjs",
     "catalog:sheet:contract-audit": "npm --prefix server run catalog:sheet:contract-audit",

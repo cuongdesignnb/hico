@@ -3,7 +3,15 @@
 .catalog-preview-banner-heading { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
 .catalog-preview-banner-heading p { margin: 0 0 4px; color: #0f766e; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
 .catalog-preview-banner-heading strong { font-size: 17px; }
+.catalog-preview-banner-heading span { display: block; margin-top: 4px; color: #5f6f7b; font-size: 12px; }
 .catalog-preview-banner-heading time { color: #0f766e; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.catalog-preview-banner.is-succeeded { border-color: #86efac; background: #f0fdf4; }
+.catalog-preview-banner.is-failed, .catalog-preview-banner.is-timed_out { border-color: #fecaca; background: #fff1f2; color: #991b1b; }
+.catalog-preview-banner.is-cancelled { border-color: #fed7aa; background: #fff7ed; color: #7c2d12; }
+.catalog-preview-banner.is-failed .catalog-preview-banner-heading p, .catalog-preview-banner.is-timed_out .catalog-preview-banner-heading p { color: #b91c1c; }
+.catalog-preview-banner.is-cancelled .catalog-preview-banner-heading p { color: #c2410c; }
+.catalog-preview-banner-summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.catalog-preview-banner-summary strong { padding: 8px 10px; border: 1px solid #bbf7d0; border-radius: 6px; color: #166534; background: #dcfce7; font-size: 13px; }
 .catalog-preview-stepper { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
 .catalog-preview-stepper li { display: grid; gap: 5px; min-width: 0; color: #7b8794; font-size: 11px; line-height: 1.3; }
 .catalog-preview-stepper li.is-done { color: #0f766e; }

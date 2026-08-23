@@ -15,6 +15,7 @@ const request = async <T>(path: string, init: RequestInit = {}) => {
 };
 export const catalogSheetSyncApi = {
   startPreview: (mode: CatalogPreviewJobMode) => request<{ job: CatalogPreviewJob }>('/preview-jobs', { method: 'POST', body: JSON.stringify({ mode }) }),
+  getActivePreviewJob: () => request<{ job: CatalogPreviewJob | null }>('/preview-jobs/active'),
   getPreviewJob: (jobId: string) => request<{ job: CatalogPreviewJob }>(`/preview-jobs/${encodeURIComponent(jobId)}`),
   cancelPreviewJob: (jobId: string) => request<{ job: CatalogPreviewJob }>(`/preview-jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST', body: '{}' }),
   preview: () => request<{ job: CatalogPreviewJob }>('/preview', { method: 'POST' }),
