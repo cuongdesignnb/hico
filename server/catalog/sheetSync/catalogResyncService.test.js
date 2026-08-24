@@ -280,6 +280,41 @@ test('full preview after reset reads the nearest previous non-empty catalog vers
   assert.equal(committedInput.products[0].description, 'Mô tả cũ');
 });
 
+test('full apply commits valid catalog rows while retaining invalid rows and unresolved provider review', async () => {
+  const validRow = Array(25).fill('');
+  validRow[0] = 'Sim'; validRow[1] = rowData.productName; validRow[2] = '10'; validRow[3] = 'Chia ngày'; validRow[4] = '70000'; validRow[10] = 'internet'; validRow[11] = rowData.networkLabel; validRow[13] = rowData.activationPolicy; validRow[15] = 'Có thể'; validRow[16] = rowData.sku; validRow[23] = rowData.wmproductId;
+  const invalidRow = Array(25).fill('');
+  invalidRow[0] = 'Sim'; invalidRow[1] = 'Trung Quốc, 5 Ngày, Tổng 3GB'; invalidRow[2] = '1'; invalidRow[3] = 'Gói tổng'; invalidRow[4] = '70000'; invalidRow[10] = 'internet'; invalidRow[11] = rowData.networkLabel; invalidRow[13] = rowData.activationPolicy; invalidRow[15] = 'Có thể'; invalidRow[16] = 'SKU-CN-TOTAL'; invalidRow[23] = 'WM-CN-TOTAL';
+  const conflictingRow = [...invalidRow]; conflictingRow[2] = '3'; conflictingRow[4] = '80000';
+  const reference = fullSyncReference({ row: validRow });
+  reference.values.push(invalidRow, conflictingRow);
+  const repository = createInMemorySheetSyncRepository();
+  let committedInput;
+  const service = createCatalogResyncService({
+    repository,
+    referenceClient: { readRows: async () => reference },
+    canonicalRepository: { readCatalog: async () => emptyCanonical() },
+    providerRepository: { listOffers: async () => [] },
+    auditRepository: { append: async (record) => record, remove: async () => undefined },
+    commitService: {
+      listVersions: async () => [],
+      commit: async (input) => { committedInput = input; await input.beforePointer(); return { manifest: { versionId: input.versionId }, warnings: [] }; },
+    },
+    logger: { info() {} },
+  });
+  const preview = await service.fullPreview({ actor: { id: 'admin-1' } });
+  assert.equal(preview.batch.summary.valid > 0, true);
+  assert.equal(preview.batch.summary.invalid > 0, true);
+  assert.equal(preview.batch.summary.provider.unresolved, preview.batch.summary.variants);
+  const applied = await service.fullApply(preview.batch.id, { actor: { id: 'admin-1' } });
+  assert.equal(applied.batch.status, 'PARTIALLY_APPLIED');
+  assert.equal(committedInput.variants.length, preview.batch.summary.valid);
+  assert.equal(committedInput.variants.every((variant) => variant.providerResolution === 'UNRESOLVED'), true);
+  const persistedRows = await repository.listRows(preview.batch.id);
+  assert.equal(persistedRows.filter((row) => row.status === 'APPLIED').length, preview.batch.summary.valid);
+  assert.equal(persistedRows.filter((row) => row.status === 'INVALID').length, preview.batch.summary.invalid);
+});
+
 const fullSyncReference = ({ range = 'A1:Y2', row = null } = {}) => ({
   spreadsheetId: 'sheet-1', sheetTab: 'HICO GỐC', sheetRange: range, syncSettings: {},
   values: [Array(25).fill('header'), ...(row ? [row] : [])],

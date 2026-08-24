@@ -15,7 +15,7 @@ import { createSheetSyncRepository, publicBatch, publicRow } from './sheetSyncRe
 import { SheetSyncError } from './sheetSyncTypes.js';
 import { createCatalogCommandService } from '../write/catalogCommandService.js';
 import { sanitizeCatalogHtml } from '../write/catalogProductValidation.js';
-import { assertFullSyncCandidate, assertPersistedFullSyncSummary, fullSyncDiagnostics, rejectionReasonsForRows } from './catalogResyncDiagnostics.js';
+import { assertFullSyncCandidate, assertPersistedFullSyncSummary, catalogApplyReadiness, fullSyncDiagnostics, rejectionReasonsForRows } from './catalogResyncDiagnostics.js';
 import {
   legacyProductSourceKeyFor,
   legacyVariantSourceKeyFor,
@@ -751,6 +751,9 @@ export const createCatalogResyncService = ({
       if (!batch || batch.mode !== 'full') throw new SheetSyncError('Full sync batch was not found.', { code: 'SHEET_BATCH_NOT_FOUND', status: 404 });
       assertPersistedFullSyncSummary(batch.summary);
       if (['APPLIED', 'PARTIALLY_APPLIED'].includes(batch.status)) return { batch: publicBatch(batch), rows: (await repository.listRows(id)).map(publicRow), versionId: batch.catalogVersionId, idempotent: true };
+      const rows = await repository.listRows(id);
+      const applyReadiness = catalogApplyReadiness({ batch, rows });
+      if (!applyReadiness.catalogApplyReady) throw new SheetSyncError('Full sync batch không có candidate hợp lệ để cập nhật catalog.', { code: 'FULL_SYNC_EMPTY_CANDIDATE', status: 422, details: { validRows: applyReadiness.validRows, invalidRows: applyReadiness.invalidRows, products: Number(batch.summary?.products ?? 0), variants: Number(batch.summary?.variants ?? 0) } });
       const reference = await referenceClient.readRows();
       const settings = {
         ...normalizeHicoGocSettings({ fieldMapping: batch.fieldMapping, priceMapping: batch.priceMapping, headerHash: batch.headerHash }),
@@ -760,8 +763,6 @@ export const createCatalogResyncService = ({
       if (currentVersion(current.manifest) !== batch.catalogVersionId) throw new SheetSyncError('Catalog đã thay đổi sau preview. Hãy tạo lại preview.', { code: 'SHEET_SYNC_CONCURRENCY_CONFLICT', status: 409 });
       if (sourceHashFor(reference, settings, offers) !== batch.sourceHash) throw new SheetSyncError('Sheet, mapping hoặc provider snapshot đã thay đổi sau preview.', { code: 'SHEET_SYNC_STALE_PREVIEW', status: 409 });
       if (batch.providerSnapshotHash && providerSnapshotHashFor(offers) !== batch.providerSnapshotHash) throw new SheetSyncError('Provider snapshot đã thay đổi sau preview.', { code: 'PROVIDER_SNAPSHOT_CHANGED', status: 409 });
-      const rows = await repository.listRows(id);
-      if (rows.some((row) => row.status === 'INVALID')) throw new SheetSyncError('Full sync đang có dòng lỗi; chưa ghi catalog.', { code: 'FULL_SYNC_INVALID_ROWS', status: 422, details: { invalidRows: rows.filter((row) => row.status === 'INVALID').length } });
       const previousCatalog = await loadPreviousCatalog({ current, requestedVersionId: batch.summary?.enrichmentSourceVersionId });
       const prepared = await build({ reference: { ...reference }, settings, current, previousCatalog, offers });
       const claimed = await repository.claimForApply(id, actor.id);
@@ -787,8 +788,23 @@ export const createCatalogResyncService = ({
           rollbackBeforePointer: () => auditRepository.remove(audit.id),
         });
         const appliedAt = now().toISOString();
-        await repository.updateRows(id, Object.fromEntries(rows.map((row) => [row.id, { status: 'APPLIED', appliedFields: ['fullCatalog'], appliedAt }])));
-        const nextBatch = await repository.updateBatch(id, { status: 'APPLIED', summary: { ...batch.summary, ...prepared.candidate.summary, diagnostics: prepared.diagnostics }, appliedAt, catalogVersionId: committed.manifest.versionId });
+        const validRows = rows.filter((row) => row.status === 'VALID');
+        await repository.updateRows(id, Object.fromEntries(validRows.map((row) => [row.id, { status: 'APPLIED', appliedFields: ['fullCatalog'], appliedAt }])));
+        const nextBatch = await repository.updateBatch(id, {
+          status: applyReadiness.invalidRows > 0 ? 'PARTIALLY_APPLIED' : 'APPLIED',
+          summary: {
+            ...batch.summary,
+            ...prepared.candidate.summary,
+            valid: applyReadiness.validRows,
+            invalid: applyReadiness.invalidRows,
+            validRows: applyReadiness.validRows,
+            invalidRows: applyReadiness.invalidRows,
+            appliedRows: applyReadiness.validRows,
+            diagnostics: prepared.diagnostics,
+          },
+          appliedAt,
+          catalogVersionId: committed.manifest.versionId,
+        });
         return { batch: publicBatch(nextBatch), rows: (await repository.listRows(id)).map(publicRow), versionId: committed.manifest.versionId, idempotent: false };
       } catch (error) {
         await repository.updateBatch(id, { status: 'READY_FOR_REVIEW', summary: batch.summary });

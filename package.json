@@ -16,6 +16,7 @@
     "check:sheet-variant-identity": "node scripts/check-sheet-variant-identity.mjs",
     "check:catalog-preview-mode-scope": "node scripts/check-catalog-preview-mode-scope.mjs",
     "check:catalog-preview-progress": "node scripts/check-catalog-preview-progress.mjs",
+    "check:catalog-preview-apply": "node scripts/check-catalog-preview-apply.mjs",
     "check:fulfillment-family-contract": "node scripts/check-fulfillment-family-contract.mjs",
     "provider:reference:audit": "node scripts/audit-provider-reference.mjs",
     "catalog:sheet:contract-audit": "npm --prefix server run catalog:sheet:contract-audit",

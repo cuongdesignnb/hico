@@ -118,3 +118,25 @@ export const assertPersistedFullSyncSummary = (summary = {}) => {
     });
   }
 };
+
+export const catalogApplyReadiness = ({ batch, rows = [] } = {}) => {
+  const summary = batch?.summary ?? {};
+  const validRows = rows.filter((row) => row?.status === 'VALID').length;
+  const invalidRows = rows.filter((row) => row?.status === 'INVALID').length;
+  const provider = summary.provider ?? {};
+  const providerIssueCount = (provider.unresolved ?? 0) + (provider.ambiguous ?? 0) + (provider.inactive ?? 0);
+  const operationUnresolved = Number(summary.operationUnresolved ?? 0);
+  return {
+    catalogApplyReady: batch?.mode === 'full'
+      && batch.status === 'READY_FOR_REVIEW'
+      && Number(summary.products ?? 0) > 0
+      && Number(summary.variants ?? 0) > 0
+      && validRows > 0,
+    validRows,
+    invalidRows,
+    providerWarning: providerIssueCount > 0,
+    providerIssueCount,
+    operationWarning: operationUnresolved > 0,
+    operationUnresolved,
+  };
+};
