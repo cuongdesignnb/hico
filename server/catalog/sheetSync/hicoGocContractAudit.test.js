@@ -73,3 +73,42 @@ test('HICO GỐC contract audit reports WMID duplicate and conflict groups witho
   assert.equal(result.simMissingSku, 0);
   assert.equal('rawRows' in result, false);
 });
+
+test('HICO GỐC contract audit exposes deterministic WMID difference metrics and safe samples', () => {
+  const makeRow = ({ wmid, sku, duration = '10', productName = 'Trung Quốc 500MB/ngày', price = '70000', dataType = 'Chia ngày', coverage = 'Trung Quốc: China Unicom' }) => {
+    const row = Array(25).fill('');
+    row[0] = 'Sim'; row[1] = productName; row[2] = duration; row[3] = dataType;
+    row[4] = price; row[11] = coverage; row[16] = sku; row[23] = wmid;
+    return row;
+  };
+  const values = [
+    Array(25).fill('header'),
+    makeRow({ wmid: 'WM-SKU', sku: 'SKU-A' }),
+    makeRow({ wmid: 'WM-SKU', sku: 'SKU-B' }),
+    makeRow({ wmid: 'WM-DURATION', sku: 'SKU-C', duration: '10' }),
+    makeRow({ wmid: 'WM-DURATION', sku: 'SKU-C', duration: '15' }),
+    makeRow({ wmid: 'WM-PRICE', sku: 'SKU-D', price: '70000' }),
+    makeRow({ wmid: 'WM-PRICE', sku: 'SKU-D', price: '80000' }),
+    makeRow({ wmid: 'WM-DATA', sku: 'SKU-E', productName: 'Trung Quốc 500MB/ngày' }),
+    makeRow({ wmid: 'WM-DATA', sku: 'SKU-E', productName: 'Trung Quốc 1GB/ngày' }),
+    makeRow({ wmid: 'WM-COVERAGE', sku: 'SKU-F', coverage: 'Nhật Bản: Softbank' }),
+    makeRow({ wmid: 'WM-COVERAGE', sku: 'SKU-F', coverage: 'Hàn Quốc: SKT' }),
+  ];
+  const result = auditHicoGocValues(values);
+  assert.equal(result.uniqueSimWmid, 5);
+  assert.equal(result.uniqueEsimWmid, 0);
+  assert.equal(result.duplicateSimWmid, 5);
+  assert.equal(result.sameWmidSamePayload, 1);
+  assert.equal(result.sameWmidDifferentDuration, 1);
+  assert.equal(result.sameWmidDifferentPrice, 1);
+  assert.equal(result.sameWmidDifferentData, 1);
+  assert.equal(result.sameWmidDifferentCoverage, 1);
+  assert.equal(result.sameWmidOnlySkuDifferent, 1);
+  assert.equal(result.wmidConflicts, 4);
+  assert.equal(Object.values(result.wmidDifferenceSamples).flat().length, 5);
+  assert.deepEqual(result.wmidDifferenceSamples.sameWmidOnlySkuDifferent[0].sheetRowNumbers, [2, 3]);
+  assert.equal('rawLabel' in result.wmidDifferenceSamples.sameWmidDifferentCoverage[0], false);
+  assert.equal(result.sourceContract.find((entry) => entry.currentCodeMapping === 'pricePhysical')?.normalizedBusinessMeaning, 'Giá SIM / Top-up');
+  assert.equal(result.sourceContract.find((entry) => entry.currentCodeMapping === 'skuPhysical')?.normalizedBusinessMeaning, 'SKU SIM (metadata only)');
+  assert.equal(result.sourceContract.find((entry) => entry.currentCodeMapping === 'wmproductIdPhysical')?.normalizedBusinessMeaning, 'WMID SIM / Top-up');
+});

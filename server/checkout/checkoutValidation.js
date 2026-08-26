@@ -229,6 +229,24 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
     });
   }
 
+  const topupItems = resolved.filter((item) => item.requiresTopup);
+  if (topupItems.length > 0) {
+    if (topupItems.length !== 1 || resolved.length !== 1) {
+      throw new CheckoutError(
+        'Nạp SIM phải được thanh toán riêng trong một checkout.',
+        'TOPUP_CART_MIXED_UNSUPPORTED',
+        422,
+      );
+    }
+    if (topupItems[0].requested.quantity !== 1) {
+      throw new CheckoutError(
+        'Mỗi checkout chỉ được có số lượng Nạp SIM là 1.',
+        'TOPUP_QUANTITY_INVALID',
+        422,
+      );
+    }
+  }
+
   const currencies = [...new Set(resolved.map(({ variant }) => variant.currency))];
   if (currencies.length > 1) {
     throw new CheckoutError(

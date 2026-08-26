@@ -12,10 +12,10 @@ const safeLabel = (value) => {
 
 const SOURCE_CONTRACT_MEANINGS = Object.freeze({
   simType: 'Source Type / loại SIM gốc', productName: 'Tên gói', durationDays: 'Ngày / trip option', dataType: 'Chính sách data',
-  pricePhysical: 'Giá bán SIM vật lý', priceEsim: 'Giá bán eSIM', priceWholesalePhysical: 'Giá sỉ SIM vật lý', priceWholesaleEsim: 'Giá sỉ eSIM',
+  pricePhysical: 'Giá SIM / Top-up', priceEsim: 'Giá bán eSIM', priceWholesalePhysical: 'Giá sỉ SIM / Top-up', priceWholesaleEsim: 'Giá sỉ eSIM',
   priceCtvPhysical: 'Giá CTV SIM vật lý', priceCtvEsim: 'Giá CTV eSIM', apn: 'APN', networkLabel: 'Quốc gia / nhà mạng',
   publicNote: 'Ghi chú public', activationPolicy: 'Mốc reset / kích hoạt', availability: 'Tình trạng cung cấp', cancellable: 'Có thể hủy gói',
-  skuPhysical: 'SKU SIM vật lý', skuEsim: 'SKU eSIM', wmproductIdPhysical: 'WMID SIM vật lý', wmproductIdEsim: 'WMID eSIM',
+  skuPhysical: 'SKU SIM (metadata only)', skuEsim: 'SKU eSIM (metadata only)', wmproductIdPhysical: 'WMID SIM / Top-up', wmproductIdEsim: 'WMID eSIM',
 });
 
 export const hicoGocSourceContract = (headers = [], fieldMapping = DEFAULT_HICO_GOC_FIELD_MAPPING) => {
@@ -66,6 +66,84 @@ const addBranchAudit = (target, branch) => {
   if (branch.partialIdentity) target.partialIdentity += 1;
 };
 
+const normalizedAuditKey = (value) => JSON.stringify(value ?? null);
+const durationAuditValue = (data = {}) => ({
+  duration: data.duration ?? null,
+  durationValue: data.durationValue ?? null,
+  durationUnit: data.durationUnit ?? null,
+  tripDayOptions: Array.isArray(data.tripDayOptions) ? [...data.tripDayOptions].sort((left, right) => left - right) : [],
+});
+const dataAuditValue = (data = {}) => ({ dataPolicy: data.dataPolicy ?? null, dataLimit: data.dataLimit ?? null });
+const coverageAuditValue = (data = {}) => (Array.isArray(data.coverage?.destinations)
+  ? data.coverage.destinations.map((destination) => destination.id ?? destination.name).sort()
+  : []);
+
+const auditSampleFor = (group) => {
+  const first = group[0];
+  return {
+    medium: first.sourceMedium,
+    normalizedWmid: normalizedWmidFor(first.normalizedData?.wmproductId),
+    sheetRowNumbers: group.map((row) => row.sheetRowNumber).filter(Number.isInteger).sort((left, right) => left - right),
+    records: group.map((row) => {
+      const data = row.normalizedData ?? {};
+      return {
+        productName: safeLabel(data.productName) || null,
+        duration: safeLabel(data.duration) || null,
+        dataLimit: safeLabel(data.dataLimit) || null,
+        dataPolicy: safeLabel(data.dataPolicy) || null,
+        sellingPrice: Number.isFinite(data.price) ? data.price : null,
+        coverage: coverageAuditValue(data),
+        sku: safeLabel(data.sku) || null,
+      };
+    }),
+  };
+};
+
+const wmidDifferenceAudit = (wmidGroups) => {
+  const groups = [...wmidGroups.entries()]
+    .filter(([, group]) => group.length > 1)
+    .sort(([leftKey, leftGroup], [rightKey, rightGroup]) => leftKey.localeCompare(rightKey)
+      || (leftGroup[0].sheetRowNumber ?? 0) - (rightGroup[0].sheetRowNumber ?? 0));
+  const metrics = {
+    uniqueSimWmid: new Set([...wmidGroups.keys()].filter((key) => key.startsWith('physical_sim:'))).size,
+    uniqueEsimWmid: new Set([...wmidGroups.keys()].filter((key) => key.startsWith('esim:'))).size,
+    sameWmidSamePayload: 0,
+    sameWmidDifferentDuration: 0,
+    sameWmidDifferentPrice: 0,
+    sameWmidDifferentData: 0,
+    sameWmidDifferentCoverage: 0,
+    sameWmidOnlySkuDifferent: 0,
+  };
+  const samples = {
+    sameWmidDifferentDuration: [],
+    sameWmidDifferentPrice: [],
+    sameWmidDifferentData: [],
+    sameWmidDifferentCoverage: [],
+    sameWmidOnlySkuDifferent: [],
+  };
+  let sampleCount = 0;
+  const addSample = (bucket, group) => {
+    if (sampleCount >= 20 || samples[bucket].length >= 20) return;
+    samples[bucket].push(auditSampleFor(group));
+    sampleCount += 1;
+  };
+  for (const [, group] of groups) {
+    const samePayload = new Set(group.map(wmidBusinessPayloadKeyFor)).size === 1;
+    const differentDuration = new Set(group.map((row) => normalizedAuditKey(durationAuditValue(row.normalizedData)))).size > 1;
+    const differentPrice = new Set(group.map((row) => normalizedAuditKey(row.normalizedData?.price))).size > 1;
+    const differentData = new Set(group.map((row) => normalizedAuditKey(dataAuditValue(row.normalizedData)))).size > 1;
+    const differentCoverage = new Set(group.map((row) => normalizedAuditKey(coverageAuditValue(row.normalizedData)))).size > 1;
+    const onlySkuDifferent = samePayload && new Set(group.map((row) => normalizedAuditKey(row.normalizedData?.sku))).size > 1;
+    if (samePayload) metrics.sameWmidSamePayload += 1;
+    if (differentDuration) { metrics.sameWmidDifferentDuration += 1; addSample('sameWmidDifferentDuration', group); }
+    if (differentPrice) { metrics.sameWmidDifferentPrice += 1; addSample('sameWmidDifferentPrice', group); }
+    if (differentData) { metrics.sameWmidDifferentData += 1; addSample('sameWmidDifferentData', group); }
+    if (differentCoverage) { metrics.sameWmidDifferentCoverage += 1; addSample('sameWmidDifferentCoverage', group); }
+    if (onlySkuDifferent) { metrics.sameWmidOnlySkuDifferent += 1; addSample('sameWmidOnlySkuDifferent', group); }
+  }
+  return { metrics, samples };
+};
+
 export const auditHicoGocValues = (
   values = [],
   { fieldMapping = DEFAULT_HICO_GOC_FIELD_MAPPING, priceMapping = DEFAULT_HICO_GOC_PRICE_MAPPING } = {},
@@ -91,6 +169,7 @@ export const auditHicoGocValues = (
   }
   const duplicateGroups = [...wmidGroups.values()].filter((group) => group.length > 1);
   const conflictGroups = duplicateGroups.filter((group) => new Set(group.map(wmidBusinessPayloadKeyFor)).size > 1);
+  const wmidAudit = wmidDifferenceAudit(wmidGroups);
   const branchDiagnostics = {
     physical: { rowsWithData: 0, identityPresent: 0, complete: 0, missingSku: 0, missingWmid: 0, missingPrice: 0, invalidPrice: 0, partialIdentity: 0 },
     esim: { rowsWithData: 0, identityPresent: 0, complete: 0, missingSku: 0, missingWmid: 0, missingPrice: 0, invalidPrice: 0, partialIdentity: 0 },
@@ -121,6 +200,8 @@ export const auditHicoGocValues = (
     duplicateSimWmid: duplicateGroups.filter((group) => group[0].sourceMedium === 'physical_sim').length,
     duplicateEsimWmid: duplicateGroups.filter((group) => group[0].sourceMedium === 'esim').length,
     wmidConflicts: conflictGroups.length,
+    ...wmidAudit.metrics,
+    wmidDifferenceSamples: wmidAudit.samples,
     branchDiagnostics,
     sourceTypeCounts,
     sourceTypeDiagnostics,

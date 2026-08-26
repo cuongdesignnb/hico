@@ -21,9 +21,23 @@ export const requiresShippingForCartItem = (item: Pick<CartItem, 'operation' | '
 
 export const requiresTopupForCartItem = (item: Pick<CartItem, 'operation' | 'type'>) => cartOperationFor(item) === 'topup';
 
-export const cartLabelFor = (item: Pick<CartItem, 'operation' | 'medium' | 'type'>) => {
-  const operation = cartOperationFor(item);
+export const labelForPurchase = ({ operation, medium }: { operation?: string; medium?: CartMedium }) => {
   if (operation === 'topup') return 'Nạp SIM';
   if (operation === 'device_sale') return 'Thiết bị';
-  return cartMediumFor(item) === 'physical_sim' ? 'SIM vật lý' : 'eSIM';
+  if (medium === 'physical_sim') return 'SIM vật lý';
+  return 'Mua eSIM';
 };
+
+export const fulfillmentLabelForPurchase = ({ operation, medium }: { operation?: string; medium?: CartMedium }) => {
+  if (operation === 'topup') return 'Dùng cho SIM hiện có';
+  if (operation === 'device_sale' || medium === 'physical_sim') return 'Giao hàng';
+  return 'Nhận online';
+};
+
+export const cartLabelFor = (item: Pick<CartItem, 'operation' | 'medium' | 'type'>) => {
+  return labelForPurchase({ operation: cartOperationFor(item), medium: cartMediumFor(item) });
+};
+
+export const cartFulfillmentLabelFor = (item: Pick<CartItem, 'operation' | 'medium' | 'type'>) => (
+  fulfillmentLabelForPurchase({ operation: cartOperationFor(item), medium: cartMediumFor(item) })
+);

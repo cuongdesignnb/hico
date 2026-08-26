@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/useApp';
 import { X, Trash2, Minus, Plus, CreditCard, ShoppingBag } from 'lucide-react';
 import { createCheckoutOrder, getCheckoutConfig, validateCheckout } from '../../services/checkoutApi';
-import { cartLabelFor, requiresShippingForCartItem, requiresTopupForCartItem } from '../../utils/cartItemClassification';
+import { cartFulfillmentLabelFor, cartLabelFor, requiresShippingForCartItem, requiresTopupForCartItem } from '../../utils/cartItemClassification';
 import './CartDrawer.css';
 
 export const CartDrawer: React.FC = () => {
@@ -61,6 +61,8 @@ export const CartDrawer: React.FC = () => {
 
   const hasPhysicalItem = cart.some(requiresShippingForCartItem);
   const hasTopupItem = cart.some(requiresTopupForCartItem);
+  const topupItems = cart.filter(requiresTopupForCartItem);
+  const hasInvalidTopupCart = hasTopupItem && (cart.length !== 1 || topupItems.length !== 1 || topupItems[0].quantity !== 1);
   const ownedTopupAssetId = topupAssetIds.length === 1 ? topupAssetIds[0] : undefined;
   const hasMixedTopupSources = topupAssetIds.length > 1 || (topupAssetIds.length === 1 && cart.some((item) => requiresTopupForCartItem(item) && !item.topupSimAssetId));
   const effectiveTopupDay = topupDays.length === 1 ? String(topupDays[0]) : topupDetails.day;
@@ -89,6 +91,10 @@ export const CartDrawer: React.FC = () => {
     e.preventDefault();
     if (!checkoutForm.name || !checkoutForm.email || !checkoutForm.phone) {
       triggerNotification('Vui lòng điền đầy đủ thông tin thanh toán!', 'error');
+      return;
+    }
+    if (hasInvalidTopupCart) {
+      triggerNotification('Nạp SIM phải được thanh toán riêng với số lượng 1.', 'error');
       return;
     }
     if (hasPhysicalItem && (!shippingAddress.address || !shippingAddress.city || !shippingAddress.district || !shippingAddress.ward)) {
@@ -207,10 +213,11 @@ export const CartDrawer: React.FC = () => {
                     <p className="cart-item-price">
                       {formatPrice(item.displayedPrice ?? item.price, item.currency)}
                     </p>
+                    <p className="cart-item-fulfillment">{cartFulfillmentLabelFor(item)}{requiresTopupForCartItem(item) ? ' · Không giao hàng' : ''}</p>
                   </div>
                   
                   <div className="cart-item-actions">
-                    <div className="quantity-controller">
+                    {requiresTopupForCartItem(item) ? <span className="quantity-val">Số lượng: 1</span> : <div className="quantity-controller">
                       <button
                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
                         className="quantity-btn"
@@ -224,7 +231,7 @@ export const CartDrawer: React.FC = () => {
                       >
                         <Plus size={14} />
                       </button>
-                    </div>
+                    </div>}
                     <button
                       onClick={() => removeFromCart(item.id)}
                       className="delete-item-btn"

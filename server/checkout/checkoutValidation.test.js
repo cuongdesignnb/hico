@@ -9,6 +9,22 @@ const baseVariant = {
 const catalog = { products: [product], variants: [baseVariant] };
 const request = { items: [{ variantId: 'v-1', quantity: 1 }], shipping: null, topup: null, customer: { name: 'A', email: 'a@example.com', phone: '0900000000' } };
 
+const topupProduct = { ...product, id: 'p-topup-rules', name: 'Nạp SIM', operation: 'topup' };
+const topupVariant = {
+  ...baseVariant,
+  id: 'v-topup-rules',
+  productId: topupProduct.id,
+  medium: 'physical_sim',
+  supplier: 'worldmove',
+  fulfillmentMethod: 'WORLDMOVE_TOPUP',
+  providerProductType: 2,
+  providerOfferId: 'offer-topup-rules',
+  wmproductId: 'WM-TOPUP-RULES',
+  topupDays: 10,
+};
+const topupOffer = { id: 'offer-topup-rules', wmproductId: 'WM-TOPUP-RULES', providerProductType: 2, active: true };
+const topupRequest = { ...request, items: [{ variantId: topupVariant.id, quantity: 1, clientPrice: topupVariant.price }], topup: { simNum: '12345678901234567890', day: 10 } };
+
 test('canonical validation uses variant price and rejects empty or unavailable carts', () => {
   assert.throws(() => validateCanonicalCart({ catalog, request: { ...request, items: [] } }), (error) => error.code === 'CART_EMPTY');
   assert.throws(() => validateCanonicalCart({ catalog, request: { ...request, items: [{ variantId: 'missing', quantity: 1 }] } }), (error) => error.code === 'VARIANT_NOT_FOUND');
@@ -72,6 +88,32 @@ test('canonical validation accepts an owned SIM asset without a client SIM numbe
     request: { ...request, items: [{ variantId: topupVariant.id, quantity: 1 }], topup: { simAssetId: 'asset-1', day: 10 } },
   });
   assert.deepEqual(result.topup, { day: 10, simAssetId: 'asset-1' });
+});
+
+test('canonical validation allows one top-up at quantity one and rejects unsafe top-up carts', () => {
+  const topupCatalog = { products: [topupProduct, product], variants: [topupVariant, baseVariant] };
+  const valid = validateCanonicalCart({ catalog: topupCatalog, providerOffers: [topupOffer], request: topupRequest });
+  assert.equal(valid.items.length, 1);
+  assert.equal(valid.items[0].requested.quantity, 1);
+
+  assert.throws(() => validateCanonicalCart({
+    catalog: topupCatalog,
+    providerOffers: [topupOffer],
+    request: { ...topupRequest, items: [{ ...topupRequest.items[0], quantity: 2 }] },
+  }), (error) => error.code === 'TOPUP_QUANTITY_INVALID' && error.status === 422);
+
+  const secondTopup = { ...topupVariant, id: 'v-topup-rules-2' };
+  assert.throws(() => validateCanonicalCart({
+    catalog: { products: [topupProduct], variants: [topupVariant, secondTopup] },
+    providerOffers: [topupOffer],
+    request: { ...topupRequest, items: [{ variantId: topupVariant.id, quantity: 1 }, { variantId: secondTopup.id, quantity: 1 }] },
+  }), (error) => error.code === 'TOPUP_CART_MIXED_UNSUPPORTED' && error.status === 422);
+
+  assert.throws(() => validateCanonicalCart({
+    catalog: topupCatalog,
+    providerOffers: [topupOffer],
+    request: { ...topupRequest, items: [{ variantId: topupVariant.id, quantity: 1 }, { variantId: baseVariant.id, quantity: 1 }] },
+  }), (error) => error.code === 'TOPUP_CART_MIXED_UNSUPPORTED' && error.status === 422);
 });
 
 test('canonical checkout rejects unresolved operation with a typed reason', () => {

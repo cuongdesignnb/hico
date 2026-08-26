@@ -47,10 +47,35 @@ export const verifyWorldmoveCallbackSignature = ({ payload, callbackType = detec
   return { valid, code: valid ? null : 'WORLDMOVE_CALLBACK_SIGNATURE_INVALID' };
 };
 
-const identityFor = (payload, callbackType) => {
-  const itemIdentity = list(payload.itemList).map((item) => [item.wmproductId, item.day, item.simNum, item.iccid, item.rcode, item.qrcode, item.code, item.resultcode].map((value) => String(value ?? '')).join(':')).join('|');
-  return [callbackType, payload.orderId, payload.orderSN, payload.orderTime, payload.rcode, itemIdentity].join('|');
+const outcomeFor = (payload, callbackType) => {
+  const items = list(payload.itemList);
+  const itemOutcomes = items.map((item) => ({
+    code: has(item, 'code') ? item.code : null,
+    resultcode: has(item, 'resultcode') ? item.resultcode : has(item, 'resultCode') ? item.resultCode : null,
+  }));
+  if (callbackType === WORLDMOVE_CALLBACK_TYPES.ESIM_ORDER) {
+    return { code: has(payload, 'code') ? payload.code : null, itemOutcomes };
+  }
+  if (callbackType === WORLDMOVE_CALLBACK_TYPES.TOPUP) return { itemOutcomes: itemOutcomes.map(({ code }) => ({ code })) };
+  if (callbackType === WORLDMOVE_CALLBACK_TYPES.REDEEM) {
+    return {
+      code: has(payload, 'code') ? payload.code : null,
+      resultcode: has(payload, 'resultcode') ? payload.resultcode : has(payload, 'resultCode') ? payload.resultCode : null,
+    };
+  }
+  return { code: has(payload, 'code') ? payload.code : null, itemOutcomes };
 };
+
+const identityFor = (payload, callbackType) => JSON.stringify({
+  callbackType,
+  providerReference: payload.orderId ?? payload.rcode ?? null,
+  orderSN: payload.orderSN ?? null,
+  orderTime: payload.orderTime ?? null,
+  // encStr is included only after the provider signature has been verified.
+  // It captures signed business fields such as redemptionCode and qrcode.
+  encStr: String(payload.encStr ?? '').trim().toUpperCase(),
+  outcome: outcomeFor(payload, callbackType),
+});
 
 export const normalizeWorldmoveCallback = (payload, rawBody, { merchantId, token } = {}) => {
   const callbackType = detectWorldmoveCallbackType(payload);

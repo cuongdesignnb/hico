@@ -26,6 +26,7 @@
     "validate:public-products": "node server/scripts/validatePublicProductPayloads.js",
     "check:product-hardcodes": "node scripts/check-product-detail-hardcodes.mjs",
     "check:product-detail-parity": "node scripts/check-product-detail-parity.mjs",
+    "check:topup-ui": "node scripts/check-topup-ui-semantics.mjs",
     "check:admin-media": "node scripts/check-admin-image-inputs.mjs",
     "media:audit": "node server/scripts/auditMediaUsage.js",
     "media:validate": "node server/scripts/validateMediaReferences.js",

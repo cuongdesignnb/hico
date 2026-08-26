@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AppContext, type CartItem, type CurrentUser } from './contextValue';
+import { requiresTopupForCartItem } from '../utils/cartItemClassification';
 
 const normalizeCartItem = (value: unknown): CartItem | null => {
   if (!value || typeof value !== 'object') return null;
@@ -19,7 +20,8 @@ const normalizeCartItem = (value: unknown): CartItem | null => {
     ? record.medium
     : record.type === 'physical' ? 'physical_sim' : record.type === 'esim' ? 'esim' : undefined;
   const type = operation === 'device_sale' ? 'device' : medium === 'physical_sim' ? 'physical' : 'esim';
-  return { ...record, operation, medium, type, displayedPrice: typeof record.displayedPrice === 'number' ? record.displayedPrice : record.price, quantity: Math.max(1, Math.floor(record.quantity)) } as CartItem;
+  const quantity = operation === 'topup' ? 1 : Math.max(1, Math.floor(record.quantity));
+  return { ...record, operation, medium, type, displayedPrice: typeof record.displayedPrice === 'number' ? record.displayedPrice : record.price, quantity } as CartItem;
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -76,6 +78,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addToCart = (newItem: Omit<CartItem, 'quantity'>) => {
     setCart((prevCart) => {
       const existingItemIndex = prevCart.findIndex((item) => item.id === newItem.id);
+      const newItemIsTopup = requiresTopupForCartItem(newItem);
+      const hasTopup = prevCart.some(requiresTopupForCartItem);
+      if (newItemIsTopup && existingItemIndex > -1) {
+        triggerNotification('Mỗi checkout chỉ được có 1 gói Nạp SIM.', 'info');
+        return prevCart;
+      }
+      if ((newItemIsTopup && prevCart.length > 0) || (!newItemIsTopup && hasTopup)) {
+        triggerNotification('Nạp SIM cần được thanh toán riêng, không thể ghép với sản phẩm khác.', 'error');
+        return prevCart;
+      }
       if (existingItemIndex > -1) {
         const updatedCart = [...prevCart];
         updatedCart[existingItemIndex].quantity += 1;
@@ -102,9 +114,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       removeFromCart(id);
       return;
     }
-    setCart((prevCart) =>
-      prevCart.map((item) => (item.id === id ? { ...item, quantity } : item))
-    );
+    setCart((prevCart) => prevCart.map((item) => (item.id === id
+      ? { ...item, quantity: requiresTopupForCartItem(item) ? 1 : Math.floor(quantity) }
+      : item)));
   };
 
   const clearCart = () => {

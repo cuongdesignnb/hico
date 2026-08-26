@@ -73,3 +73,28 @@ test('customer-owned top-up resolves simAssetId server-side and ignores client s
   assert.equal(createdRequest.topup.simNum, '12345678901234567890');
   await assert.rejects(service.validate(topupRequest), (error) => error.code === 'CUSTOMER_AUTH_REQUIRED');
 });
+
+test('checkout rejects top-up quantity before creating an order', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hico-checkout-topup-rules-'));
+  const offers = path.join(directory, 'provider_offers.json');
+  await atomicWriteJson(offers, [{ id: 'offer-topup', wmproductId: 'WM-TOPUP', providerProductType: 2, active: true }]);
+  let creates = 0;
+  const service = createCheckoutService({
+    env: { CHECKOUT_ENGINE: 'canonical' },
+    providerOffersFile: offers,
+    catalogReader: { readCatalog: async () => ({
+      products: [{ id: 'p-topup', name: 'Nạp SIM', operation: 'topup', status: 'active' }],
+      variants: [{ id: 'v-topup', productId: 'p-topup', price: 80000, currency: 'VND', medium: 'physical_sim', supplier: 'worldmove', fulfillmentMethod: 'WORLDMOVE_TOPUP', providerProductType: 2, active: true, needsReview: false, topupDays: 10, providerOfferId: 'offer-topup', wmproductId: 'WM-TOPUP' }],
+    }) },
+    idempotencyRepository: createCheckoutIdempotencyRepository({ filePath: path.join(directory, 'idempotency.json') }),
+    orderService: { createCanonicalOrder: async () => { creates += 1; throw new Error('must not create'); } },
+  });
+  await assert.rejects(service.createOrder({
+    idempotencyKey: 'topup-quantity-2',
+    items: [{ variantId: 'v-topup', quantity: 2, clientPrice: 80000 }],
+    customer: { name: 'A', email: 'a@example.com', phone: '0900000000' },
+    shipping: null,
+    topup: { simNum: '12345678901234567890', day: 10 },
+  }), (error) => error.code === 'TOPUP_QUANTITY_INVALID' && error.status === 422);
+  assert.equal(creates, 0);
+});
