@@ -33,14 +33,8 @@ export const productSourceKeyFor = (data = {}) => `hico-goc:${hash([
 ])}`;
 
 export const variantSourceKeyFor = (data = {}) => `hico-goc-variant:${hash([
-  productSourceKeyFor(data),
-  normalizeIdentityToken(data.sku),
+  normalizeIdentityToken(data.medium),
   normalizeIdentityToken(data.wmproductId),
-  normalizeIdentityToken(data.dataPolicy),
-  normalizeIdentityToken(data.durationDays ?? data.duration),
-  normalizeIdentityToken(data.durationValue),
-  normalizeIdentityToken(data.durationUnit),
-  normalizeIdentityToken(data.dataLimit),
 ])}`;
 
 export const legacyProductSourceKeyFor = (data = {}) => `hico-goc:${hash([

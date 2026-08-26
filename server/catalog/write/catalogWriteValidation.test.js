@@ -268,11 +268,12 @@ test('product readiness requires a publishable variant and blocks SKU conflict',
   });
   assert.equal(ready.publishable, true);
 
-  const conflicted = { ...readyVariant, skuConflict: true };
+  const conflicted = { ...readyVariant, id: 'variant-conflicted' };
+  const duplicate = { ...readyVariant, id: 'variant-duplicate' };
   const blocked = getProductPublishReadiness({
     product,
     products: [product],
-    variants: [conflicted],
+    variants: [conflicted, duplicate],
     providerOffers: [],
   });
   assert.equal(blocked.publishable, false);

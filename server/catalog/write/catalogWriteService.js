@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createCanonicalCatalogRepository } from '../canonical/canonicalCatalogRepository.js';
 import {
   applySkuConflictMetadata,
+  normalizeWmid,
   normalizeSku,
 } from '../canonical/canonicalSkuConflicts.js';
 import { assertCanonicalCatalog } from '../canonical/canonicalCatalogValidation.js';
@@ -90,11 +91,13 @@ const assertUniqueSlug = (products, slug, exceptId) => {
   }
 };
 
-const assertUniqueSku = (variants, sku, exceptId) => {
+const assertUniqueSku = (variants, sku, exceptId, wmproductId) => {
+  if (!normalizeSku(sku)) return;
   if (variants.some(
     (variant) => (
       variant.id !== exceptId
       && normalizeSku(variant.sku) === normalizeSku(sku)
+      && normalizeWmid(variant.wmproductId) === normalizeWmid(wmproductId)
     ),
   )) {
     throw new CatalogWriteError('SKU đã tồn tại.', {
@@ -807,7 +810,7 @@ export const createCatalogWriteService = ({
             updatedAt: timestamp,
           };
           assertUniqueVariantId(context.variants, variant.id);
-          assertUniqueSku(context.variants, variant.sku);
+          assertUniqueSku(context.variants, variant.sku, variant.id, variant.wmproductId);
           assertUniquePublicSku(context.variants, variant.publicSku);
           assertValidEntity(validateVariantRecord({
             variant,
@@ -886,7 +889,7 @@ export const createCatalogWriteService = ({
                 },
               );
             }
-            assertUniqueSku(context.variants, changes.sku, variantId);
+            assertUniqueSku(context.variants, changes.sku, variantId, changes.wmproductId ?? existing.wmproductId);
           }
           const updated = {
             ...existing,

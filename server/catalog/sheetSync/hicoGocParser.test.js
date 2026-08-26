@@ -65,17 +65,15 @@ test('HICO GỐC source types keep explicit package and medium semantics', () =>
 
 test('HICO GỐC parser keeps a valid branch when the other branch has a partial identity', () => {
   const result = parseHicoGocRowsWithDiagnostics([Array(25).fill('header'), cells({ 24: '' })]);
-  assert.equal(result.rows.length, 2);
+  assert.equal(result.rows.length, 1);
   assert.equal(result.rows.find((row) => row.sourceMedium === 'physical_sim')?.status, 'VALID');
-  assert.equal(result.rows.find((row) => row.sourceMedium === 'esim')?.status, 'INVALID');
-  assert.ok(result.rows.find((row) => row.sourceMedium === 'esim')?.errors.some((error) => error.code === 'MISSING_WMID'));
+  assert.equal(result.rows.find((row) => row.sourceMedium === 'esim'), undefined);
 });
 
 test('HICO GỐC parser treats a missing WMID as a structural rejection', () => {
   const [row] = parseHicoGocRows([Array(25).fill('header'), cells({ 23: '' })]);
-  assert.equal(row.status, 'INVALID');
-  assert.ok(row.errors.some((error) => error.code === 'MISSING_WMID'));
-  assert.equal(row.errors.some((error) => error.code === 'PROVIDER_NOT_FOUND'), false);
+  assert.equal(row.sourceMedium, 'esim');
+  assert.equal(row.status, 'VALID');
 });
 
 test('HICO GỐC parser reports rows with no identity instead of silently dropping them', () => {
@@ -85,8 +83,37 @@ test('HICO GỐC parser reports rows with no identity instead of silently droppi
     rowsRead: 1,
     rowsParsed: 0,
     rowsRejected: 1,
-    rejectionReasons: { MISSING_SKU: 1 },
+    sourceRows: 1,
+    physicalBranches: 0,
+    simBranches: 0,
+    esimBranches: 0,
+    bothBranchRows: 0,
+    rowsWithSimWmid: 0,
+    rowsWithEsimWmid: 0,
+    rowsWithBothWmid: 0,
+    rowsWithoutWmid: 1,
+    simMissingSku: 0,
+    esimMissingSku: 0,
+    rejectionReasons: { MISSING_WMID: 1 },
   });
+});
+
+test('HICO GỐC parser uses WMID only for branch presence and accepts missing SKU', () => {
+  const result = parseHicoGocRowsWithDiagnostics([Array(25).fill('header'), cells({ 16: '', 17: '', 24: '' })]);
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].sourceMedium, 'physical_sim');
+  assert.equal(result.rows[0].status, 'VALID');
+  assert.equal(result.rows[0].normalizedData.sku, undefined);
+  assert.equal(result.diagnostics.simMissingSku, 1);
+  assert.equal(result.diagnostics.rowsWithSimWmid, 1);
+  assert.equal(result.diagnostics.rowsWithEsimWmid, 0);
+});
+
+test('HICO GỐC parser does not let SKU create a branch without WMID', () => {
+  const result = parseHicoGocRowsWithDiagnostics([Array(25).fill('header'), cells({ 23: '', 24: '', 17: '' })]);
+  assert.equal(result.rows.length, 0);
+  assert.equal(result.diagnostics.rowsWithoutWmid, 1);
+  assert.deepEqual(result.diagnostics.rejectionReasons, { MISSING_WMID: 1 });
 });
 
 test('HICO GỐC parser keeps the physical Sheet row number when header is not row one', () => {
@@ -126,7 +153,36 @@ test('HICO GỐC duplicate payload conflict is never collapsed', () => {
   const second = [...first]; second[2] = '3'; second[10] = 'different-apn';
   const rows = collapseHicoGocRows(parseHicoGocRows([Array(25).fill('header'), first, second]));
   assert.equal(rows.length, 2);
-  assert.ok(rows.every((row) => row.errors.some((error) => error.code === 'DUPLICATE_CONFLICT')));
+  assert.ok(rows.every((row) => row.errors.some((error) => error.code === 'WMID_CONFLICT')));
+});
+
+test('HICO GỐC collapses identical WMID payloads even when SKU changes', () => {
+  const first = cells({ 17: '', 24: '', 16: 'SKU-A', 23: 'WM-SAME' });
+  const second = [...first]; second[16] = 'SKU-B';
+  const rows = collapseHicoGocRows(parseHicoGocRows([Array(25).fill('header'), first, second]));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].status, 'VALID');
+  assert.equal(rows[0].normalizedData.sku, 'SKU-A');
+  assert.deepEqual(rows[0].sourceRows, [2, 3]);
+  assert.equal(rows[0].collapsedDuplicateCount, 1);
+  assert.ok(rows[0].warnings.some((warning) => warning.code === 'DUPLICATE_IDENTICAL_COLLAPSED'));
+});
+
+test('HICO GỐC keeps same SKU on different WMIDs as separate identities', () => {
+  const first = cells({ 17: '', 24: '', 23: 'WM-A', 16: 'SAME-SKU' });
+  const second = [...first]; second[23] = 'WM-B';
+  const rows = collapseHicoGocRows(parseHicoGocRows([Array(25).fill('header'), first, second]));
+  assert.equal(rows.length, 2);
+  assert.equal(new Set(rows.map((row) => row.normalizedData.wmproductId)).size, 2);
+});
+
+test('HICO GỐC marks conflicting business payloads for one WMID for review', () => {
+  const first = cells({ 17: '', 24: '', 23: 'WM-CONFLICT', 16: 'SKU-A' });
+  const second = [...first]; second[4] = '71000';
+  const rows = collapseHicoGocRows(parseHicoGocRows([Array(25).fill('header'), first, second]));
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((row) => row.status === 'INVALID' && row.needsReview && row.wmidConflict));
+  assert.ok(rows.every((row) => row.errors.some((error) => error.code === 'WMID_CONFLICT')));
 });
 
 test('HICO GỐC optional enrichment fields accept internal media paths and reject external URLs', () => {

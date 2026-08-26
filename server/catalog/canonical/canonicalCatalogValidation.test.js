@@ -45,6 +45,24 @@ test('validates canonical product and variant contracts', () => {
   assert.equal(result.valid, true);
 });
 
+test('allows a missing source SKU when WMID is present', () => {
+  const result = validateCanonicalCatalog({
+    products: [product()],
+    variants: [variant({ sku: undefined, wmproductId: 'WM-1' })],
+  });
+  assert.equal(result.valid, true);
+});
+
+test('does not treat a shared SKU with distinct WMIDs as a publish blocker', () => {
+  const variants = [
+    variant({ id: 'v-a', sku: 'SHARED', wmproductId: 'WM-A', needsReview: false, active: true }),
+    variant({ id: 'v-b', sku: 'SHARED', wmproductId: 'WM-B', needsReview: false, active: true }),
+  ];
+  const result = validateCanonicalCatalog({ products: [product()], variants });
+  assert.equal(result.duplicateSkus.length, 0);
+  assert.equal(result.publishSafety.blockedReasons.duplicateSku, undefined);
+});
+
 test('accepts an unresolved manual provider fallback while keeping it review-only', () => {
   const result = validateCanonicalCatalog({
     products: [product()],

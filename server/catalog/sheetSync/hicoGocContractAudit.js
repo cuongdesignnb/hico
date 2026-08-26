@@ -2,6 +2,7 @@ import { parsePrice } from './sheetRowParser.js';
 import { DEFAULT_HICO_GOC_FIELD_MAPPING, DEFAULT_HICO_GOC_PRICE_MAPPING, hicoGocColumnName, normalizeHicoGocMapping, normalizeHicoGocPriceMapping } from './hicoGocMapping.js';
 import { classifyHicoPackageClass, mediumSourceMismatch } from './hicoGocSourceClassifier.js';
 import { parseHicoCoverage } from '../coverage/hicoCoverageParser.js';
+import { parseHicoGocRows, normalizedWmidFor, wmidBusinessPayloadKeyFor } from './hicoGocParser.js';
 
 const nonEmpty = (value) => String(value ?? '').trim() !== '';
 const safeLabel = (value) => {
@@ -44,13 +45,13 @@ const branchAuditFor = ({ row, mapping, priceMapping, medium }) => {
   const hasData = skuPresent || wmidPresent || pricePresent;
   return {
     hasData,
-    identityPresent: skuPresent || wmidPresent,
-    complete: hasData && skuPresent && wmidPresent && parsedPrice !== undefined,
+    identityPresent: wmidPresent,
+    complete: hasData && wmidPresent && parsedPrice !== undefined,
     missingSku: hasData && !skuPresent,
     missingWmid: hasData && !wmidPresent,
     missingPrice: hasData && !pricePresent,
     invalidPrice: pricePresent && parsedPrice === undefined,
-    partialIdentity: hasData && skuPresent !== wmidPresent,
+    partialIdentity: hasData && !wmidPresent,
   };
 };
 
@@ -80,12 +81,23 @@ export const auditHicoGocValues = (
   const destinationCounts = {};
   const destinationNames = {};
   const sourceTypeDiagnostics = {};
+  const parsedBranches = Array.isArray(values) && Array.isArray(values[0])
+    ? parseHicoGocRows(values, { fieldMapping: mapping, priceMapping: prices })
+    : [];
+  const wmidGroups = new Map();
+  for (const branch of parsedBranches) {
+    const key = `${branch.sourceMedium}:${normalizedWmidFor(branch.normalizedData?.wmproductId)}`;
+    if (!key.endsWith(':')) wmidGroups.set(key, [...(wmidGroups.get(key) ?? []), branch]);
+  }
+  const duplicateGroups = [...wmidGroups.values()].filter((group) => group.length > 1);
+  const conflictGroups = duplicateGroups.filter((group) => new Set(group.map(wmidBusinessPayloadKeyFor)).size > 1);
   const branchDiagnostics = {
     physical: { rowsWithData: 0, identityPresent: 0, complete: 0, missingSku: 0, missingWmid: 0, missingPrice: 0, invalidPrice: 0, partialIdentity: 0 },
     esim: { rowsWithData: 0, identityPresent: 0, complete: 0, missingSku: 0, missingWmid: 0, missingPrice: 0, invalidPrice: 0, partialIdentity: 0 },
   };
   const diagnostics = {
     rowsRead: rows.length,
+    sourceRows: rows.length,
     sourceContract,
     rowsWithPhysicalBranch: 0,
     rowsWithEsimBranch: 0,
@@ -98,6 +110,17 @@ export const auditHicoGocValues = (
     partialPhysicalIdentity: 0,
     partialEsimIdentity: 0,
     rowsWithoutIdentity: 0,
+    rowsWithSimWmid: 0,
+    rowsWithEsimWmid: 0,
+    rowsWithBothWmid: 0,
+    rowsWithoutWmid: 0,
+    simBranches: 0,
+    esimBranches: 0,
+    simMissingSku: 0,
+    esimMissingSku: 0,
+    duplicateSimWmid: duplicateGroups.filter((group) => group[0].sourceMedium === 'physical_sim').length,
+    duplicateEsimWmid: duplicateGroups.filter((group) => group[0].sourceMedium === 'esim').length,
+    wmidConflicts: conflictGroups.length,
     branchDiagnostics,
     sourceTypeCounts,
     sourceTypeDiagnostics,
@@ -156,16 +179,16 @@ export const auditHicoGocValues = (
     const physicalWmid = nonEmpty(row[mapping.wmproductIdPhysical]);
     const esimSku = nonEmpty(row[mapping.skuEsim]);
     const esimWmid = nonEmpty(row[mapping.wmproductIdEsim]);
-    const physicalPresent = physicalSku || physicalWmid;
-    const esimPresent = esimSku || esimWmid;
-    const physicalComplete = physicalSku && physicalWmid;
-    const esimComplete = esimSku && esimWmid;
+    const physicalPresent = physicalWmid;
+    const esimPresent = esimWmid;
+    const physicalComplete = physicalWmid && parsePrice(row[mapping[prices.physical]], [], 'price') !== undefined;
+    const esimComplete = esimWmid && parsePrice(row[mapping[prices.esim]], [], 'price') !== undefined;
     sourceDiagnostic.physicalIdentityCount += Number(physicalPresent);
     sourceDiagnostic.esimIdentityCount += Number(esimPresent);
     sourceDiagnostic.bothIdentityCount += Number(physicalComplete && esimComplete);
     sourceDiagnostic.noIdentityCount += Number(!physicalPresent && !esimPresent);
-    sourceDiagnostic.partialPhysicalIdentityCount += Number(physicalSku !== physicalWmid);
-    sourceDiagnostic.partialEsimIdentityCount += Number(esimSku !== esimWmid);
+    sourceDiagnostic.partialPhysicalIdentityCount += Number(!physicalWmid && (physicalSku || nonEmpty(row[mapping[prices.physical]])));
+    sourceDiagnostic.partialEsimIdentityCount += Number(!esimWmid && (esimSku || nonEmpty(row[mapping[prices.esim]])));
     sourceDiagnostic.physicalCompleteCount += Number(physicalComplete);
     sourceDiagnostic.esimCompleteCount += Number(esimComplete);
     sourceDiagnostic.sourceMediumConflictCount += Number(
@@ -180,9 +203,16 @@ export const auditHicoGocValues = (
     diagnostics.physicalIdentityComplete += Number(physicalComplete);
     diagnostics.esimIdentityComplete += Number(esimComplete);
     diagnostics.bothIdentityComplete += Number(physicalComplete && esimComplete);
-    if (physicalSku !== physicalWmid) diagnostics.partialPhysicalIdentity += 1;
-    if (esimSku !== esimWmid) diagnostics.partialEsimIdentity += 1;
+    if (!physicalWmid && (physicalSku || nonEmpty(row[mapping[prices.physical]]))) diagnostics.partialPhysicalIdentity += 1;
+    if (!esimWmid && (esimSku || nonEmpty(row[mapping[prices.esim]]))) diagnostics.partialEsimIdentity += 1;
     if (!physicalPresent && !esimPresent) diagnostics.rowsWithoutIdentity += 1;
+    if (physicalPresent) diagnostics.rowsWithSimWmid += 1;
+    if (esimPresent) diagnostics.rowsWithEsimWmid += 1;
+    if (physicalPresent && esimPresent) diagnostics.rowsWithBothWmid += 1;
+    if (!physicalPresent && !esimPresent) diagnostics.rowsWithoutWmid += 1;
+    if (physicalPresent) diagnostics.simBranches += 1;
+    if (physicalPresent && !physicalSku) diagnostics.simMissingSku += 1;
+    if (esimPresent && !esimSku) diagnostics.esimMissingSku += 1;
     addBranchAudit(branchDiagnostics.physical, branchAuditFor({ row, mapping, priceMapping: prices, medium: 'physical_sim' }));
     addBranchAudit(branchDiagnostics.esim, branchAuditFor({ row, mapping, priceMapping: prices, medium: 'esim' }));
     if (nonEmpty(row[20])) diagnostics.providerNameEvidence.physical += 1;

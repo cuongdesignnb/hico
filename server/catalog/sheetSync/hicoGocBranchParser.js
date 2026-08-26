@@ -87,8 +87,7 @@ const parseSellingPrice = (value, errors, field) => {
 };
 
 export const branchIdentityPresent = ({ cells, mapping, skuField, wmidField }) => (
-  clean(cells[mapping[skuField]], 'sku', [], []) !== undefined
-  || clean(cells[mapping[wmidField]], 'wmproductId', [], []) !== undefined
+  clean(cells[mapping[wmidField]], 'wmproductId', [], []) !== undefined
 );
 
 export const makeHicoGocBranchCandidate = ({ cells, rowNumber, medium, mapping, priceMapping, skuField, wmidField, priceField }) => {
@@ -98,7 +97,8 @@ export const makeHicoGocBranchCandidate = ({ cells, rowNumber, medium, mapping, 
   const packageClass = classifyHicoPackageClass(sourceCategoryLabel);
   const productName = criticalClean(valueAt(cells, mapping, 'productName'), 'productName', errors, warnings);
   const dataPolicy = parsePolicy(valueAt(cells, mapping, 'dataType'), errors, warnings);
-  const sku = criticalClean(valueAt(cells, mapping, skuField), 'sku', errors, warnings);
+  // SKU is optional source metadata. WMID is the only branch identity.
+  const sku = clean(valueAt(cells, mapping, skuField), 'sku', warnings, warnings);
   const wmproductId = criticalClean(valueAt(cells, mapping, wmidField), 'wmproductId', errors, warnings);
   const price = parseSellingPrice(valueAt(cells, mapping, priceMapping[priceField]), errors, 'price');
   const compareField = medium === 'physical_sim' ? 'comparePhysical' : 'compareEsim';
@@ -162,16 +162,11 @@ export const makeHicoGocBranchCandidate = ({ cells, rowNumber, medium, mapping, 
     ...(mapping.installationGuide !== null && mapping.installationGuide !== undefined ? { installationGuide: clean(valueAt(cells, mapping, 'installationGuide'), 'installationGuide', warnings, warnings) } : {}),
   };
   const branchPrefix = medium === 'esim' ? 'ESIM' : 'PHYSICAL';
-  if (!sku) {
-    errors.push({ code: `MISSING_${branchPrefix}_SKU`, field: 'sku' });
-    errors.push({ code: 'MISSING_SKU', field: 'sku' });
-  }
   if (!wmproductId) {
     errors.push({ code: `MISSING_${branchPrefix}_WMID`, field: 'wmproductId' });
     errors.push({ code: 'MISSING_WMID', field: 'wmproductId' });
   }
   if (!productName) errors.push({ code: 'MISSING_PRODUCT_NAME', field: 'productName' });
-  if (!sku || !wmproductId) errors.push({ code: 'INVALID_BRANCH_PAIR', field: medium });
   if (mediumSourceMismatch(sourceCategoryLabel, medium)) errors.push({ code: 'SOURCE_MEDIUM_CONFLICT', field: 'simType' });
   if (!normalizedData.dataLimit) warnings.push({ code: 'DATA_LIMIT_AMBIGUOUS', field: 'dataLimit' });
 

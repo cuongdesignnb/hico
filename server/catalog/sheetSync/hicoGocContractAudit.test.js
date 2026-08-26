@@ -11,6 +11,13 @@ test('HICO GỐC contract audit reports safe branch and identity counts without 
   assert.equal(result.rowsWithBothBranches, 1);
   assert.equal(result.physicalBranches, 1);
   assert.equal(result.esimBranches, 1);
+  assert.equal(result.rowsWithSimWmid, 1);
+  assert.equal(result.rowsWithEsimWmid, 1);
+  assert.equal(result.rowsWithBothWmid, 1);
+  assert.equal(result.rowsWithoutWmid, 0);
+  assert.equal(result.duplicateSimWmid, 0);
+  assert.equal(result.duplicateEsimWmid, 0);
+  assert.equal(result.wmidConflicts, 0);
   assert.equal(result.partialPhysicalIdentity, 0);
   assert.equal(result.partialEsimIdentity, 0);
   assert.equal(result.sourceContract.length, 25);
@@ -19,9 +26,9 @@ test('HICO GỐC contract audit reports safe branch and identity counts without 
   });
   assert.deepEqual(result.sourceTypeDiagnostics['Sim & eSIM'], {
     rawValue: 'Sim & eSIM', normalizedValue: 'Sim & eSIM', rowCount: 1,
-    physicalIdentityCount: 1, esimIdentityCount: 1, bothIdentityCount: 1,
+    physicalIdentityCount: 1, esimIdentityCount: 1, bothIdentityCount: 0,
     noIdentityCount: 0, partialPhysicalIdentityCount: 0, partialEsimIdentityCount: 0,
-    physicalCompleteCount: 1, esimCompleteCount: 1, sourceMediumConflictCount: 0,
+    physicalCompleteCount: 0, esimCompleteCount: 0, sourceMediumConflictCount: 0,
     packageClass: 'STANDARD_TRAVEL',
   });
   assert.equal('sku' in result, false);
@@ -40,7 +47,7 @@ test('HICO GỐC contract audit separates physical and eSIM branch defects', () 
   assert.equal(result.branchDiagnostics.esim.rowsWithData, 1);
   assert.equal(result.branchDiagnostics.esim.missingSku, 1);
   assert.equal(result.branchDiagnostics.esim.missingWmid, 0);
-  assert.equal(result.branchDiagnostics.esim.complete, 0);
+  assert.equal(result.branchDiagnostics.esim.complete, 1);
   assert.deepEqual(result.coverage.destinationNames, { 'coverage-trung-quoc': 'Trung Quốc' });
 });
 
@@ -51,5 +58,18 @@ test('HICO GỐC contract audit records exclusive source and medium conflicts wi
   row[17] = 'ESIM-1'; row[24] = 'WM-ESIM-1';
   const result = auditHicoGocValues([Array(25).fill('header'), row]);
   assert.equal(result.sourceTypeDiagnostics.eSim.sourceMediumConflictCount, 1);
+  assert.equal('rawRows' in result, false);
+});
+
+test('HICO GỐC contract audit reports WMID duplicate and conflict groups without raw data', () => {
+  const first = Array(25).fill('');
+  first[0] = 'Sim'; first[1] = 'Trung Quốc 500MB/ngày'; first[2] = '10'; first[3] = 'Chia ngày';
+  first[4] = '70000'; first[11] = 'Trung Quốc: China Unicom'; first[16] = 'SKU-A'; first[23] = 'WM-SAME';
+  const identical = [...first]; identical[16] = 'SKU-B';
+  const conflict = [...first]; conflict[4] = '71000';
+  const result = auditHicoGocValues([Array(25).fill('header'), first, identical, conflict]);
+  assert.equal(result.duplicateSimWmid, 1);
+  assert.equal(result.wmidConflicts, 1);
+  assert.equal(result.simMissingSku, 0);
   assert.equal('rawRows' in result, false);
 });

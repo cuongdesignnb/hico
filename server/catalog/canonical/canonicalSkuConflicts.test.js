@@ -42,3 +42,12 @@ test('conflict metadata is removed after a duplicate group is resolved', () => {
   assert.deepEqual(marked, [{ id: 'variant-1', sku: 'RESOLVED-SKU' }]);
 });
 
+test('same SKU with different WMIDs is not a legacy SKU conflict', () => {
+  const marked = applySkuConflictMetadata([
+    { id: 'variant-1', sku: 'SHARED-SKU', wmproductId: 'WM-A' },
+    { id: 'variant-2', sku: 'SHARED-SKU', wmproductId: 'WM-B' },
+  ]);
+  assert.equal(marked[0].skuConflict, undefined);
+  assert.equal(marked[1].skuConflict, undefined);
+});
+

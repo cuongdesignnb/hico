@@ -1,4 +1,4 @@
-import { normalizeSku } from '../canonical/canonicalSkuConflicts.js';
+import { skuConflictFor } from '../canonical/canonicalSkuConflicts.js';
 import { validateProductRecord } from './catalogProductValidation.js';
 import { validateVariantRecord } from './catalogVariantValidation.js';
 import { categoryById, isLeafCategory, operationForCategoryKind } from '../categories/catalogCategories.js';
@@ -54,13 +54,7 @@ export const getVariantPublishReadiness = ({
       message: 'Product chưa được xác nhận loại nghiệp vụ.',
     });
   }
-  if (variant.skuConflict) {
-    errors.push({ code: 'SKU_CONFLICT', message: 'SKU đang bị trùng.' });
-  }
-  const matchingSku = variants.filter(
-    (item) => normalizeSku(item.sku) === normalizeSku(variant.sku),
-  );
-  if (matchingSku.length > 1) {
+  if (skuConflictFor(variant, variants)) {
     errors.push({ code: 'SKU_CONFLICT', message: 'SKU đang bị trùng.' });
   }
   if (!products.some((item) => item.id === variant.productId)) {

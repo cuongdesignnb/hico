@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { createCanonicalCatalogRepository } from '../canonical/canonicalCatalogRepository.js';
-import { normalizeSku } from '../canonical/canonicalSkuConflicts.js';
+import { duplicateSkuGroupsFor } from '../canonical/canonicalSkuConflicts.js';
 import { createProviderOfferRepository } from '../../providers/providerOfferRepository.js';
 import { defaultUploadsDirectory, readJson } from '../write/catalogWritePersistence.js';
 
@@ -65,17 +65,9 @@ export const createCatalogQueueService = ({
     async listSkuConflicts(query = {}) {
       const { products, variants } = await readContext();
       const productsById = productMap(products);
-      const groups = new Map();
-      variants.forEach((variant) => {
-        const normalized = normalizeSku(variant.sku);
-        if (!normalized) return;
-        if (!groups.has(normalized)) groups.set(normalized, []);
-        groups.get(normalized).push(variant);
-      });
-      const items = [...groups.entries()]
-        .filter(([, group]) => group.length > 1)
-        .map(([normalizedSku, group]) => ({
-          groupId: `sku:${normalizedSku}`,
+      const items = duplicateSkuGroupsFor(variants)
+        .map(({ sku: normalizedSku, variants: group }) => ({
+          groupId: `sku:${normalizedSku}:${String(group[0].wmproductId ?? '').trim().toUpperCase()}`,
           sku: group[0].sku,
           normalizedSku,
           variantCount: group.length,

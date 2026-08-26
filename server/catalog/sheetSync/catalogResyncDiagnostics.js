@@ -53,6 +53,15 @@ export const fullSyncDiagnostics = ({ reference, range, parser, candidate, basel
     parser: {
       rowsParsed: parser?.rowsParsed ?? 0,
       rowsRejected: parser?.rowsRejected ?? 0,
+      sourceRows: parser?.sourceRows ?? parser?.rowsRead ?? 0,
+      rowsWithSimWmid: parser?.rowsWithSimWmid ?? 0,
+      rowsWithEsimWmid: parser?.rowsWithEsimWmid ?? 0,
+      rowsWithBothWmid: parser?.rowsWithBothWmid ?? 0,
+      rowsWithoutWmid: parser?.rowsWithoutWmid ?? 0,
+      simBranches: parser?.simBranches ?? parser?.physicalBranches ?? 0,
+      esimBranches: parser?.esimBranches ?? 0,
+      simMissingSku: parser?.simMissingSku ?? 0,
+      esimMissingSku: parser?.esimMissingSku ?? 0,
       rejectionReasons: parser?.rejectionReasons ?? {},
     },
     candidate: {
@@ -65,6 +74,7 @@ export const fullSyncDiagnostics = ({ reference, range, parser, candidate, basel
       packageFamilyDiagnostics: candidate?.summary?.packageFamilyDiagnostics ?? {},
       exactDuplicatesCollapsed: candidate?.summary?.exactDuplicatesCollapsed ?? 0,
       groupingCollisions: candidate?.summary?.groupingCollisions ?? 0,
+      wmidConflicts: candidate?.summary?.wmidConflicts ?? 0,
       operationUnresolved: candidate?.summary?.operationUnresolved ?? 0,
       operations: candidate?.summary?.operations ?? {},
       mediums: candidate?.summary?.mediums ?? {},

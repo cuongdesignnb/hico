@@ -88,8 +88,9 @@ export const normalizeVariantInput = (input, { partial = false } = {}) => {
     result.id = id;
   }
   if (!partial || input.sku !== undefined) {
-    result.sku = requireNonEmptyString(input.sku, 'variant.sku');
-    if (result.sku.length > 160) throw new CatalogWriteError('variant.sku quá dài.');
+    const sku = optionalString(input.sku, 'variant.sku');
+    if (sku !== undefined && sku.length > 160) throw new CatalogWriteError('variant.sku quá dài.');
+    if (sku !== undefined) result.sku = sku;
   }
   if (input.publicSku !== undefined) {
     result.publicSku = requireNonEmptyString(input.publicSku, 'variant.publicSku').toUpperCase();

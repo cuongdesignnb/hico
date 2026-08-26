@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { cloneSeedCategories } from '../categories/catalogCategories.js';
-import { buildFullSyncCandidate, createCatalogResyncService, productSourceKeyFor, sourceHashFor, variantSourceKeyFor } from './catalogResyncService.js';
+import { buildFullSyncCandidate, createCatalogResyncService, productSourceKeyFor, resolveProviderRows, sourceHashFor, variantSourceKeyFor } from './catalogResyncService.js';
+import { HICO_GOC_PARSER_REVISION } from './hicoGocParser.js';
 import { createInMemorySheetSyncRepository } from './sheetSyncRepository.js';
 
 const timestamp = '2026-08-16T00:00:00.000Z';
@@ -17,6 +18,23 @@ test('source hash is stable when only batch metadata changes', () => {
   const first = sourceHashFor({ ...reference, batching: { batchCount: 4, maxRowsPerBatch: 5000 } }, settings, [offer]);
   const second = sourceHashFor({ ...reference, batching: { batchCount: 18, maxRowsPerBatch: 1000 } }, settings, [offer]);
   assert.equal(first, second);
+});
+
+test('source hash changes when the HICO GỐC parser revision changes', () => {
+  const reference = { spreadsheetId: 'sheet-1', sheetTab: 'HICO GỐC', sheetRange: 'A1:Y2', values: [['header'], ['row']] };
+  const settings = { fieldMapping: { productName: 1 }, priceMapping: { physical: 'pricePhysical' } };
+  const current = sourceHashFor(reference, settings, [offer]);
+  const previous = sourceHashFor(reference, settings, [offer], { parserRevision: HICO_GOC_PARSER_REVISION - 1 });
+  assert.notEqual(current, previous);
+});
+
+test('provider matching is exact on normalized WMID and does not use SKU', () => {
+  const [row] = resolveProviderRows({
+    rows: [{ id: 'row-1', sourceMedium: 'esim', normalizedData: { sku: 'SKU-WRONG', wmproductId: ' wm-1 ' }, errors: [], warnings: [], status: 'VALID' }],
+    offers: [{ id: 'offer-1', wmproductId: 'WM-1', providerProductType: 0, active: true, leSIM: true }],
+  });
+  assert.equal(row.providerResolution, 'RESOLVED');
+  assert.equal(row.providerOffer.id, 'offer-1');
 });
 
 test('full sync keeps exact previous media and enrichment while draft-safe', async () => {
@@ -94,6 +112,35 @@ test('full sync keeps ambiguous and inactive provider rows as reviewable fallbac
   assert.equal(inactive.variants[0].providerResolution, 'INACTIVE');
   assert.ok(inactive.rows[0].warnings.some((warning) => warning.code === 'PROVIDER_INACTIVE'));
   assert.equal(inactive.summary.provider.inactive, 1);
+});
+
+test('full sync keeps a WMID-only branch valid without a source SKU', async () => {
+  const sourceRow = { ...rowData, sku: undefined };
+  const candidate = await buildFullSyncCandidate({
+    rows: [{ id: 'row-wmid-only', sourceMedium: sourceRow.medium, normalizedData: sourceRow, errors: [], warnings: [], status: 'VALID' }],
+    categories: cloneSeedCategories(), offers: [offer], previousCatalog: { products: [], variants: [] },
+  });
+  assert.equal(candidate.rows[0].status, 'VALID');
+  assert.equal(candidate.products.length, 1);
+  assert.equal(candidate.variants.length, 1);
+  assert.equal(candidate.variants[0].sku, undefined);
+  assert.equal(candidate.variants[0].wmproductId, sourceRow.wmproductId);
+});
+
+test('full sync does not reuse a previous operation as new source evidence', async () => {
+  const sourceRow = { ...rowData, sourceCategoryLabel: 'Sim & eSIM', packageClass: 'STANDARD_TRAVEL' };
+  const previousProduct = {
+    id: 'product-old-operation', sourceKey: productSourceKeyFor({ ...sourceRow, operation: 'new_subscription' }),
+    slug: 'old-operation', name: sourceRow.productName, operation: 'new_subscription', categoryId: null,
+    coverageType: 'not_applicable', coverageIds: [], status: 'active', version: 1,
+    createdAt: timestamp, updatedAt: timestamp,
+  };
+  const candidate = await buildFullSyncCandidate({
+    rows: [{ id: 'row-operation', sourceMedium: sourceRow.medium, normalizedData: sourceRow, errors: [], warnings: [], status: 'VALID' }],
+    categories: cloneSeedCategories(), offers: [], previousCatalog: { products: [previousProduct], variants: [] },
+  });
+  assert.equal(candidate.products[0].operationResolution, 'UNRESOLVED');
+  assert.equal(candidate.rows[0].operationEvidence.evidence, 'NO_EXPLICIT_EVIDENCE');
 });
 
 test('full sync splits one package family by medium and uses operation-aware fulfillment', async () => {

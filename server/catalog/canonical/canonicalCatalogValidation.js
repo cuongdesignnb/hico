@@ -5,6 +5,7 @@ import {
   validateCategories,
 } from '../categories/catalogCategories.js';
 import { PUBLIC_SKU_PATTERN } from '../public/publicSku.js';
+import { duplicateSkuGroupsFor, normalizeWmid } from './canonicalSkuConflicts.js';
 
 const PRODUCT_OPERATIONS = new Set([
   'new_subscription',
@@ -95,9 +96,10 @@ export const validateCanonicalCatalog = ({
   errors.push(...categoryValidation.errors);
   const duplicateProductIds = findDuplicates(productList.map((item) => item?.id));
   const duplicateVariantIds = findDuplicates(variantList.map((item) => item?.id));
-  const duplicateSkus = findDuplicates(variantList.map((item) => item?.sku));
+  const duplicateSkuGroups = duplicateSkuGroupsFor(variantList);
+  const duplicateSkus = [...new Set(duplicateSkuGroups.map((group) => group.sku))].sort();
+  const duplicateSkuVariants = new Set(duplicateSkuGroups.flatMap((group) => group.variants));
   const duplicatePublicSkus = findDuplicates(variantList.map((item) => item?.publicSku).filter(Boolean));
-  const duplicateSkuSet = new Set(duplicateSkus);
   const duplicateSlugs = findDuplicates(productList.map((item) => item?.slug));
   const productIds = new Set(productList.map((item) => item?.id));
   const productsById = new Map(productList.map((item) => [item?.id, item]));
@@ -117,9 +119,9 @@ export const validateCanonicalCatalog = ({
   };
 
   for (const offer of providerOfferList) {
-    const matches = offersByWorldmoveId.get(offer.wmproductId) ?? [];
+    const matches = offersByWorldmoveId.get(normalizeWmid(offer.wmproductId)) ?? [];
     matches.push(offer);
-    offersByWorldmoveId.set(offer.wmproductId, matches);
+    offersByWorldmoveId.set(normalizeWmid(offer.wmproductId), matches);
   }
 
   if (!Array.isArray(products)) errors.push('Canonical products must be an array.');
@@ -179,11 +181,13 @@ export const validateCanonicalCatalog = ({
     const label = `Variant ${variant?.id ?? '<missing>'}`;
     if (variant?.operationResolution === 'UNRESOLVED') blockPublish(variant.id, 'operationUnresolved');
     if (variant?.needsReview) blockPublish(variant.id, 'needsReview');
-    if (duplicateSkuSet.has(variant?.sku)) {
+    if (duplicateSkuVariants.has(variant)) {
       blockPublish(variant.id, 'duplicateSku');
     }
     if (!isNonEmptyString(variant?.id)) errors.push(`${label} has invalid id.`);
-    if (!isNonEmptyString(variant?.sku)) errors.push(`${label} has invalid sku.`);
+    if (variant?.sku !== undefined && variant?.sku !== null && variant?.sku !== '' && !isNonEmptyString(variant?.sku)) {
+      errors.push(`${label} has invalid sku.`);
+    }
     if (variant?.publicSku !== undefined && !PUBLIC_SKU_PATTERN.test(variant.publicSku)) {
       errors.push(`${label} has invalid publicSku.`);
     }
@@ -286,7 +290,7 @@ export const validateCanonicalCatalog = ({
           errors.push(`${label} references an inactive provider offer.`);
           blockPublish(variant.id, 'inactiveProvider');
         }
-        if (offer.wmproductId !== variant.wmproductId) {
+        if (normalizeWmid(offer.wmproductId) !== normalizeWmid(variant.wmproductId)) {
           errors.push(`${label} has a mismatched provider offer.`);
           blockPublish(variant.id, 'providerConflict');
         }

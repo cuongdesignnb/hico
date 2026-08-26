@@ -9,7 +9,7 @@ import { createCatalogVersionCommitService } from '../write/catalogVersionCommit
 import { createCatalogAuditRepository } from '../write/catalogAuditRepository.js';
 import { createProviderOfferRepository } from '../../providers/providerOfferRepository.js';
 import { createSheetReferenceClient } from './sheetReferenceClient.js';
-import { collapseHicoGocRows, parseHicoGocRowsWithDiagnostics } from './hicoGocParser.js';
+import { collapseHicoGocRows, HICO_GOC_PARSER_REVISION, normalizedWmidFor, parseHicoGocRowsWithDiagnostics, wmidBusinessPayloadKeyFor } from './hicoGocParser.js';
 import { hicoGocHeaderHash, HICO_GOC_SHEET, normalizeHicoGocSettings, validateHicoGocRange } from './hicoGocMapping.js';
 import { createSheetSyncRepository, publicBatch, publicRow } from './sheetSyncRepository.js';
 import { SheetSyncError } from './sheetSyncTypes.js';
@@ -243,9 +243,11 @@ const resolveImage = async ({ pathValue, mediaAssetRepository }) => {
 export const resolveProviderRows = ({ rows, offers }) => {
   const offersByWmid = new Map();
   for (const offer of offers) {
-    const matches = offersByWmid.get(offer.wmproductId) ?? [];
+    const wmid = normalizedWmidFor(offer.wmproductId);
+    if (!wmid) continue;
+    const matches = offersByWmid.get(wmid) ?? [];
     matches.push(offer);
-    offersByWmid.set(offer.wmproductId, matches);
+    offersByWmid.set(wmid, matches);
   }
   return rows.map((row) => {
     const existingErrors = row.errors ?? [];
@@ -255,7 +257,8 @@ export const resolveProviderRows = ({ rows, offers }) => {
       ...existingErrors.filter((error) => PROVIDER_WARNING_CODES.has(error?.code)),
     ];
     const wmproductId = row.normalizedData?.wmproductId;
-    const matches = wmproductId ? (offersByWmid.get(wmproductId) ?? []) : [];
+    const normalizedWmid = normalizedWmidFor(wmproductId);
+    const matches = normalizedWmid ? (offersByWmid.get(normalizedWmid) ?? []) : [];
     if (!wmproductId && !errors.some((error) => error.code === 'MISSING_WMID')) errors.push({ code: 'MISSING_WMID', field: 'wmproductId' });
     const providerResolution = !wmproductId
       ? PROVIDER_RESOLUTIONS.UNRESOLVED
@@ -297,7 +300,8 @@ export const buildFullSyncCandidate = async ({
   mediaAssetRepository = null,
 } = {}) => {
   const mergedCategories = mergeCatalogCategories(categories, cloneSeedCategories());
-  const preparedRows = resolveProviderRows({ rows, offers });
+  // Keep WMID conflict detection global, even when callers provide raw branch rows.
+  const preparedRows = resolveProviderRows({ rows: collapseHicoGocRows(rows), offers });
   const validRows = preparedRows.filter((row) => row.status === 'VALID');
   const index = createEnrichmentIndex(previousCatalog ?? {});
   const familyGroups = new Map();
@@ -335,7 +339,6 @@ export const buildFullSyncCandidate = async ({
         sourceCategoryLabel: row.normalizedData.sourceCategoryLabel,
         packageClass: row.normalizedData.packageClass,
         providerOffer: row.providerOffer,
-        previousOperation: previousProduct?.operation,
       });
       row.operationEvidence = evidence;
       const key = `${row.normalizedData.packageFamilyKey}:${row.sourceMedium}:${evidence.operation}`;
@@ -362,8 +365,11 @@ export const buildFullSyncCandidate = async ({
   const products = [];
   const variants = [];
   const reuseState = createEnrichmentReuseState();
-  let exactDuplicatesCollapsed = 0;
+  let exactDuplicatesCollapsed = preparedRows.reduce((total, row) => total + Number(row.collapsedDuplicateCount ?? 0), 0);
   let groupingCollisions = 0;
+  const wmidConflictKeys = new Set(preparedRows
+    .filter((row) => row.wmidConflict || row.errors?.some((error) => error.code === 'WMID_CONFLICT'))
+    .map((row) => `${row.sourceMedium}:${normalizedWmidFor(row.normalizedData?.wmproductId)}`));
   const enrichment = {
     imagesReused: 0, imagesFromSheet: 0, imagesFallback: 0,
     descriptionsReused: 0, descriptionsFromSheet: 0, descriptionsFallback: 0,
@@ -380,13 +386,14 @@ export const buildFullSyncCandidate = async ({
         retainedRows.push(row);
         continue;
       }
-      if (JSON.stringify(existing.normalizedData) === JSON.stringify(row.normalizedData)) {
+      if (wmidBusinessPayloadKeyFor(existing) === wmidBusinessPayloadKeyFor(row)) {
         exactDuplicatesCollapsed += 1;
         existing.warnings.push({ code: 'DUPLICATE_IDENTICAL_COLLAPSED', field: 'variantSourceKey' });
       } else {
         groupingCollisions += 1;
-        existing.errors.push({ code: 'PACKAGE_VARIANT_COLLISION', field: 'variantSourceKey' });
-        row.errors.push({ code: 'PACKAGE_VARIANT_COLLISION', field: 'variantSourceKey' });
+        existing.errors.push({ code: 'WMID_CONFLICT', field: 'wmproductId' });
+        row.errors.push({ code: 'WMID_CONFLICT', field: 'wmproductId' });
+        wmidConflictKeys.add(`${row.sourceMedium}:${normalizedWmidFor(row.normalizedData?.wmproductId)}`);
         existing.status = 'INVALID';
         row.status = 'INVALID';
         const indexOfExisting = retainedRows.indexOf(existing);
@@ -534,7 +541,7 @@ export const buildFullSyncCandidate = async ({
         id: previousVariant?.id ?? `variant-${sha(variantData.variantSourceKey)}`,
         sourceKey: variantData.variantSourceKey,
         productId,
-        sku: variantData.sku,
+        ...(variantData.sku ? { sku: variantData.sku } : {}),
         dataPolicy: variantData.dataPolicy,
         dataLimit: variantData.dataLimit,
         duration: variantData.duration,
@@ -595,6 +602,7 @@ export const buildFullSyncCandidate = async ({
       packageFamilyDiagnostics,
       exactDuplicatesCollapsed,
       groupingCollisions,
+      wmidConflicts: wmidConflictKeys.size,
       operationUnresolved: preparedRows.filter((row) => row.operationEvidence?.resolution === 'UNRESOLVED').length,
       operations: Object.fromEntries([...new Set(products.map((product) => product.operation))].map((operation) => [operation, products.filter((product) => product.operation === operation).length])),
       mediums: Object.fromEntries([...new Set(variants.map((variant) => variant.medium ?? 'none'))].map((medium) => [medium, variants.filter((variant) => (variant.medium ?? 'none') === medium).length])),
@@ -633,12 +641,13 @@ export const buildFullSyncCandidate = async ({
   };
 };
 
-export const sourceHashFor = (reference, settings, offers) => createHash('sha256').update(JSON.stringify({
+export const sourceHashFor = (reference, settings, offers, { parserRevision = HICO_GOC_PARSER_REVISION } = {}) => createHash('sha256').update(JSON.stringify({
   spreadsheetId: reference.spreadsheetId,
   sheetTab: reference.sheetTab,
   sheetRange: reference.sheetRange,
   values: reference.values,
   settings,
+  parserRevision,
   providerSnapshot: offers.map((offer) => ({ id: offer.id, wmproductId: offer.wmproductId, active: offer.active, version: offer.version })).sort((a, b) => `${a.id}`.localeCompare(`${b.id}`)),
 }), 'utf8').digest('hex');
 

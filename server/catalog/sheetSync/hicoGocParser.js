@@ -9,8 +9,11 @@ import {
   branchIdentityPresent,
   makeHicoGocBranchCandidate,
 } from './hicoGocBranchParser.js';
+import { normalizeIdentityToken } from './packageFamilyIdentity.js';
 
 export { parseActualDuration, parseActualDurationDescriptor, parseDataLimit, parseDurationValue, parseSpeedLabel } from './hicoGocBranchParser.js';
+
+export const HICO_GOC_PARSER_REVISION = 2;
 
 const branchDefinitions = [
   { medium: 'physical_sim', skuField: 'skuPhysical', wmidField: 'wmproductIdPhysical', priceField: 'physical' },
@@ -37,16 +40,30 @@ export const parseHicoGocRowsWithDiagnostics = (
   let physicalBranches = 0;
   let esimBranches = 0;
   let bothBranchRows = 0;
+  let rowsWithSimWmid = 0;
+  let rowsWithEsimWmid = 0;
+  let rowsWithBothWmid = 0;
+  let rowsWithoutWmid = 0;
+  let simMissingSku = 0;
+  let esimMissingSku = 0;
   const addReason = (code) => rejectionReasons.set(code, (rejectionReasons.get(code) ?? 0) + 1);
 
   values.slice(1).forEach((cells, offset) => {
     if (!Array.isArray(cells) || !cells.some((value) => String(value ?? '').trim() !== '')) return;
     rowsRead += 1;
     const rowNumber = headerRow + offset + 1;
+    const hasSimWmid = branchIdentityPresent({ cells, mapping, ...branchDefinitions[0] });
+    const hasEsimWmid = branchIdentityPresent({ cells, mapping, ...branchDefinitions[1] });
+    if (hasSimWmid) rowsWithSimWmid += 1;
+    if (hasEsimWmid) rowsWithEsimWmid += 1;
+    if (hasSimWmid && hasEsimWmid) rowsWithBothWmid += 1;
+    if (!hasSimWmid && !hasEsimWmid) rowsWithoutWmid += 1;
+    if (hasSimWmid && String(cells[mapping.skuPhysical] ?? '').trim() === '') simMissingSku += 1;
+    if (hasEsimWmid && String(cells[mapping.skuEsim] ?? '').trim() === '') esimMissingSku += 1;
     const presentBranches = branchDefinitions.filter((definition) => branchIdentityPresent({ cells, mapping, ...definition }));
     if (presentBranches.length === 0) {
       rowsRejected += 1;
-      addReason('MISSING_SKU');
+      addReason('MISSING_WMID');
       return;
     }
     if (presentBranches.length === 2) bothBranchRows += 1;
@@ -69,7 +86,17 @@ export const parseHicoGocRowsWithDiagnostics = (
       rowsRead,
       rowsParsed,
       rowsRejected,
-      ...(physicalBranches || esimBranches || bothBranchRows ? { physicalBranches, esimBranches, bothBranchRows } : {}),
+      sourceRows: rowsRead,
+      physicalBranches,
+      simBranches: physicalBranches,
+      esimBranches,
+      bothBranchRows,
+      rowsWithSimWmid,
+      rowsWithEsimWmid,
+      rowsWithBothWmid,
+      rowsWithoutWmid,
+      simMissingSku,
+      esimMissingSku,
       rejectionReasons: Object.fromEntries([...rejectionReasons.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))),
     },
   };
@@ -77,63 +104,106 @@ export const parseHicoGocRowsWithDiagnostics = (
 
 export const parseHicoGocRows = (values = [], options = {}) => parseHicoGocRowsWithDiagnostics(values, options).rows;
 
-const logicalKey = (row) => {
-  const data = row.normalizedData;
-  return JSON.stringify([
-    data.sku,
-    data.medium,
-    data.productName,
-    data.sourceCategoryLabel,
-    data.dataPolicy,
-    data.dataLimit,
-    data.duration,
-    data.coverageLabel,
-  ]);
+export const normalizedWmidFor = (value) => normalizeIdentityToken(value);
+
+const normalizedValue = (value) => {
+  if (Array.isArray(value)) return value.map(normalizedValue).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((key) => [key, normalizedValue(value[key])]));
+  if (typeof value === 'string') return normalizeIdentityToken(value);
+  return value ?? null;
 };
 
-const payloadKey = (row) => JSON.stringify([
-  row.normalizedData.sku,
-  row.normalizedData.medium,
-  row.normalizedData.price,
-  row.normalizedData.compareAtPrice ?? null,
-  row.normalizedData.wmproductId,
-  row.normalizedData.apn ?? null,
-  row.normalizedData.networkLabel ?? null,
-  row.normalizedData.activationPolicy ?? null,
-  row.normalizedData.speedLabel ?? null,
-  row.normalizedData.cancellable ?? null,
-  row.normalizedData.coverageLabel ?? null,
-]);
+export const wmidBusinessPayloadKeyFor = (row) => {
+  const data = row?.normalizedData ?? row ?? {};
+  return JSON.stringify(normalizedValue({
+    medium: data.medium,
+    productName: data.productName,
+    sourceCategoryLabel: data.sourceCategoryLabel,
+    packageClass: data.packageClass,
+    dataPolicy: data.dataPolicy,
+    dataLimit: data.dataLimit,
+    duration: data.duration,
+    durationValue: data.durationValue,
+    durationUnit: data.durationUnit,
+    price: data.price,
+    compareAtPrice: data.compareAtPrice,
+    apn: data.apn,
+    networkLabel: data.networkLabel,
+    activationPolicy: data.activationPolicy,
+    speedLabel: data.speedLabel,
+    cancellable: data.cancellable,
+    coverageLabel: data.coverageLabel,
+    coverage: data.coverage,
+    publicNote: data.publicNote,
+    imageUrl: data.imageUrl,
+    galleryImageUrls: data.galleryImageUrls,
+    description: data.description,
+    installationGuide: data.installationGuide,
+  }));
+};
+
+const wmidGroupKeyFor = (row) => `${row.sourceMedium}:${normalizedWmidFor(row.normalizedData?.wmproductId)}`;
+
+const withSourceRows = (row, group) => {
+  const sourceRows = group.map((item) => item.sheetRowNumber).filter(Number.isInteger);
+  const sourceSkus = [...new Set(group.map((item) => item.normalizedData?.sku).filter(Boolean))];
+  const selectedSku = row.normalizedData?.sku ?? sourceSkus[0];
+  return {
+    ...row,
+    sourceSku: selectedSku,
+    sourceRows,
+    ...(sourceSkus.length > 1 ? { sourceSkus } : {}),
+    normalizedData: {
+      ...row.normalizedData,
+      ...(selectedSku ? { sku: selectedSku } : { sku: undefined }),
+      sourceRows,
+      ...(sourceSkus.length > 1 ? { sourceSkus } : {}),
+    },
+  };
+};
 
 export const collapseHicoGocRows = (rows = []) => {
   const groups = new Map();
   for (const row of rows) {
-    if (row.normalizedData.dataPolicy !== 'total') {
-      groups.set(`${row.id}:daily`, [row]);
+    const wmid = normalizedWmidFor(row.normalizedData?.wmproductId);
+    if (!wmid) {
+      groups.set(`${row.id}:no-wmid`, [row]);
       continue;
     }
-    const key = logicalKey(row);
+    const key = wmidGroupKeyFor(row);
     groups.set(key, [...(groups.get(key) ?? []), row]);
   }
   const collapsed = [];
   for (const group of groups.values()) {
-    if (group.length === 1 || group[0].normalizedData.dataPolicy !== 'total') {
+    if (group.length === 1) {
       collapsed.push(...group);
       continue;
     }
-    const payloads = new Set(group.map(payloadKey));
+    const payloads = new Set(group.map(wmidBusinessPayloadKeyFor));
     if (payloads.size > 1) {
-      collapsed.push(...group.map((row) => ({ ...row, status: 'INVALID', errors: [...row.errors, { code: 'DUPLICATE_CONFLICT' }] })));
+      collapsed.push(...group.map((row) => ({
+        ...withSourceRows(row, group),
+        status: 'INVALID',
+        needsReview: true,
+        wmidConflict: true,
+        errors: [...row.errors, { code: 'WMID_CONFLICT', field: 'wmproductId' }],
+      })));
       continue;
     }
-    const first = group[0];
+    const first = withSourceRows(group.find((row) => row.normalizedData?.sku) ?? group[0], group);
     const options = [...new Set(group.flatMap((row) => row.normalizedData.tripDayOptions ?? []))].sort((a, b) => a - b);
-    collapsed.push({
+    const duplicate = {
       ...first,
-      normalizedData: { ...first.normalizedData, tripDayOptions: options, sourceRows: group.map((row) => row.sheetRowNumber) },
-      sourceRows: group.map((row) => row.sheetRowNumber),
-      rowHash: JSON.stringify({ ...first.normalizedData, tripDayOptions: options }),
-    });
+      ...(group.length > 1 ? {
+        collapsedDuplicateCount: group.length - 1,
+        warnings: [...first.warnings, { code: 'DUPLICATE_IDENTICAL_COLLAPSED', field: 'wmproductId' }],
+      } : {}),
+      normalizedData: {
+        ...first.normalizedData,
+        ...(options.length ? { tripDayOptions: options } : {}),
+      },
+    };
+    collapsed.push({ ...duplicate, rowHash: JSON.stringify(duplicate.normalizedData) });
   }
   return collapsed;
 };
