@@ -2,10 +2,13 @@ import axios from 'axios';
 import {
   createEsimOrderAndRedeemSignature,
   createEsimOrderSignature,
+  createEsimUsageSignature,
+  createOrderQuerySignature,
   createQuotationSignature,
   createRedeemSignature,
+  createSimExistsSignature,
+  createSimUsageSignature,
   createTopupSignature,
-  createUsageSignature,
   sha1Worldmove,
 } from './worldmoveSignature.js';
 
@@ -20,8 +23,8 @@ const VERIFY_SIM_PATH = '/Api/SimQuery/simExists';
 const QUERY_ESIM_ORDER_PATH = '/Api/SOrder/querybuyesim';
 const QUERY_ESIM_REDEEM_PATH = '/Api/SOrder/querybuyesimRedemption';
 const QUERY_USAGE_PATH = '/Api/UseageDetail/queryUsage';
-const QUERY_ESIM_BASIC_PATH = '/Api/UseageDetail/queryEsimBasicInfo';
-const QUERY_ESIM_PROGRESS_PATH = '/Api/UseageDetail/queryEsimProgress';
+const QUERY_ESIM_BASIC_PATH = '/Api/UseageDetail/queryBasicInfo';
+const QUERY_ESIM_PROGRESS_PATH = '/Api/UseageDetail/queryEsimProgresses';
 
 const asInteger = (value, field) => {
   const number = Number(value);
@@ -38,6 +41,17 @@ const asSimNumber = (value) => {
     throw error;
   }
   return simNum;
+};
+
+const asLookupValue = (value, field) => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized || normalized.length > 240) {
+    const error = new WorldmoveRequestError(`${field} không hợp lệ.`);
+    error.code = 'WORLDMOVE_QUERY_INPUT_INVALID';
+    error.retryable = false;
+    throw error;
+  }
+  return normalized;
 };
 
 export class WorldmoveConfigurationError extends Error {
@@ -212,30 +226,54 @@ export const createWorldmoveClient = ({
       return this.request(VERIFY_SIM_PATH, {
         merchantId,
         simNum: normalizedSimNum,
-        encStr: createUsageSignature({ merchantId, rcode: normalizedSimNum, token }),
+        encStr: createSimExistsSignature({ merchantId, simNum: normalizedSimNum, token }),
       }, idempotencyKey);
     },
     async queryEsimOrder({ orderId, idempotencyKey }) {
-      return this.request(QUERY_ESIM_ORDER_PATH, { merchantId, orderId, encStr: createUsageSignature({ merchantId, rcode: orderId, token }) }, idempotencyKey);
+      const normalizedOrderId = asLookupValue(orderId, 'orderId');
+      return this.request(QUERY_ESIM_ORDER_PATH, { merchantId, orderId: normalizedOrderId, encStr: createOrderQuerySignature({ merchantId, orderId: normalizedOrderId, token }) }, idempotencyKey);
     },
     async queryEsimOrderAndRedeem({ orderId, idempotencyKey }) {
-      return this.request(QUERY_ESIM_REDEEM_PATH, { merchantId, orderId, encStr: createUsageSignature({ merchantId, rcode: orderId, token }) }, idempotencyKey);
+      const normalizedOrderId = asLookupValue(orderId, 'orderId');
+      return this.request(QUERY_ESIM_REDEEM_PATH, { merchantId, orderId: normalizedOrderId, encStr: createOrderQuerySignature({ merchantId, orderId: normalizedOrderId, token }) }, idempotencyKey);
     },
     async queryUsage({ rcode, simNum, orderId, idempotencyKey }) {
-      const identity = rcode ?? simNum ?? orderId;
-      return this.request(QUERY_USAGE_PATH, {
-        merchantId,
-        ...(rcode ? { rcode } : {}),
-        ...(simNum ? { simNum } : {}),
-        ...(orderId ? { orderId } : {}),
-        encStr: createUsageSignature({ merchantId, rcode: identity, token }),
-      }, idempotencyKey);
+      if (rcode !== undefined && simNum !== undefined) {
+        const error = new WorldmoveRequestError('Chỉ được dùng một định danh eSIM hoặc SIM khi truy vấn usage.');
+        error.code = 'WORLDMOVE_QUERY_INPUT_INVALID';
+        error.retryable = false;
+        throw error;
+      }
+      if (rcode !== undefined) {
+        const normalizedRcode = asLookupValue(rcode, 'rcode');
+        return this.request(QUERY_USAGE_PATH, {
+          merchantId,
+          rcode: normalizedRcode,
+          encStr: createEsimUsageSignature({ merchantId, rcode: normalizedRcode, token }),
+        }, idempotencyKey);
+      }
+      if (simNum !== undefined) {
+        const normalizedSimNum = asSimNumber(simNum);
+        const normalizedOrderId = asLookupValue(orderId, 'orderId');
+        return this.request(QUERY_USAGE_PATH, {
+          merchantId,
+          simNum: normalizedSimNum,
+          orderId: normalizedOrderId,
+          encStr: createSimUsageSignature({ merchantId, simNum: normalizedSimNum, orderId: normalizedOrderId, token }),
+        }, idempotencyKey);
+      }
+      const error = new WorldmoveRequestError('Thiếu rcode hoặc simNum khi truy vấn usage.');
+      error.code = 'WORLDMOVE_QUERY_INPUT_INVALID';
+      error.retryable = false;
+      throw error;
     },
     async queryEsimBasicInfo({ rcode, idempotencyKey }) {
-      return this.request(QUERY_ESIM_BASIC_PATH, { merchantId, rcode, encStr: createUsageSignature({ merchantId, rcode, token }) }, idempotencyKey);
+      const normalizedRcode = asLookupValue(rcode, 'rcode');
+      return this.request(QUERY_ESIM_BASIC_PATH, { merchantId, rcode: normalizedRcode, encStr: createEsimUsageSignature({ merchantId, rcode: normalizedRcode, token }) }, idempotencyKey);
     },
     async queryEsimProgress({ rcode, idempotencyKey }) {
-      return this.request(QUERY_ESIM_PROGRESS_PATH, { merchantId, rcode, encStr: createUsageSignature({ merchantId, rcode, token }) }, idempotencyKey);
+      const normalizedRcode = asLookupValue(rcode, 'rcode');
+      return this.request(QUERY_ESIM_PROGRESS_PATH, { merchantId, rcode: normalizedRcode, encStr: createEsimUsageSignature({ merchantId, rcode: normalizedRcode, token }) }, idempotencyKey);
     },
   };
 };

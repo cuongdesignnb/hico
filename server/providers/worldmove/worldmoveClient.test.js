@@ -4,7 +4,17 @@ import {
   createWorldmoveClient,
   readWorldmoveConfig,
 } from './worldmoveClient.js';
-import { createEsimOrderAndRedeemSignature, createEsimOrderSignature, createQuotationSignature, createRedeemSignature, createTopupSignature } from './worldmoveSignature.js';
+import {
+  createEsimOrderAndRedeemSignature,
+  createEsimOrderSignature,
+  createEsimUsageSignature,
+  createOrderQuerySignature,
+  createQuotationSignature,
+  createRedeemSignature,
+  createSimExistsSignature,
+  createSimUsageSignature,
+  createTopupSignature,
+} from './worldmoveSignature.js';
 
 test('quotation client sends the documented URL, signature, and timeout', async () => {
   const calls = [];
@@ -72,4 +82,33 @@ test('Worldmove client rejects invalid SIM numbers and days over 30', async () =
   const client = createWorldmoveClient({ merchantId: 'M', deptId: 'D', token: 'T', apiUrl: 'http://localhost:4000', httpClient: { post: async () => ({ data: { code: 0 } }) } });
   await assert.rejects(() => client.topup({ wmproductId: 'WM', simNum: '123', day: 1 }), (error) => error.code === 'SIM_NUMBER_INVALID');
   await assert.rejects(() => client.topup({ wmproductId: 'WM', simNum: '12345678901234567890', day: 31 }), (error) => error.code === 'TOPUP_DAYS_EXCEEDED');
+});
+
+test('Worldmove query client uses exact v2.0.1 endpoints and identity-specific signatures', async () => {
+  const calls = [];
+  const httpClient = { async post(...args) { calls.push(args); return { data: { code: 0 } }; } };
+  const client = createWorldmoveClient({ merchantId: 'M', deptId: 'D', token: 'T', apiUrl: 'http://localhost:4000', httpClient });
+
+  await client.queryEsimOrder({ orderId: 'ORDER-1' });
+  await client.queryEsimOrderAndRedeem({ orderId: 'ORDER-2' });
+  await client.queryUsage({ rcode: 'RCODE' });
+  await client.queryUsage({ simNum: '12345678901234567890', orderId: 'ORDER-3' });
+  await client.queryEsimBasicInfo({ rcode: 'RCODE' });
+  await client.queryEsimProgress({ rcode: 'RCODE' });
+  await client.verifySimNumber({ simNum: '12345678901234567890' });
+
+  assert.equal(calls[0][0], 'http://localhost:4000/Api/SOrder/querybuyesim');
+  assert.deepEqual(calls[0][1], { merchantId: 'M', orderId: 'ORDER-1', encStr: createOrderQuerySignature({ merchantId: 'M', orderId: 'ORDER-1', token: 'T' }) });
+  assert.equal(calls[1][0], 'http://localhost:4000/Api/SOrder/querybuyesimRedemption');
+  assert.equal(calls[1][1].encStr, createOrderQuerySignature({ merchantId: 'M', orderId: 'ORDER-2', token: 'T' }));
+  assert.deepEqual(calls[2][1], { merchantId: 'M', rcode: 'RCODE', encStr: createEsimUsageSignature({ merchantId: 'M', rcode: 'RCODE', token: 'T' }) });
+  assert.deepEqual(calls[3][1], { merchantId: 'M', simNum: '12345678901234567890', orderId: 'ORDER-3', encStr: createSimUsageSignature({ merchantId: 'M', simNum: '12345678901234567890', orderId: 'ORDER-3', token: 'T' }) });
+  assert.equal(calls[4][0], 'http://localhost:4000/Api/UseageDetail/queryBasicInfo');
+  assert.equal(calls[4][1].encStr, createEsimUsageSignature({ merchantId: 'M', rcode: 'RCODE', token: 'T' }));
+  assert.equal(calls[5][0], 'http://localhost:4000/Api/UseageDetail/queryEsimProgresses');
+  assert.equal(calls[5][1].encStr, createEsimUsageSignature({ merchantId: 'M', rcode: 'RCODE', token: 'T' }));
+  assert.equal(calls[6][0], 'http://localhost:4000/Api/SimQuery/simExists');
+  assert.deepEqual(calls[6][1], { merchantId: 'M', simNum: '12345678901234567890', encStr: createSimExistsSignature({ merchantId: 'M', simNum: '12345678901234567890', token: 'T' }) });
+  await assert.rejects(() => client.queryUsage({ simNum: '12345678901234567890' }), (error) => error.code === 'WORLDMOVE_QUERY_INPUT_INVALID');
+  await assert.rejects(() => client.queryUsage({ rcode: 'RCODE', simNum: '12345678901234567890', orderId: 'ORDER-3' }), (error) => error.code === 'WORLDMOVE_QUERY_INPUT_INVALID');
 });

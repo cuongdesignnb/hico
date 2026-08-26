@@ -44,8 +44,20 @@ export const createRedeemCallbackSignature = ({ merchantId, qrcode, rcode, qrcod
   sha1Worldmove(`${text(merchantId)}${text(qrcode)}${text(rcode)}${text(qrcodeType)}${text(token)}`)
 );
 
-export const createUsageSignature = ({ merchantId, rcode, token }) => (
+export const createEsimUsageSignature = ({ merchantId, rcode, token }) => (
   sha1Worldmove(`${text(merchantId)}${text(rcode)}${text(token)}`)
+);
+
+export const createSimUsageSignature = ({ merchantId, simNum, orderId, token }) => (
+  sha1Worldmove(`${text(merchantId)}${text(simNum)}${text(orderId)}${text(token)}`)
+);
+
+export const createSimExistsSignature = ({ merchantId, simNum, token }) => (
+  sha1Worldmove(`${text(merchantId)}${text(simNum)}${text(token)}`)
+);
+
+export const createOrderQuerySignature = ({ merchantId, orderId, token }) => (
+  sha1Worldmove(`${text(merchantId)}${text(orderId)}${text(token)}`)
 );
 
 export const constantTimeSignatureEqual = (expected, provided) => {

@@ -4,7 +4,7 @@ import { readWebhookConfig, verifyWebhookSignature } from './webhookSignature.js
 import { normalizeWebhookEvent } from './webhookValidation.js';
 import { normalizeWorldmoveCallback } from '../providers/worldmove/worldmoveCallback.js';
 
-export const createWorldmoveWebhookRouter = ({ fulfillmentService, replayRepository, merchantId = process.env.WORLDMOVE_MERCHANT_ID, token = process.env.WORLDMOVE_TOKEN, env = process.env, logger = console, rateLimitPerMinute = Number(env.CHECKOUT_RATE_LIMIT_PER_MINUTE ?? 120) } = {}) => {
+export const createWorldmoveWebhookRouter = ({ fulfillmentService, replayRepository, merchantId = process.env.WORLDMOVE_MERCHANT_ID, token = process.env.WORLDMOVE_TOKEN, protocol = 'worldmove', env = process.env, logger = console, rateLimitPerMinute = Number(env.CHECKOUT_RATE_LIMIT_PER_MINUTE ?? 120) } = {}) => {
   const router = express.Router();
   const config = readWebhookConfig(env);
   const rateLimit = Number.isFinite(rateLimitPerMinute) && rateLimitPerMinute > 0 ? rateLimitPerMinute : 120;
@@ -21,9 +21,7 @@ export const createWorldmoveWebhookRouter = ({ fulfillmentService, replayReposit
     let event;
     try {
       const payload = JSON.parse(rawBody);
-      if (merchantId && token) {
-        event = normalizeWorldmoveCallback(payload, rawBody, { merchantId, token });
-      } else {
+      if (protocol === 'hmac') {
         const verified = verifyWebhookSignature({
           rawBody,
           timestamp: req.get('x-worldmove-timestamp'),
@@ -33,6 +31,9 @@ export const createWorldmoveWebhookRouter = ({ fulfillmentService, replayReposit
         });
         if (!verified.valid) return res.status(401).json({ error: 'Webhook signature is invalid.', code: verified.code });
         event = normalizeWebhookEvent(payload, rawBody);
+      } else {
+        if (!merchantId || !token) return res.status(503).json({ error: 'Worldmove webhook integration is not configured.', code: 'WORLDMOVE_WEBHOOK_NOT_READY' });
+        event = normalizeWorldmoveCallback(payload, rawBody, { merchantId, token });
       }
     } catch (error) {
       return sendCheckoutError(res, error);

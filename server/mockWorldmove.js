@@ -4,7 +4,11 @@ import axios from 'axios';
 import {
   createEsimOrderCallbackSignature,
   createEsimRedeemCallbackSignature,
+  createEsimUsageSignature,
+  createOrderQuerySignature,
   createRedeemCallbackSignature,
+  createSimExistsSignature,
+  createSimUsageSignature,
   createTopupCallbackSignature,
   createTopupSignature,
   sha1Worldmove,
@@ -21,6 +25,7 @@ app.use(express.json());
 const activeOrders = new Map();
 const activeRedemptions = new Map();
 const esimUsageTracker = new Map(); // rcode -> totalBytes Used
+const simUsageTracker = new Map(); // orderId:simNum -> totalBytes Used
 
 // SHA1 encryption helper
 function calculateSha1(content) {
@@ -185,6 +190,7 @@ async function triggerCanonicalOrderEvent(orderId) {
   const payload = {
     orderId,
     ...(order.flow === 'esim_order' ? { orderSN: `SN_${Date.now()}`, orderTime: new Date().toISOString().slice(0, 19).replace('T', ' ') } : {}),
+    ...(order.flow === 'esim_order' ? { code: 0, msg: 'success' } : {}),
     itemList,
   };
   payload.encStr = order.flow === 'esim_order'
@@ -330,23 +336,44 @@ app.post('/Api/SOrder/mydeposit', (req, res) => {
 
 app.post('/Api/SimQuery/simExists', (req, res) => {
   const { merchantId, simNum, encStr } = req.body;
-  if (!merchantId || !/^\d{20}$/.test(String(simNum ?? '')) || encStr !== calculateSha1(`${merchantId}${simNum}${TOKEN}`)) return res.json({ code: 400, msg: 'SIM number is invalid.' });
+  if (!merchantId || !/^\d{20}$/.test(String(simNum ?? '')) || !encStr) return res.json({ code: 400, msg: 'SIM number is invalid.' });
+  if (encStr !== createSimExistsSignature({ merchantId, simNum, token: TOKEN })) return res.json({ code: 401, msg: 'Encryption verification failed.' });
   return res.json({ code: 0, exists: true, simNum });
 });
 
 app.post('/Api/SOrder/querybuyesim', (req, res) => {
-  const order = activeOrders.get(req.body?.orderId);
+  const { merchantId, orderId, encStr } = req.body;
+  if (!merchantId || !orderId || !encStr) return res.json({ code: 400, msg: 'Parameters cannot be empty.' });
+  if (encStr !== createOrderQuerySignature({ merchantId, orderId, token: TOKEN })) return res.json({ code: 401, msg: 'Encryption verification failed.' });
+  const order = activeOrders.get(orderId);
   return res.json(order ? { code: 0, orderId: order.orderId, status: 'SUCCESS' } : { code: 411, msg: 'Order not found.' });
 });
 
 app.post('/Api/SOrder/querybuyesimRedemption', (req, res) => {
-  const order = activeOrders.get(req.body?.orderId);
+  const { merchantId, orderId, encStr } = req.body;
+  if (!merchantId || !orderId || !encStr) return res.json({ code: 400, msg: 'Parameters cannot be empty.' });
+  if (encStr !== createOrderQuerySignature({ merchantId, orderId, token: TOKEN })) return res.json({ code: 401, msg: 'Encryption verification failed.' });
+  const order = activeOrders.get(orderId);
   return res.json(order ? { code: 0, orderId: order.orderId, status: 'SUCCESS' } : { code: 411, msg: 'Order not found.' });
 });
 
-app.post('/Api/UseageDetail/queryUsage', (req, res) => res.json({ code: 0, itemList: [], esimStatus: 'ACTIVE', simStatus: 'ACTIVE' }));
-app.post('/Api/UseageDetail/queryEsimBasicInfo', (req, res) => res.json({ code: 0, rcode: req.body?.rcode ?? null }));
-app.post('/Api/UseageDetail/queryEsimProgress', (req, res) => res.json({ code: 0, rcode: req.body?.rcode ?? null, status: 'PROVISIONED' }));
+app.post('/Api/UseageDetail/queryBasicInfo', (req, res) => {
+  const { merchantId, rcode, encStr } = req.body;
+  if (!merchantId || !rcode || !encStr) return res.json({ code: 400, msg: 'Parameters cannot be empty.' });
+  if (encStr !== createEsimUsageSignature({ merchantId, rcode, token: TOKEN })) return res.json({ code: 401, msg: 'Encryption verification failed.' });
+  const details = activeRedemptions.get(rcode);
+  if (!details) return res.json({ code: 411, msg: 'eSIM Card does not exist.' });
+  return res.json({ code: 0, msg: 'Success', rcode, cid: details.iccid, productName: details.productName, productType: 0 });
+});
+
+app.post('/Api/UseageDetail/queryEsimProgresses', (req, res) => {
+  const { merchantId, rcode, encStr } = req.body;
+  if (!merchantId || !rcode || !encStr) return res.json({ code: 400, msg: 'Parameters cannot be empty.' });
+  if (encStr !== createEsimUsageSignature({ merchantId, rcode, token: TOKEN })) return res.json({ code: 401, msg: 'Encryption verification failed.' });
+  const details = activeRedemptions.get(rcode);
+  if (!details) return res.json({ code: 411, msg: 'eSIM Card does not exist.' });
+  return res.json({ code: 0, msg: 'Success', rcode, status: 'PROVISIONED', progress: 100, productType: 0 });
+});
 
 // Helper for Redeem Callback
 async function triggerRedeemCallback(rcode, qrcodeType, attempt = 1) {
@@ -436,48 +463,62 @@ async function triggerActivationNotification(orderId, rcode, iccid, attempt = 1)
   }
 }
 
-// 4. Query Usage and Status (With dynamic byte increments!)
+// 4. Query Usage and Status. eSIM and SIM use separate documented signatures.
 app.post('/Api/UseageDetail/queryUsage', (req, res) => {
-  const { merchantId, rcode, encStr } = req.body;
-
-  if (!merchantId || !rcode || !encStr) {
-    return res.json({ code: 400, msg: 'Parameters cannot be empty.' });
+  const { merchantId, rcode, simNum, orderId, encStr } = req.body;
+  if (!merchantId || !encStr || (rcode && simNum) || (!rcode && !simNum)) {
+    return res.json({ code: 400, msg: 'Usage query parameters are invalid.' });
   }
 
-  // Validate encStr = SHA1(merchantId + rcode + token)
-  const expectedSignature = calculateSha1(merchantId + rcode + TOKEN);
-  if (encStr !== expectedSignature) {
+  if (rcode) {
+    if (encStr !== createEsimUsageSignature({ merchantId, rcode, token: TOKEN })) {
+      return res.json({ code: 401, msg: 'Encryption verification failed.' });
+    }
+    const details = activeRedemptions.get(rcode);
+    if (!details) return res.json({ code: 411, msg: 'eSIM Card does not exist.' });
+    let currentUsage = esimUsageTracker.get(rcode) || 3844000000;
+    const increment = Math.floor(100000000 + Math.random() * 200000000);
+    currentUsage = Math.min(10000000000, currentUsage + increment);
+    esimUsageTracker.set(rcode, currentUsage);
+    const useSDate = Math.floor((Date.now() - 6 * 24 * 60 * 60 * 1000) / 1000).toString();
+    const useEDate = Math.floor((Date.now() + 9 * 24 * 60 * 60 * 1000) / 1000).toString();
+    return res.json({
+      code: 0,
+      msg: 'Success',
+      cid: details.iccid,
+      useSDate,
+      useEDate,
+      totalUsage: currentUsage.toString(),
+      esimStatus: 1,
+      simStatus: 1,
+      productType: 0,
+      itemList: [
+        { usageDate: '20260525', mcc: '440', code: 'JP', zhtw: '日本', enus: 'Japan', usage: '1073741824' },
+        { usageDate: '20260526', mcc: '440', code: 'JP', zhtw: '日本', enus: 'Japan', usage: (currentUsage - 1073741824).toString() },
+      ],
+    });
+  }
+
+  if (!/^\d{20}$/.test(String(simNum)) || !orderId) return res.json({ code: 400, msg: 'SIM usage query requires simNum and orderId.' });
+  if (encStr !== createSimUsageSignature({ merchantId, simNum, orderId, token: TOKEN })) {
     return res.json({ code: 401, msg: 'Encryption verification failed.' });
   }
-
-  const details = activeRedemptions.get(rcode);
-  if (!details) {
-    return res.json({ code: 411, msg: 'eSIM Card does not exist.' });
-  }
-
-  // Dynamic increment of usage for realistic demonstration!
-  let currentUsage = esimUsageTracker.get(rcode) || 3844000000; // start at ~3.58GB
-  const increment = Math.floor(100000000 + Math.random() * 200000000); // 100MB to 300MB
-  currentUsage = Math.min(10000000000, currentUsage + increment); // cap at 10GB
-  esimUsageTracker.set(rcode, currentUsage);
-
-  const useSDate = Math.floor((Date.now() - 6 * 24 * 60 * 60 * 1000) / 1000).toString();
-  const useEDate = Math.floor((Date.now() + 9 * 24 * 60 * 60 * 1000) / 1000).toString();
-
-  res.json({
+  const order = activeOrders.get(orderId);
+  const orderItem = order?.prodList?.find((item) => item.simNum === simNum);
+  if (!orderItem) return res.json({ code: 411, msg: 'SIM does not exist for this order.' });
+  const usageKey = `${orderId}:${simNum}`;
+  let currentUsage = simUsageTracker.get(usageKey) || 1024 * 1024;
+  currentUsage += 256 * 1024;
+  simUsageTracker.set(usageKey, currentUsage);
+  return res.json({
     code: 0,
     msg: 'Success',
-    cid: details.iccid,
-    useSDate,
-    useEDate,
-    totalUsage: currentUsage.toString(),
-    esimStatus: 1, // Active
+    simNum,
+    orderId,
     simStatus: 1,
-    productType: 0,
-    itemList: [
-      { usageDate: '20260525', mcc: '440', code: 'JP', zhtw: '日本', enus: 'Japan', usage: '1073741824' },
-      { usageDate: '20260526', mcc: '440', code: 'JP', zhtw: '日本', enus: 'Japan', usage: (currentUsage - 1073741824).toString() },
-    ]
+    totalUsage: currentUsage.toString(),
+    productType: 2,
+    itemList: [{ usageDate: '20260826', usage: currentUsage.toString() }],
   });
 });
 

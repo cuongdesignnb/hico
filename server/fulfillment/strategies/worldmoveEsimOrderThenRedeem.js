@@ -1,4 +1,4 @@
-import { result, extractProvisioningData, safeProviderFields } from '../strategyUtils.js';
+import { result, extractProvisioningData, providerCallbackResult, safeProviderFields } from '../strategyUtils.js';
 
 export const createWorldmoveEsimOrderThenRedeemStrategy = () => ({
   async execute({ order, item, itemId, providerClient, record }) {
@@ -24,6 +24,8 @@ export const createWorldmoveEsimOrderThenRedeemStrategy = () => ({
   async callback({ item, event, providerClient }) {
     const callbackItem = event.itemList?.[0] ?? event.item ?? event;
     const data = extractProvisioningData(callbackItem);
+    const callbackResult = providerCallbackResult({ ...event, ...callbackItem });
+    if (callbackResult.success === false) return result('FAILED', { providerReference: event.providerOrderId ?? event.orderId, failureCode: callbackResult.failureCode, providerResponse: safeProviderFields(callbackItem) });
     if (data.redemptionCode && !data.qrcode && providerClient?.redeem) {
       await providerClient.redeem({
         rcode: data.redemptionCode,
@@ -32,8 +34,7 @@ export const createWorldmoveEsimOrderThenRedeemStrategy = () => ({
       });
       return result('PENDING_CALLBACK', { providerReference: event.providerOrderId ?? event.orderId, itemData: { ...data, qrcodeType: callbackItem.qrcodeType ?? 2 } });
     }
-    const successful = callbackItem.resultcode === '000' || callbackItem.resultCode === '000';
-    return successful
+    return callbackResult.success === true
       ? result('PROVISIONED', { providerReference: event.providerOrderId ?? event.orderId, itemData: data })
       : result('PENDING_CALLBACK', { providerReference: event.providerOrderId ?? event.orderId, itemData: data, providerResponse: safeProviderFields(callbackItem) });
   },

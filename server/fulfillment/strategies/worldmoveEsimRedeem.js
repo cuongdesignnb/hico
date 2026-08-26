@@ -1,4 +1,4 @@
-import { result, extractProvisioningData, safeProviderFields } from '../strategyUtils.js';
+import { result, extractProvisioningData, providerCallbackResult, safeProviderFields } from '../strategyUtils.js';
 
 export const createWorldmoveEsimRedeemStrategy = () => ({
   async execute({ order, item, itemId, providerClient, record }) {
@@ -17,14 +17,19 @@ export const createWorldmoveEsimRedeemStrategy = () => ({
       idempotencyKey: `${order.orderId}:${itemId}:CREATE_ESIM_REDEEM`,
     });
     const callbackItem = response.itemList?.[0] ?? response.item ?? null;
-    if (callbackItem && callbackItem.resultcode === '000') return result('PROVISIONED', { providerReference: response.orderId, itemData: extractProvisioningData(callbackItem) });
+    if (callbackItem) {
+      const callbackResult = providerCallbackResult(callbackItem);
+      if (callbackResult.success === false) return result('FAILED', { providerReference: response.orderId, failureCode: callbackResult.failureCode, providerResponse: safeProviderFields(callbackItem) });
+      if (callbackResult.success === true) return result('PROVISIONED', { providerReference: response.orderId, itemData: extractProvisioningData(callbackItem) });
+    }
     return result('PENDING_CALLBACK', { providerReference: response.orderId, providerResponse: safeProviderFields(response) });
   },
   async callback({ event }) {
     const callbackItem = event.itemList?.[0] ?? event.item ?? event;
     const data = extractProvisioningData(callbackItem);
-    const successful = callbackItem.resultcode === '000' || callbackItem.resultCode === '000';
-    return successful
+    const callbackResult = providerCallbackResult({ ...event, ...callbackItem });
+    if (callbackResult.success === false) return result('FAILED', { providerReference: event.providerOrderId ?? event.orderId, failureCode: callbackResult.failureCode, providerResponse: safeProviderFields(callbackItem) });
+    return callbackResult.success === true
       ? result('PROVISIONED', { providerReference: event.providerOrderId ?? event.orderId, itemData: data })
       : result('PENDING_CALLBACK', { providerReference: event.providerOrderId ?? event.orderId, itemData: data, providerResponse: safeProviderFields(callbackItem) });
   },

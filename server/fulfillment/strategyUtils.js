@@ -33,4 +33,23 @@ export const extractProvisioningData = (item = {}) => Object.fromEntries(
   }).filter(([, value]) => value !== undefined && value !== null && value !== ''),
 );
 
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+
+export const providerCallbackResult = (payload = {}) => {
+  for (const field of ['resultcode', 'resultCode', 'code']) {
+    if (!hasOwn(payload, field)) continue;
+    const value = payload[field];
+    const success = field === 'resultcode' || field === 'resultCode'
+      ? String(value) === '000' || Number(value) === 0
+      : Number(value) === 0;
+    const safeValue = String(value ?? 'UNKNOWN').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32) || 'UNKNOWN';
+    return {
+      explicit: true,
+      success,
+      failureCode: success ? null : `WORLDMOVE_${field.toUpperCase()}_${safeValue}`,
+    };
+  }
+  return { explicit: false, success: null, failureCode: null };
+};
+
 export const result = (state, extra = {}) => ({ state, ...extra });

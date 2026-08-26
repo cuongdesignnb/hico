@@ -23,7 +23,7 @@ export const detectWorldmoveCallbackType = (payload) => {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw invalid('Worldmove callback payload không hợp lệ.');
   const items = list(payload.itemList);
   const hasOrder = typeof payload.orderId === 'string' && payload.orderId.trim() !== '';
-  if (hasOrder && has(payload, 'orderSN') && has(payload, 'orderTime') && items.length > 0 && items.every((item) => has(item, 'redemptionCode'))) return WORLDMOVE_CALLBACK_TYPES.ESIM_ORDER;
+  if (hasOrder && has(payload, 'orderSN') && has(payload, 'orderTime') && (items.length === 0 || items.every((item) => has(item, 'redemptionCode'))) && (has(payload, 'code') || has(payload, 'msg'))) return WORLDMOVE_CALLBACK_TYPES.ESIM_ORDER;
   if (hasOrder && items.length > 0 && items.every((item) => has(item, 'wmproductId') && has(item, 'day') && has(item, 'simNum'))) return WORLDMOVE_CALLBACK_TYPES.TOPUP;
   if (hasOrder && items.length > 0 && items.every((item) => has(item, 'qrcode') || has(item, 'rcode'))) return WORLDMOVE_CALLBACK_TYPES.ESIM_ORDER_REDEEM;
   if (!hasOrder && has(payload, 'rcode') && has(payload, 'qrcode')) return WORLDMOVE_CALLBACK_TYPES.REDEEM;

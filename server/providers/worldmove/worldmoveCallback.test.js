@@ -20,6 +20,8 @@ test('Worldmove callback verification is type-specific and replay-stable', () =>
     orderId: 'WM-ORDER',
     orderSN: 'SN-1',
     orderTime: '2026-08-26 10:00:00',
+    code: 0,
+    msg: 'success',
     itemList: [{ iccid: '8985204000012345678', productName: 'eSIM', redemptionCode: 'RC-1' }],
   };
   orderPayload.encStr = createEsimOrderCallbackSignature({ ...orderPayload, merchantId, token });
@@ -47,4 +49,18 @@ test('Worldmove redeem callback uses the documented root payload and activation 
   assert.equal(normalizeWorldmoveCallback(payload, JSON.stringify(payload), { merchantId, token }).eventType, WORLDMOVE_CALLBACK_TYPES.REDEEM);
   const activation = { orderId: 'WM-ORDER', rcode: 'RC-1', iccid: '8985', useSDate: '1', useEDate: '2' };
   assert.throws(() => normalizeWorldmoveCallback(activation, JSON.stringify(activation), { merchantId, token }), (error) => error.code === 'WORLDMOVE_ACTIVATION_CALLBACK_DISABLED');
+});
+
+test('Worldmove order callback recognizes an explicit failed response without item data', () => {
+  const payload = {
+    orderId: 'WM-FAILED',
+    orderSN: 'SN-FAILED',
+    orderTime: '2026-08-26 10:00:00',
+    code: 409,
+    msg: 'failed',
+    itemList: [],
+  };
+  payload.encStr = createEsimOrderCallbackSignature({ ...payload, merchantId, token });
+  assert.equal(detectWorldmoveCallbackType(payload), WORLDMOVE_CALLBACK_TYPES.ESIM_ORDER);
+  assert.equal(verifyWorldmoveCallbackSignature({ payload, merchantId, token }).valid, true);
 });
