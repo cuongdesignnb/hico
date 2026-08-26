@@ -6,6 +6,8 @@ export interface CustomerOrderItem {
   variantId: string | null;
   sku: string | null;
   operation: string | null;
+  requestedTripDays?: number;
+  tripDayOptions?: number[];
   quantity: number;
   unitPrice: number;
   currency: string;

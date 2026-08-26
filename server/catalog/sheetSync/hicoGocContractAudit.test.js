@@ -18,6 +18,7 @@ test('HICO GỐC contract audit reports safe branch and identity counts without 
   assert.equal(result.duplicateSimWmid, 0);
   assert.equal(result.duplicateEsimWmid, 0);
   assert.equal(result.wmidConflicts, 0);
+  assert.equal(result.wmidConflictSemantics, 'commercial-critical payload differences; not automatic invalidation');
   assert.equal(result.partialPhysicalIdentity, 0);
   assert.equal(result.partialEsimIdentity, 0);
   assert.equal(result.sourceContract.length, 25);
@@ -70,6 +71,7 @@ test('HICO GỐC contract audit reports WMID duplicate and conflict groups witho
   const result = auditHicoGocValues([Array(25).fill('header'), first, identical, conflict]);
   assert.equal(result.duplicateSimWmid, 1);
   assert.equal(result.wmidConflicts, 1);
+  assert.equal(result.operationalWmidAmbiguities, 1);
   assert.equal(result.simMissingSku, 0);
   assert.equal('rawRows' in result, false);
 });
@@ -105,10 +107,35 @@ test('HICO GỐC contract audit exposes deterministic WMID difference metrics an
   assert.equal(result.sameWmidDifferentCoverage, 1);
   assert.equal(result.sameWmidOnlySkuDifferent, 1);
   assert.equal(result.wmidConflicts, 4);
+  assert.equal(result.operationalWmidAmbiguities, 3);
+  assert.equal(result.exactWmidDuplicatesCollapsed, 1);
   assert.equal(Object.values(result.wmidDifferenceSamples).flat().length, 5);
   assert.deepEqual(result.wmidDifferenceSamples.sameWmidOnlySkuDifferent[0].sheetRowNumbers, [2, 3]);
   assert.equal('rawLabel' in result.wmidDifferenceSamples.sameWmidDifferentCoverage[0], false);
   assert.equal(result.sourceContract.find((entry) => entry.currentCodeMapping === 'pricePhysical')?.normalizedBusinessMeaning, 'Giá SIM / Top-up');
   assert.equal(result.sourceContract.find((entry) => entry.currentCodeMapping === 'skuPhysical')?.normalizedBusinessMeaning, 'SKU SIM (metadata only)');
   assert.equal(result.sourceContract.find((entry) => entry.currentCodeMapping === 'wmproductIdPhysical')?.normalizedBusinessMeaning, 'WMID SIM / Top-up');
+});
+
+test('HICO GỐC contract audit separates valid duration buckets from operational ambiguity', () => {
+  const makeRow = ({ sourceType, productName, day, physicalWmid = '', esimWmid = '', physicalSku = '', esimSku = '' }) => {
+    const row = Array(25).fill('');
+    row[0] = sourceType; row[1] = productName; row[2] = String(day); row[3] = 'Gói tổng';
+    row[4] = '95000'; row[5] = '180000'; row[11] = 'Trung Quốc: China Unicom';
+    row[16] = physicalSku; row[17] = esimSku; row[23] = physicalWmid; row[24] = esimWmid;
+    return row;
+  };
+  const values = [
+    Array(25).fill('header'),
+    makeRow({ sourceType: 'Sim', productName: 'Trung Quốc, 5 ngày, Tổng 3GB', day: 3, physicalWmid: 'wm-cn-t3-5d', physicalSku: 'SKU-3D' }),
+    makeRow({ sourceType: 'Sim', productName: 'Trung Quốc, 5 ngày, Tổng 3GB', day: 5, physicalWmid: 'wm-cn-t3-5d', physicalSku: 'SKU-5D' }),
+    makeRow({ sourceType: 'eSim', productName: 'Trung Quốc, 500MB/ngày', day: 11, esimWmid: 'wm-e-cn-500mb-15d', esimSku: 'SKU-E-11D' }),
+    makeRow({ sourceType: 'eSim', productName: 'Trung Quốc, 500MB/ngày', day: 12, esimWmid: 'wm-e-cn-500mb-15d', esimSku: 'SKU-E-12D' }),
+  ];
+  const result = auditHicoGocValues(values);
+  assert.equal(result.topupMultiDayWmidGroups, 1);
+  assert.equal(result.durationBucketGroups, 1);
+  assert.equal(result.operationalWmidAmbiguities, 0);
+  assert.equal(result.sourceOperationCounts.topup, 2);
+  assert.equal(result.sourceOperationCounts.new_subscription, 2);
 });

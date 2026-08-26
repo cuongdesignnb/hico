@@ -17,6 +17,7 @@ export interface CartItem {
   duration?: string;
   dataLimit?: string;
   topupDays?: number;
+  requestedTripDays?: number;
   topupSimAssetId?: string;
   image?: string;
   quantity: number;

@@ -141,7 +141,7 @@ test('full sync does not reuse a previous operation as new source evidence', asy
     categories: cloneSeedCategories(), offers: [], previousCatalog: { products: [previousProduct], variants: [] },
   });
   assert.equal(candidate.products[0].operationResolution, 'RESOLVED');
-  assert.equal(candidate.rows[0].operationEvidence.evidence, 'WMID_SIM_BRANCH');
+  assert.equal(candidate.rows[0].operationEvidence.evidence, 'HICO_SOURCE_CONTRACT');
 });
 
 test('full sync splits one package family by medium and uses operation-aware fulfillment', async () => {
@@ -154,7 +154,7 @@ test('full sync splits one package family by medium and uses operation-aware ful
     ],
     categories: cloneSeedCategories(),
     offers: [
-      { id: 'offer-family-sim', provider: 'worldmove', wmproductId: physical.wmproductId, providerProductType: 1, active: true, leSIM: false },
+      { id: 'offer-family-sim', provider: 'worldmove', wmproductId: physical.wmproductId, providerProductType: 2, active: true, leSIM: false },
       { id: 'offer-family-esim', provider: 'worldmove', wmproductId: esim.wmproductId, providerProductType: 0, active: true, leSIM: true },
     ],
     previousCatalog: { products: [], variants: [] },
@@ -164,8 +164,8 @@ test('full sync splits one package family by medium and uses operation-aware ful
   assert.equal(candidate.summary.packageFamilies, 1);
   assert.equal(candidate.summary.packageFamilyMediumGroups, 2);
   assert.equal(candidate.summary.packageFamilyDiagnostics.familiesWithBothMediums, 1);
-  assert.deepEqual(new Set(candidate.products.map((product) => product.categoryId)), new Set(['cat-sim-vat-ly', 'cat-esim-du-lich']));
-  assert.equal(candidate.variants.find((variant) => variant.medium === 'physical_sim')?.shippingRequired, true);
+  assert.deepEqual(new Set(candidate.products.map((product) => product.categoryId)), new Set(['cat-nap-them', 'cat-esim-du-lich']));
+  assert.equal(candidate.variants.find((variant) => variant.medium === 'physical_sim')?.shippingRequired, false);
   assert.equal(candidate.variants.find((variant) => variant.medium === 'esim')?.shippingRequired, false);
 });
 
@@ -334,8 +334,9 @@ test('full apply commits valid catalog rows while retaining invalid rows and unr
   const invalidRow = Array(25).fill('');
   invalidRow[0] = 'Sim'; invalidRow[1] = 'Trung Quốc, 5 Ngày, Tổng 3GB'; invalidRow[2] = '1'; invalidRow[3] = 'Gói tổng'; invalidRow[4] = '70000'; invalidRow[10] = 'internet'; invalidRow[11] = rowData.networkLabel; invalidRow[13] = rowData.activationPolicy; invalidRow[15] = 'Có thể'; invalidRow[16] = 'SKU-CN-TOTAL'; invalidRow[23] = 'WM-CN-TOTAL';
   const conflictingRow = [...invalidRow]; conflictingRow[2] = '3'; conflictingRow[4] = '80000';
+  const structuralInvalidRow = [...invalidRow]; structuralInvalidRow[1] = ''; structuralInvalidRow[23] = 'WM-MISSING-NAME';
   const reference = fullSyncReference({ row: validRow });
-  reference.values.push(invalidRow, conflictingRow);
+  reference.values.push(invalidRow, conflictingRow, structuralInvalidRow);
   const repository = createInMemorySheetSyncRepository();
   let committedInput;
   const service = createCatalogResyncService({

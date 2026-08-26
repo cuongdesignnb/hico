@@ -10,10 +10,11 @@ import {
   makeHicoGocBranchCandidate,
 } from './hicoGocBranchParser.js';
 import { normalizeIdentityToken } from './packageFamilyIdentity.js';
+import { sourceOperationFor } from './hicoGocSourceClassifier.js';
 
 export { parseActualDuration, parseActualDurationDescriptor, parseDataLimit, parseDurationValue, parseSpeedLabel } from './hicoGocBranchParser.js';
 
-export const HICO_GOC_PARSER_REVISION = 2;
+export const HICO_GOC_PARSER_REVISION = 3;
 
 const branchDefinitions = [
   { medium: 'physical_sim', skuField: 'skuPhysical', wmidField: 'wmproductIdPhysical', priceField: 'physical' },
@@ -113,64 +114,116 @@ const normalizedValue = (value) => {
   return value ?? null;
 };
 
-const wmidPayloadKeyFor = (row, { includeDuration = true } = {}) => {
-  const data = row?.normalizedData ?? row ?? {};
-  return JSON.stringify(normalizedValue({
-    medium: data.medium,
-    productName: data.productName,
+const sourceDataFor = (row) => row?.normalizedData ?? row ?? {};
+
+export const topupDaysFor = (row) => {
+  const data = sourceDataFor(row);
+  if (Number.isInteger(data.topupDays) && data.topupDays > 0) return data.topupDays;
+  const options = Array.isArray(data.tripDayOptions) ? data.tripDayOptions.filter((value) => Number.isInteger(value) && value > 0) : [];
+  // For total packages the mapped Sheet day is the Worldmove top-up day;
+  // the duration mentioned in the product name is only presentation data.
+  if (data.dataPolicy === 'total' && options.length === 1) return options[0];
+  if (data.durationUnit === 'day' && Number.isInteger(data.durationValue) && data.durationValue > 0) return data.durationValue;
+  if (Number.isInteger(data.durationDays) && data.durationDays > 0) return data.durationDays;
+  return options.length === 1 ? options[0] : null;
+};
+
+export const tripDayOptionsFor = (row) => {
+  const data = sourceDataFor(row);
+  const explicitOptions = Array.isArray(data.tripDayOptions) ? data.tripDayOptions : [];
+  // For total packages, the mapped duration column is the trip-day source.
+  // A duration mentioned in a product name is presentation text, not a second
+  // provider/trip-day option.
+  const values = explicitOptions.length > 0
+    ? explicitOptions
+    : [
+      ...(data.durationUnit === 'day' && Number.isInteger(data.durationValue) ? [data.durationValue] : []),
+      ...(Number.isInteger(data.durationDays) ? [data.durationDays] : []),
+    ];
+  return [...new Set(values.filter((value) => Number.isInteger(value) && value > 0))].sort((left, right) => left - right);
+};
+
+export const operationalIdentityFor = (row, { operation } = {}) => {
+  const data = sourceDataFor(row);
+  const medium = data.medium ?? row?.sourceMedium;
+  const wmid = normalizedWmidFor(data.wmproductId);
+  const sourceOperation = sourceOperationFor({
     sourceCategoryLabel: data.sourceCategoryLabel,
+    sourceMedium: medium,
     packageClass: data.packageClass,
+  }).operation;
+  const resolvedOperation = operation ?? data.operation ?? sourceOperation;
+  if (!medium || !wmid || !resolvedOperation) return null;
+  return resolvedOperation === 'topup'
+    ? `${medium}:${wmid}:topup:day:${topupDaysFor(data) ?? 'unresolved'}`
+    : `${medium}:${wmid}:${resolvedOperation}`;
+};
+
+// Only fields that can change the customer-facing commercial/fulfillment
+// contract participate in a provider ambiguity check. SKU and presentation
+// fields deliberately do not have business authority.
+export const commercialCriticalPayloadFor = (row, { operation } = {}) => {
+  const data = row?.normalizedData ?? row ?? {};
+  const medium = data.medium ?? row?.sourceMedium;
+  const sourceOperation = sourceOperationFor({
+    sourceCategoryLabel: data.sourceCategoryLabel,
+    sourceMedium: medium,
+    packageClass: data.packageClass,
+  }).operation;
+  const resolvedOperation = operation ?? data.operation ?? sourceOperation;
+  return JSON.stringify(normalizedValue({
+    medium,
+    operation: resolvedOperation,
     dataPolicy: data.dataPolicy,
     dataLimit: data.dataLimit,
-    ...(includeDuration ? {
-      duration: data.duration,
-      durationValue: data.durationValue,
-      durationUnit: data.durationUnit,
-    } : {}),
     price: data.price,
-    compareAtPrice: data.compareAtPrice,
+    currency: data.currency ?? 'VND',
     apn: data.apn,
-    networkLabel: data.networkLabel,
     activationPolicy: data.activationPolicy,
     speedLabel: data.speedLabel,
     cancellable: data.cancellable,
-    coverageLabel: data.coverageLabel,
     coverage: data.coverage,
-    publicNote: data.publicNote,
-    imageUrl: data.imageUrl,
-    galleryImageUrls: data.galleryImageUrls,
-    description: data.description,
-    installationGuide: data.installationGuide,
+    ...(resolvedOperation === 'topup' ? { topupDays: topupDaysFor(data) } : {}),
   }));
 };
 
-export const wmidBusinessPayloadKeyFor = (row) => wmidPayloadKeyFor(row);
-
-// A Worldmove top-up WMID can legitimately serve several day options. This
-// relaxed key is used only to distinguish that case from a real business
-// conflict; price, data, coverage, and other commercial fields remain part of
-// the comparison.
-const wmidSharedTopupPayloadKeyFor = (row) => wmidPayloadKeyFor(row, { includeDuration: false });
+// Legacy export retained for audit compatibility. It now has the narrow
+// commercial semantics above, not the old presentation payload semantics.
+export const wmidBusinessPayloadKeyFor = (row) => commercialCriticalPayloadFor(row);
 
 const wmidGroupKeyFor = (row) => `${row.sourceMedium}:${normalizedWmidFor(row.normalizedData?.wmproductId)}`;
 
 const withSourceRows = (row, group) => {
-  const sourceRows = group.map((item) => item.sheetRowNumber).filter(Number.isInteger);
+  const sourceRows = group.map((item) => item.sheetRowNumber).filter(Number.isInteger).sort((left, right) => left - right);
   const sourceSkus = [...new Set(group.map((item) => item.normalizedData?.sku).filter(Boolean))];
-  const selectedSku = row.normalizedData?.sku ?? sourceSkus[0];
+  const sourceNames = [...new Set(group.map((item) => item.normalizedData?.productName).filter(Boolean))];
+  const selectedSku = row.normalizedData?.sku;
   return {
     ...row,
     sourceSku: selectedSku,
     sourceRows,
     ...(sourceSkus.length > 1 ? { sourceSkus } : {}),
+    ...(sourceNames.length > 1 ? { sourceNames } : {}),
     normalizedData: {
       ...row.normalizedData,
       ...(selectedSku ? { sku: selectedSku } : { sku: undefined }),
       sourceRows,
       ...(sourceSkus.length > 1 ? { sourceSkus } : {}),
+      ...(sourceNames.length > 1 ? { sourceNames } : {}),
     },
   };
 };
+
+const canonicalRowFor = (rows) => [...rows].sort((left, right) => (
+  (left.sheetRowNumber ?? Number.MAX_SAFE_INTEGER) - (right.sheetRowNumber ?? Number.MAX_SAFE_INTEGER)
+  || String(left.id ?? '').localeCompare(String(right.id ?? ''))
+))[0];
+
+const sourceOperationForRow = (row) => sourceOperationFor({
+  sourceCategoryLabel: row.normalizedData?.sourceCategoryLabel,
+  sourceMedium: row.sourceMedium,
+  packageClass: row.normalizedData?.packageClass,
+});
 
 export const collapseHicoGocRows = (rows = []) => {
   const groups = new Map();
@@ -185,49 +238,51 @@ export const collapseHicoGocRows = (rows = []) => {
   }
   const collapsed = [];
   for (const group of groups.values()) {
-    if (group.length === 1) {
-      collapsed.push(...group);
-      continue;
+    const identities = new Map();
+    for (const row of group) {
+      const sourceOperation = sourceOperationForRow(row);
+      const key = operationalIdentityFor(row, { operation: sourceOperation.operation })
+        ?? `${row.id}:unresolved-operation`;
+      identities.set(key, [...(identities.get(key) ?? []), row]);
     }
-    const payloads = new Set(group.map(wmidBusinessPayloadKeyFor));
-    if (group[0].sourceMedium === 'physical_sim'
-      && payloads.size > 1
-      && new Set(group.map(wmidSharedTopupPayloadKeyFor)).size === 1) {
-      collapsed.push(...group.map((row) => ({
-        ...withSourceRows(row, group),
-        warnings: [...row.warnings, { code: 'WMID_SHARED_TOPUP_DURATION', field: 'duration' }],
-      })));
-      continue;
-    }
-    if (payloads.size > 1) {
-      collapsed.push(...group.map((row) => ({
-        ...withSourceRows(row, group),
-        status: 'INVALID',
-        needsReview: true,
-        wmidConflict: true,
-        errors: [...row.errors, { code: 'WMID_CONFLICT', field: 'wmproductId' }],
-      })));
-      continue;
-    }
-    const first = withSourceRows(group.find((row) => row.normalizedData?.sku) ?? group[0], group);
-    const options = [...new Set(group.flatMap((row) => (
-      row.normalizedData.tripDayOptions
-      ?? (row.normalizedData.durationUnit === 'day' && Number.isInteger(row.normalizedData.durationValue)
-        ? [row.normalizedData.durationValue]
-        : [])
-    )))].sort((a, b) => a - b);
-    const duplicate = {
-      ...first,
-      ...(group.length > 1 ? {
-        collapsedDuplicateCount: group.length - 1,
-        warnings: [...first.warnings, { code: 'DUPLICATE_IDENTICAL_COLLAPSED', field: 'wmproductId' }],
-      } : {}),
-      normalizedData: {
+    for (const identityGroup of identities.values()) {
+      const sourceOperation = sourceOperationForRow(identityGroup[0]);
+      const payloads = new Set(identityGroup.map((row) => commercialCriticalPayloadFor(row, { operation: sourceOperation.operation })));
+      if (payloads.size > 1) {
+        collapsed.push(...identityGroup.map((row) => ({
+          ...withSourceRows(row, identityGroup),
+          needsReview: true,
+          operationalAmbiguity: true,
+          warnings: [...row.warnings, { code: 'WMID_OPERATIONAL_AMBIGUITY', field: 'wmproductId' }],
+        })));
+        continue;
+      }
+      const first = withSourceRows(canonicalRowFor(identityGroup), identityGroup);
+      const options = first.sourceMedium === 'esim'
+        ? [...new Set(identityGroup.flatMap(tripDayOptionsFor))].sort((left, right) => left - right)
+        : [];
+      const isEsimTripDayBucket = first.sourceMedium === 'esim' && options.length > 1;
+      const normalizedData = {
         ...first.normalizedData,
-        ...(options.length ? { tripDayOptions: options } : {}),
-      },
-    };
-    collapsed.push({ ...duplicate, rowHash: JSON.stringify(duplicate.normalizedData) });
+        ...(isEsimTripDayBucket ? {
+          tripDayOptions: options,
+          duration: undefined,
+          durationValue: undefined,
+          durationUnit: undefined,
+          durationDays: undefined,
+        } : {}),
+      };
+      const duplicate = {
+        ...first,
+        ...(identityGroup.length > 1 ? {
+          collapsedDuplicateCount: identityGroup.length - 1,
+          warnings: [...first.warnings, { code: isEsimTripDayBucket ? 'ESIM_TRIP_DAY_BUCKET_COLLAPSED' : 'DUPLICATE_IDENTICAL_COLLAPSED', field: 'wmproductId' }],
+        } : {}),
+        ...(isEsimTripDayBucket ? { esimTripDayBucket: true } : {}),
+        normalizedData,
+      };
+      collapsed.push({ ...duplicate, rowHash: JSON.stringify(duplicate.normalizedData) });
+    }
   }
   return collapsed;
 };

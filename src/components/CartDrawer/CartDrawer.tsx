@@ -116,7 +116,12 @@ export const CartDrawer: React.FC = () => {
       if (checkoutConfig.engine === 'canonical') {
         if (hasMixedCurrency) throw new Error('Giỏ hàng có nhiều loại tiền tệ. Vui lòng thanh toán riêng từng nhóm.');
         if (cart.some((item) => !item.variantId)) throw new Error('Một sản phẩm trong giỏ chưa có biến thể canonical. Vui lòng xóa sản phẩm và chọn lại.');
-        const items = cart.map((item) => ({ variantId: item.variantId as string, quantity: item.quantity, clientPrice: item.displayedPrice ?? item.price }));
+        const items = cart.map((item) => ({
+          variantId: item.variantId as string,
+          quantity: item.quantity,
+          clientPrice: item.displayedPrice ?? item.price,
+          ...(item.requestedTripDays ? { requestedTripDays: item.requestedTripDays } : {}),
+        }));
         const shipping = hasPhysicalItem ? {
           recipientName: checkoutForm.name,
           phone: checkoutForm.phone,

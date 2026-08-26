@@ -29,6 +29,8 @@ const safeItem = (item = {}, status = 'PENDING') => ({
   soldPrice: numberOrZero(item.soldPrice ?? item.unitPrice ?? item.price),
   soldCurrency: String(item.soldCurrency ?? item.currency ?? 'VND').toUpperCase(),
   ...(Number.isInteger(item.soldDurationDays) && item.soldDurationDays > 0 ? { soldDurationDays: item.soldDurationDays } : {}),
+  ...(Number.isInteger(item.requestedTripDays) && item.requestedTripDays > 0 ? { requestedTripDays: item.requestedTripDays } : {}),
+  ...(Array.isArray(item.tripDayOptions) ? { tripDayOptions: item.tripDayOptions.filter((value) => Number.isInteger(value) && value > 0) } : {}),
   ...(Number.isInteger(item.topupDays) && item.topupDays > 0 ? { topupDays: item.topupDays } : {}),
   ...(item.soldDataLimit ? { soldDataLimit: String(item.soldDataLimit) } : item.dataLimit ? { soldDataLimit: String(item.dataLimit) } : {}),
   ...(COMPLETED.has(status) && Number.isInteger(item.providerDurationDays) && item.providerDurationDays > 0 ? { providerDurationDays: item.providerDurationDays, upgradeDays: Math.max(0, Number(item.upgradeDays) || 0) } : {}),

@@ -167,7 +167,9 @@ export const makeHicoGocBranchCandidate = ({ cells, rowNumber, medium, mapping, 
     errors.push({ code: 'MISSING_WMID', field: 'wmproductId' });
   }
   if (!productName) errors.push({ code: 'MISSING_PRODUCT_NAME', field: 'productName' });
-  if (mediumSourceMismatch(sourceCategoryLabel, medium)) errors.push({ code: 'SOURCE_MEDIUM_CONFLICT', field: 'simType' });
+  // A Source Type label is a package-class hint. The WMID columns are the
+  // authority for branch availability, so this is observable but never invalid.
+  if (mediumSourceMismatch(sourceCategoryLabel, medium)) warnings.push({ code: 'SOURCE_TYPE_MEDIUM_MISMATCH', field: 'simType' });
   if (!normalizedData.dataLimit) warnings.push({ code: 'DATA_LIMIT_AMBIGUOUS', field: 'dataLimit' });
 
   return {

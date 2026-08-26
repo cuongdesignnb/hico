@@ -11,7 +11,7 @@ const deviceSnapshot = (product, variant) => {
   return Object.fromEntries(allowed.filter((key) => value[key] !== undefined && value[key] !== null).map((key) => [key, value[key]]));
 };
 
-export const createOrderItemSnapshot = ({ product, variant, providerOffer = null, providerResolution = null, quantity }) => ({
+export const createOrderItemSnapshot = ({ product, variant, providerOffer = null, providerResolution = null, quantity, requestedTripDays = undefined }) => ({
   productId: product.id,
   productName: product.name,
   productSlug: optional(product.slug),
@@ -34,6 +34,8 @@ export const createOrderItemSnapshot = ({ product, variant, providerOffer = null
   soldVariantId: variant.id,
   soldSku: variant.sku,
   soldDurationDays: providerResolution?.requestedDays ?? variant.durationDays ?? null,
+  ...(Number.isInteger(requestedTripDays) && requestedTripDays > 0 ? { requestedTripDays } : {}),
+  ...(Array.isArray(variant.tripDayOptions) ? { tripDayOptions: [...variant.tripDayOptions] } : {}),
   topupDays: variant.topupDays ?? (variant.durationUnit === 'day' ? variant.durationValue : null) ?? variant.durationDays ?? null,
   soldDataLimit: optional(variant.dataLimit),
   soldPrice: variant.price,
@@ -64,7 +66,7 @@ export const createOrderSnapshot = ({ orderId, request, validated, createdAt, ow
   createdAt,
   status: 'PENDING_CALLBACK',
   items: validated.items.map(({ product, variant, providerOffer, providerResolution, requested }) => (
-    createOrderItemSnapshot({ product, variant, providerOffer, providerResolution, quantity: requested.quantity })
+    createOrderItemSnapshot({ product, variant, providerOffer, providerResolution, quantity: requested.quantity, requestedTripDays: requested.requestedTripDays })
   )),
   fulfillmentRecordIds: [],
   idempotencyKey: request.idempotencyKey,

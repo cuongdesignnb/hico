@@ -1,8 +1,8 @@
 import { parsePrice } from './sheetRowParser.js';
 import { DEFAULT_HICO_GOC_FIELD_MAPPING, DEFAULT_HICO_GOC_PRICE_MAPPING, hicoGocColumnName, normalizeHicoGocMapping, normalizeHicoGocPriceMapping } from './hicoGocMapping.js';
-import { classifyHicoPackageClass, mediumSourceMismatch } from './hicoGocSourceClassifier.js';
+import { classifyHicoPackageClass, mediumSourceMismatch, sourceOperationFor } from './hicoGocSourceClassifier.js';
 import { parseHicoCoverage } from '../coverage/hicoCoverageParser.js';
-import { parseHicoGocRows, normalizedWmidFor, wmidBusinessPayloadKeyFor } from './hicoGocParser.js';
+import { commercialCriticalPayloadFor, operationalIdentityFor, parseHicoGocRows, normalizedWmidFor, topupDaysFor, tripDayOptionsFor, wmidBusinessPayloadKeyFor } from './hicoGocParser.js';
 
 const nonEmpty = (value) => String(value ?? '').trim() !== '';
 const safeLabel = (value) => {
@@ -144,6 +144,65 @@ const wmidDifferenceAudit = (wmidGroups) => {
   return { metrics, samples };
 };
 
+const operationalIdentityAudit = (parsedBranches) => {
+  const operationCounts = {};
+  const operationResolutionCounts = {};
+  const operationalGroups = new Map();
+  const providerBucketGroups = new Map();
+  for (const branch of parsedBranches) {
+    const data = branch.normalizedData ?? {};
+    const sourceOperation = sourceOperationFor({
+      sourceCategoryLabel: data.sourceCategoryLabel,
+      sourceMedium: branch.sourceMedium,
+      packageClass: data.packageClass,
+    });
+    operationCounts[sourceOperation.operation] = (operationCounts[sourceOperation.operation] ?? 0) + 1;
+    operationResolutionCounts[sourceOperation.resolution] = (operationResolutionCounts[sourceOperation.resolution] ?? 0) + 1;
+    const operationalKey = operationalIdentityFor(branch, { operation: sourceOperation.operation });
+    if (operationalKey) operationalGroups.set(operationalKey, [...(operationalGroups.get(operationalKey) ?? []), branch]);
+    const wmid = normalizedWmidFor(data.wmproductId);
+    if (wmid) {
+      const bucketKey = `${branch.sourceMedium}:${wmid}:${sourceOperation.operation}`;
+      providerBucketGroups.set(bucketKey, [...(providerBucketGroups.get(bucketKey) ?? []), branch]);
+    }
+  }
+  const operationalAmbiguities = [...operationalGroups.values()].filter((group) => (
+    new Set(group.map((row) => commercialCriticalPayloadFor(row, {
+      operation: sourceOperationFor({
+        sourceCategoryLabel: row.normalizedData?.sourceCategoryLabel,
+        sourceMedium: row.sourceMedium,
+        packageClass: row.normalizedData?.packageClass,
+      }).operation,
+    }))).size > 1
+  ));
+  const durationBucketGroups = [...providerBucketGroups.values()].filter((group) => {
+    if (group[0]?.sourceMedium !== 'esim' || group[0]?.normalizedData?.packageClass === undefined) return false;
+    const options = new Set(group.flatMap(tripDayOptionsFor));
+    const payloads = new Set(group.map((row) => commercialCriticalPayloadFor(row, { operation: 'new_subscription' })));
+    return options.size > 1 && payloads.size === 1;
+  });
+  const topupMultiDayWmidGroups = [...providerBucketGroups.values()].filter((group) => {
+    if (group[0]?.sourceMedium !== 'physical_sim') return false;
+    return new Set(group.map(topupDaysFor).filter((value) => Number.isInteger(value) && value > 0)).size > 1;
+  });
+  return {
+    sourceOperationCounts: operationCounts,
+    sourceOperationResolutionCounts: operationResolutionCounts,
+    operationalWmidAmbiguities: operationalAmbiguities.length,
+    durationBucketGroups: durationBucketGroups.length,
+    topupMultiDayWmidGroups: topupMultiDayWmidGroups.length,
+    exactWmidDuplicatesCollapsed: [...operationalGroups.values()].reduce((total, group) => {
+      const duplicateCount = group.length - 1;
+      const payloads = new Set(group.map((row) => commercialCriticalPayloadFor(row, { operation: sourceOperationFor({
+        sourceCategoryLabel: row.normalizedData?.sourceCategoryLabel,
+        sourceMedium: row.sourceMedium,
+        packageClass: row.normalizedData?.packageClass,
+      }).operation })));
+      return total + (payloads.size === 1 ? duplicateCount : 0);
+    }, 0),
+  };
+};
+
 export const auditHicoGocValues = (
   values = [],
   { fieldMapping = DEFAULT_HICO_GOC_FIELD_MAPPING, priceMapping = DEFAULT_HICO_GOC_PRICE_MAPPING } = {},
@@ -170,6 +229,7 @@ export const auditHicoGocValues = (
   const duplicateGroups = [...wmidGroups.values()].filter((group) => group.length > 1);
   const conflictGroups = duplicateGroups.filter((group) => new Set(group.map(wmidBusinessPayloadKeyFor)).size > 1);
   const wmidAudit = wmidDifferenceAudit(wmidGroups);
+  const operationAudit = operationalIdentityAudit(parsedBranches);
   const branchDiagnostics = {
     physical: { rowsWithData: 0, identityPresent: 0, complete: 0, missingSku: 0, missingWmid: 0, missingPrice: 0, invalidPrice: 0, partialIdentity: 0 },
     esim: { rowsWithData: 0, identityPresent: 0, complete: 0, missingSku: 0, missingWmid: 0, missingPrice: 0, invalidPrice: 0, partialIdentity: 0 },
@@ -200,8 +260,10 @@ export const auditHicoGocValues = (
     duplicateSimWmid: duplicateGroups.filter((group) => group[0].sourceMedium === 'physical_sim').length,
     duplicateEsimWmid: duplicateGroups.filter((group) => group[0].sourceMedium === 'esim').length,
     wmidConflicts: conflictGroups.length,
+    wmidConflictSemantics: 'commercial-critical payload differences; not automatic invalidation',
     ...wmidAudit.metrics,
     wmidDifferenceSamples: wmidAudit.samples,
+    ...operationAudit,
     branchDiagnostics,
     sourceTypeCounts,
     sourceTypeDiagnostics,

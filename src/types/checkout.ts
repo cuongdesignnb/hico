@@ -3,6 +3,8 @@ export type CheckoutEngine = 'legacy' | 'canonical';
 export interface CheckoutItemRequest {
   variantId: string;
   quantity: number;
+  clientPrice?: number;
+  requestedTripDays?: number;
 }
 
 export interface CheckoutCustomer {

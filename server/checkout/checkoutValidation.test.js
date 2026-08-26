@@ -124,3 +124,23 @@ test('canonical checkout rejects unresolved operation with a typed reason', () =
     requireCustomer: true,
   }), (error) => error.code === 'CANONICAL_OPERATION_UNRESOLVED');
 });
+
+test('canonical checkout validates requested eSIM trip days against the variant bucket', () => {
+  const tripVariant = { ...baseVariant, tripDayOptions: [2, 3] };
+  const tripCatalog = { products: [product], variants: [tripVariant] };
+  const valid = validateCanonicalCart({
+    catalog: tripCatalog,
+    request: { ...request, items: [{ variantId: tripVariant.id, quantity: 1, requestedTripDays: 3 }] },
+  });
+  assert.equal(valid.items[0].requested.requestedTripDays, 3);
+  assert.throws(() => validateCanonicalCart({
+    catalog: tripCatalog,
+    request: { ...request, items: [{ variantId: tripVariant.id, quantity: 1, requestedTripDays: 4 }] },
+  }), (error) => error.code === 'TRIP_DAY_MISMATCH');
+
+  assert.throws(() => validateCanonicalCart({
+    catalog: { products: [topupProduct], variants: [topupVariant] },
+    providerOffers: [topupOffer],
+    request: { ...topupRequest, items: [{ variantId: topupVariant.id, quantity: 1, requestedTripDays: 3 }] },
+  }), (error) => error.code === 'TRIP_DAY_NOT_APPLICABLE');
+});

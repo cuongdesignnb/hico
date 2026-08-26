@@ -103,10 +103,15 @@ const validateItems = (items) => {
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100) {
       throw new CheckoutError('Số lượng sản phẩm không hợp lệ.', 'CHECKOUT_INVALID_REQUEST');
     }
+    const requestedTripDays = item?.requestedTripDays;
+    if (requestedTripDays !== undefined && (!Number.isInteger(Number(requestedTripDays)) || Number(requestedTripDays) < 1)) {
+      throw new CheckoutError('Số ngày chuyến đi không hợp lệ.', 'TRIP_DAY_INVALID');
+    }
     return {
       variantId,
       quantity,
       clientPrice: item?.clientPrice,
+      ...(requestedTripDays !== undefined ? { requestedTripDays: Number(requestedTripDays) } : {}),
     };
   });
 };
@@ -212,6 +217,15 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
     if (expectedProviderType !== null && (product.operation === 'topup' || String(fulfillmentVariant.fulfillmentMethod ?? '').startsWith('WORLDMOVE_'))) {
       if (!providerOffer || providerOffer.providerProductType !== expectedProviderType) {
         throw new CheckoutError('Loại sản phẩm Worldmove không khớp nghiệp vụ của gói.', 'PROVIDER_PRODUCT_TYPE_MISMATCH');
+      }
+    }
+    if (requested.requestedTripDays !== undefined) {
+      if (product.operation === 'topup' || variant.medium !== 'esim') {
+        throw new CheckoutError('Số ngày chuyến đi chỉ áp dụng cho eSIM.', 'TRIP_DAY_NOT_APPLICABLE');
+      }
+      const allowedTripDays = Array.isArray(variant.tripDayOptions) ? variant.tripDayOptions : [];
+      if (!allowedTripDays.includes(requested.requestedTripDays)) {
+        throw new CheckoutError('Số ngày chuyến đi không khớp với biến thể canonical.', 'TRIP_DAY_MISMATCH');
       }
     }
     assertFulfillmentSupported(fulfillmentVariant);

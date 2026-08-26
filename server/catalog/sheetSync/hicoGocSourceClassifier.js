@@ -35,20 +35,53 @@ export const classifySourceCategory = (value) => {
   return 'unknown';
 };
 
-export const operationEvidenceFor = ({ sourceCategoryLabel, sourceMedium, packageClass = classifyHicoPackageClass(sourceCategoryLabel), providerOffer, previousOperation } = {}) => {
-  if (providerOffer?.providerProductType === 2) return { operation: 'topup', resolution: 'RESOLVED', evidence: 'PROVIDER_PRODUCT_TYPE' };
-  if (providerOffer?.providerProductType === 0 || providerOffer?.providerProductType === 1) return { operation: 'new_subscription', resolution: 'RESOLVED', evidence: 'PROVIDER_PRODUCT_TYPE' };
-  // HICO GỐC's physical branch is the existing-SIM top-up branch. A new
-  // physical SIM purchase is represented only by an explicit provider type 1
-  // offer, handled above.
-  if (sourceMedium === 'physical_sim') return { operation: 'topup', resolution: 'RESOLVED', evidence: 'WMID_SIM_BRANCH' };
-  if (sourceMedium === 'esim') return { operation: 'new_subscription', resolution: 'RESOLVED', evidence: 'WMID_ESIM_BRANCH' };
-  if (TOPUP_LABELS.has(normalize(sourceCategoryLabel))) return { operation: 'topup', resolution: 'RESOLVED', evidence: 'SOURCE_CATEGORY' };
-  if (previousOperation === 'new_subscription' || previousOperation === 'topup' || previousOperation === 'device_sale') {
-    return { operation: previousOperation, resolution: 'RESOLVED', evidence: 'PREVIOUS_CANONICAL' };
+const providerProductTypeForOperation = ({ operation, medium }) => {
+  if (operation === 'topup') return 2;
+  if (operation === 'new_subscription' && medium === 'esim') return 0;
+  if (operation === 'new_subscription' && medium === 'physical_sim') return 1;
+  return null;
+};
+
+// Source Type classifies the package. The presence of a WMID column decides
+// whether the physical/eSIM branch exists; it never removes that branch.
+export const sourceOperationFor = ({ sourceCategoryLabel, sourceMedium, packageClass = classifyHicoPackageClass(sourceCategoryLabel) } = {}) => {
+  if (packageClass === 'STANDARD_TRAVEL') {
+    if (sourceMedium === 'physical_sim') return { operation: 'topup', resolution: 'RESOLVED', evidence: 'HICO_SOURCE_CONTRACT', expectedProviderProductType: 2 };
+    if (sourceMedium === 'esim') return { operation: 'new_subscription', resolution: 'RESOLVED', evidence: 'HICO_SOURCE_CONTRACT', expectedProviderProductType: 0 };
   }
-  if (['PRELOADED', 'VOICE', 'DOMESTIC_VN'].includes(packageClass)) return { operation: 'new_subscription', resolution: 'RESOLVED', evidence: 'PACKAGE_CLASS' };
-  return { operation: 'new_subscription', resolution: 'UNRESOLVED', evidence: 'NO_EXPLICIT_EVIDENCE' };
+  if (['PRELOADED', 'VOICE', 'DOMESTIC_VN'].includes(packageClass)) {
+    if (sourceMedium === 'physical_sim' || sourceMedium === 'esim') {
+      return {
+        operation: 'new_subscription',
+        resolution: 'RESOLVED',
+        evidence: 'HICO_SOURCE_CONTRACT',
+        expectedProviderProductType: providerProductTypeForOperation({ operation: 'new_subscription', medium: sourceMedium }),
+      };
+    }
+  }
+  if (sourceMedium === 'esim') return { operation: 'new_subscription', resolution: 'RESOLVED', evidence: 'UNKNOWN_ESIM_FALLBACK', expectedProviderProductType: 0 };
+  // The catalog model requires an operation value. This storage fallback is
+  // explicitly unresolved and remains blocked from checkout/publish.
+  return { operation: 'new_subscription', resolution: 'UNRESOLVED', evidence: 'UNKNOWN_PHYSICAL_UNRESOLVED', expectedProviderProductType: null };
+};
+
+export const operationEvidenceFor = ({ sourceCategoryLabel, sourceMedium, packageClass = classifyHicoPackageClass(sourceCategoryLabel), providerOffer } = {}) => {
+  const source = sourceOperationFor({ sourceCategoryLabel, sourceMedium, packageClass });
+  const providerType = providerOffer?.providerProductType;
+  if (![0, 1, 2].includes(providerType)) return source;
+  const operation = providerType === 2 ? 'topup' : 'new_subscription';
+  const expectedProviderProductType = source.expectedProviderProductType;
+  if (expectedProviderProductType !== null && expectedProviderProductType !== providerType) {
+    return {
+      operation,
+      resolution: 'UNRESOLVED',
+      evidence: 'PROVIDER_PRODUCT_TYPE',
+      expectedProviderProductType,
+      providerProductType: providerType,
+      providerSourceConflict: true,
+    };
+  }
+  return { operation, resolution: 'RESOLVED', evidence: 'PROVIDER_PRODUCT_TYPE', expectedProviderProductType, providerProductType: providerType };
 };
 
 export const mediumSourceMismatch = (sourceCategoryLabel, medium) => {

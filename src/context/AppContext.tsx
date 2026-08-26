@@ -21,7 +21,16 @@ const normalizeCartItem = (value: unknown): CartItem | null => {
     : record.type === 'physical' ? 'physical_sim' : record.type === 'esim' ? 'esim' : undefined;
   const type = operation === 'device_sale' ? 'device' : medium === 'physical_sim' ? 'physical' : 'esim';
   const quantity = operation === 'topup' ? 1 : Math.max(1, Math.floor(record.quantity));
-  return { ...record, operation, medium, type, displayedPrice: typeof record.displayedPrice === 'number' ? record.displayedPrice : record.price, quantity } as CartItem;
+  const requestedTripDays = Number(record.requestedTripDays);
+  return {
+    ...record,
+    operation,
+    medium,
+    type,
+    displayedPrice: typeof record.displayedPrice === 'number' ? record.displayedPrice : record.price,
+    ...(operation !== 'topup' && medium === 'esim' && Number.isInteger(requestedTripDays) && requestedTripDays > 0 ? { requestedTripDays } : {}),
+    quantity,
+  } as CartItem;
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

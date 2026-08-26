@@ -9,7 +9,7 @@ import { createCatalogVersionCommitService } from '../write/catalogVersionCommit
 import { createCatalogAuditRepository } from '../write/catalogAuditRepository.js';
 import { createProviderOfferRepository } from '../../providers/providerOfferRepository.js';
 import { createSheetReferenceClient } from './sheetReferenceClient.js';
-import { collapseHicoGocRows, HICO_GOC_PARSER_REVISION, normalizedWmidFor, parseHicoGocRowsWithDiagnostics, wmidBusinessPayloadKeyFor } from './hicoGocParser.js';
+import { collapseHicoGocRows, HICO_GOC_PARSER_REVISION, normalizedWmidFor, parseHicoGocRowsWithDiagnostics, topupDaysFor, wmidBusinessPayloadKeyFor } from './hicoGocParser.js';
 import { hicoGocHeaderHash, HICO_GOC_SHEET, normalizeHicoGocSettings, validateHicoGocRange } from './hicoGocMapping.js';
 import { createSheetSyncRepository, publicBatch, publicRow } from './sheetSyncRepository.js';
 import { SheetSyncError } from './sheetSyncTypes.js';
@@ -347,18 +347,19 @@ export const buildFullSyncCandidate = async ({
     }
     for (const operationRows of operationGroups.values()) {
       const operation = operationRows[0].operationEvidence.operation;
-      const operationResolution = operationRows.every((row) => row.operationEvidence.resolution === 'RESOLVED') ? 'RESOLVED' : 'UNRESOLVED';
+      const operationBlocked = operationRows.some((row) => row.operationalAmbiguity || row.operationEvidence.providerSourceConflict);
+      const operationResolution = !operationBlocked && operationRows.every((row) => row.operationEvidence.resolution === 'RESOLVED') ? 'RESOLVED' : 'UNRESOLVED';
       for (const row of operationRows) {
         if (row.operationEvidence.resolution !== 'RESOLVED') row.warnings.push({ code: 'OPERATION_UNRESOLVED', field: 'simType' });
+        if (row.operationEvidence.providerSourceConflict) row.warnings.push({ code: 'PROVIDER_SOURCE_OPERATION_MISMATCH', field: 'wmproductId' });
         const sourceKey = productSourceKeyFor({ ...row.normalizedData, operation, medium: row.sourceMedium });
-        const topupDays = operation === 'topup'
-          ? row.normalizedData.topupDays
-            ?? (row.normalizedData.durationUnit === 'day' ? row.normalizedData.durationValue : null)
-            ?? row.normalizedData.durationDays
-          : null;
-        const variantSourceKey = topupDays
+        const topupDays = operation === 'topup' ? topupDaysFor(row.normalizedData) : null;
+        const baseVariantSourceKey = topupDays
           ? `${variantSourceKeyFor({ ...row.normalizedData, operation, medium: row.sourceMedium })}:day:${topupDays}`
           : variantSourceKeyFor({ ...row.normalizedData, operation, medium: row.sourceMedium });
+        const variantSourceKey = row.operationalAmbiguity
+          ? `${baseVariantSourceKey}:ambiguous:source:${row.sheetRowNumber ?? row.id}`
+          : baseVariantSourceKey;
         row.normalizedData = {
           ...row.normalizedData,
           operation,
@@ -377,8 +378,8 @@ export const buildFullSyncCandidate = async ({
   const reuseState = createEnrichmentReuseState();
   let exactDuplicatesCollapsed = preparedRows.reduce((total, row) => total + Number(row.collapsedDuplicateCount ?? 0), 0);
   let groupingCollisions = 0;
-  const wmidConflictKeys = new Set(preparedRows
-    .filter((row) => row.wmidConflict || row.errors?.some((error) => error.code === 'WMID_CONFLICT'))
+  const operationalAmbiguityKeys = new Set(preparedRows
+    .filter((row) => row.operationalAmbiguity)
     .map((row) => `${row.sourceMedium}:${normalizedWmidFor(row.normalizedData?.wmproductId)}`));
   const enrichment = {
     imagesReused: 0, imagesFromSheet: 0, imagesFallback: 0,
@@ -401,13 +402,23 @@ export const buildFullSyncCandidate = async ({
         existing.warnings.push({ code: 'DUPLICATE_IDENTICAL_COLLAPSED', field: 'variantSourceKey' });
       } else {
         groupingCollisions += 1;
-        existing.errors.push({ code: 'WMID_CONFLICT', field: 'wmproductId' });
-        row.errors.push({ code: 'WMID_CONFLICT', field: 'wmproductId' });
-        wmidConflictKeys.add(`${row.sourceMedium}:${normalizedWmidFor(row.normalizedData?.wmproductId)}`);
-        existing.status = 'INVALID';
-        row.status = 'INVALID';
-        const indexOfExisting = retainedRows.indexOf(existing);
-        if (indexOfExisting >= 0) retainedRows.splice(indexOfExisting, 1);
+        const markAmbiguous = (candidate) => {
+          candidate.needsReview = true;
+          candidate.operationalAmbiguity = true;
+          candidate.warnings.push({ code: 'WMID_OPERATIONAL_AMBIGUITY', field: 'wmproductId' });
+          candidate.normalizedData = {
+            ...candidate.normalizedData,
+            operationResolution: 'UNRESOLVED',
+            variantSourceKey: `${candidate.normalizedData.variantSourceKey}:ambiguous:source:${candidate.sheetRowNumber ?? candidate.id}`,
+          };
+          operationalAmbiguityKeys.add(`${candidate.sourceMedium}:${normalizedWmidFor(candidate.normalizedData?.wmproductId)}`);
+        };
+        markAmbiguous(existing);
+        markAmbiguous(row);
+        variantsByKey.delete(key);
+        variantsByKey.set(existing.normalizedData.variantSourceKey, existing);
+        variantsByKey.set(row.normalizedData.variantSourceKey, row);
+        retainedRows.push(row);
       }
     }
     groupRows.splice(0, groupRows.length, ...retainedRows);
@@ -577,9 +588,7 @@ export const buildFullSyncCandidate = async ({
         ...(variantData.publicNote ? { publicNote: variantData.publicNote } : {}),
         ...(variantData.speedLabel ? { speedLabel: variantData.speedLabel } : {}),
         ...(typeof variantData.cancellable === 'boolean' ? { cancellable: variantData.cancellable } : {}),
-        shippingRequired: operation === 'new_subscription'
-          && row.sourceMedium === 'physical_sim'
-          && fulfillment.providerProductType === 1,
+        shippingRequired: operation === 'new_subscription' && row.sourceMedium === 'physical_sim',
         stock: previousVariant?.stock ?? null,
         active: false,
         needsReview: true,
@@ -615,7 +624,14 @@ export const buildFullSyncCandidate = async ({
       packageFamilyDiagnostics,
       exactDuplicatesCollapsed,
       groupingCollisions,
-      wmidConflicts: wmidConflictKeys.size,
+      // Kept for legacy dashboards: this now means operational ambiguities,
+      // never a count of rows auto-invalidated by presentation differences.
+      wmidConflicts: operationalAmbiguityKeys.size,
+      operationalWmidAmbiguities: operationalAmbiguityKeys.size,
+      structuralInvalidRows: preparedRows.filter((row) => row.status === 'INVALID').length,
+      esimTripDayBucketGroups: preparedRows.filter((row) => row.esimTripDayBucket).length,
+      collapsedEsimTripDayRows: preparedRows.filter((row) => row.esimTripDayBucket).reduce((total, row) => total + Number(row.collapsedDuplicateCount ?? 0), 0),
+      topupDayVariants: safeVariants.filter((variant) => variant.topupDays !== undefined && variant.topupDays !== null).length,
       operationUnresolved: preparedRows.filter((row) => row.operationEvidence?.resolution === 'UNRESOLVED').length,
       operations: Object.fromEntries([...new Set(products.map((product) => product.operation))].map((operation) => [operation, products.filter((product) => product.operation === operation).length])),
       mediums: Object.fromEntries([...new Set(variants.map((variant) => variant.medium ?? 'none'))].map((medium) => [medium, variants.filter((variant) => (variant.medium ?? 'none') === medium).length])),
