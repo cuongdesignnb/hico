@@ -128,6 +128,10 @@ test('canonical checkout rejects unresolved operation with a typed reason', () =
 test('canonical checkout validates requested eSIM trip days against the variant bucket', () => {
   const tripVariant = { ...baseVariant, tripDayOptions: [2, 3] };
   const tripCatalog = { products: [product], variants: [tripVariant] };
+  assert.throws(() => validateCanonicalCart({
+    catalog: tripCatalog,
+    request: { ...request, items: [{ variantId: tripVariant.id, quantity: 1 }] },
+  }), (error) => error.code === 'TRIP_DAY_REQUIRED');
   const valid = validateCanonicalCart({
     catalog: tripCatalog,
     request: { ...request, items: [{ variantId: tripVariant.id, quantity: 1, requestedTripDays: 3 }] },
@@ -143,4 +147,30 @@ test('canonical checkout validates requested eSIM trip days against the variant 
     providerOffers: [topupOffer],
     request: { ...topupRequest, items: [{ variantId: topupVariant.id, quantity: 1, requestedTripDays: 3 }] },
   }), (error) => error.code === 'TRIP_DAY_NOT_APPLICABLE');
+});
+
+test('canonical checkout blocks Worldmove physical order before resolving or calling a provider', () => {
+  let providerCalls = 0;
+  const physical = {
+    ...baseVariant,
+    id: 'v-worldmove-physical',
+    medium: 'physical_sim',
+    supplier: 'worldmove',
+    fulfillmentMethod: 'WORLDMOVE_PHYSICAL_ORDER',
+    providerProductType: 1,
+    providerOfferId: 'offer-physical',
+    wmproductId: 'WM-PHYSICAL',
+    durationDays: 1,
+    familyKey: 'worldmove-physical',
+  };
+  assert.throws(() => validateCanonicalCart({
+    catalog: { products: [product], variants: [physical] },
+    providerOffers: [{ id: 'offer-physical', wmproductId: 'WM-PHYSICAL', providerProductType: 1, active: true }],
+    providerResolver: () => {
+      providerCalls += 1;
+      throw new Error('provider resolver must not run');
+    },
+    request: { ...request, items: [{ variantId: physical.id, quantity: 1 }] },
+  }), (error) => error.code === 'WORLDMOVE_PHYSICAL_ORDER_NOT_READY' && error.status === 503);
+  assert.equal(providerCalls, 0);
 });

@@ -31,6 +31,8 @@ export const skuConflictFor = (variant, variants = []) => {
   return duplicateSkuGroupsFor(variants).some((group) => group.variants.includes(variant));
 };
 
+// Legacy SKU collisions are retained solely for diagnostics and Admin review.
+// WMID and canonical IDs remain the only fulfillment and identity authorities.
 export const applySkuConflictMetadata = (variants) => {
   const conflicts = new Set(duplicateSkuGroupsFor(variants).flatMap((group) => group.variants));
 

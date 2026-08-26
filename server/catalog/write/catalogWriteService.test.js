@@ -280,7 +280,7 @@ test('archive succeeds with references and hard delete requires unreferenced dra
   assert.equal(deleted.body.deleted, true);
 });
 
-test('variant is inactive-first and enforces SKU/version/archive/delete rules', async (t) => {
+test('variant is inactive-first and enforces version/archive/delete rules', async (t) => {
   const fixture = await setup(t);
   const created = await fixture.service.createVariant(
     'product-base',
@@ -300,22 +300,20 @@ test('variant is inactive-first and enforces SKU/version/archive/delete rules', 
     (error) => error.code === 'VARIANT_ID_CONFLICT',
   );
 
-  await assert.rejects(
-    fixture.service.createVariant('product-base', {
-      ...manualVariantRequest(created.body.catalogVersionId, {
-        id: 'variant-duplicate',
-      }),
-      idempotencyKey: 'duplicate-sku',
+  const duplicateSku = await fixture.service.createVariant('product-base', {
+    ...manualVariantRequest(created.body.catalogVersionId, {
+      id: 'variant-duplicate',
     }),
-    (error) => error.code === 'SKU_CONFLICT',
-  );
+    idempotencyKey: 'duplicate-sku',
+  });
+  assert.equal(duplicateSku.body.variant.sku, created.body.variant.sku);
 
   const archived = await fixture.service.setVariantArchived(
     'product-base',
     'variant-new',
     {
       idempotencyKey: 'archive-variant',
-      catalogVersionId: created.body.catalogVersionId,
+      catalogVersionId: duplicateSku.body.catalogVersionId,
       version: 1,
     },
     true,

@@ -65,6 +65,7 @@ const coverageLabel = (product: PublicProduct) => {
 
 const mediumLabel = (variant: PublicVariant, product: PublicProduct) => {
   if (product.operation === 'device_sale') return 'Thiết bị';
+  if (product.operation === 'topup') return 'Nạp SIM';
   if (variant.medium === 'physical_sim') return 'SIM vật lý';
   if (variant.medium === 'esim') return 'eSIM';
   return 'Gói canonical';
@@ -106,6 +107,8 @@ export const toProductDetailViewModel = (product: PublicProduct): ProductDetailV
     : 'Thông tin chi tiết sản phẩm đang được cập nhật.';
   const technicalContent = product.operation === 'device_sale'
     ? product.instructions || product.deviceSpecifications?.model || product.deviceSpecs?.model || 'Thông số kỹ thuật được lấy từ dữ liệu canonical của sản phẩm.'
+    : product.operation === 'topup'
+      ? 'Gói nạp cho SIM hiện có.'
     : firstVariant?.simTypeLabel === 'SIM vật lý'
       ? 'Thông tin gói SIM vật lý và điều kiện giao hàng được lấy từ variant canonical.'
       : 'Thông tin gói và điều kiện sử dụng được lấy từ dữ liệu canonical.';
@@ -114,6 +117,8 @@ export const toProductDetailViewModel = (product: PublicProduct): ProductDetailV
     : 'Hướng dẫn cài đặt đang được cập nhật.';
   const compatibilityContent = product.compatibilityContent || (product.operation === 'device_sale'
     ? product.deviceSpecifications?.simCompatibility || product.deviceSpecs?.simCompatibility || 'Thông tin tương thích đang được cập nhật từ dữ liệu canonical.'
+    : product.operation === 'topup'
+      ? 'SIM cần hợp lệ và đủ điều kiện nạp.'
     : firstVariant?.simTypeLabel === 'SIM vật lý'
       ? 'Thiết bị cần hỗ trợ SIM vật lý và kết nối mạng tương thích.'
       : 'Thiết bị cần hỗ trợ eSIM và không bị khóa mạng.');

@@ -347,8 +347,7 @@ export const buildFullSyncCandidate = async ({
     }
     for (const operationRows of operationGroups.values()) {
       const operation = operationRows[0].operationEvidence.operation;
-      const operationBlocked = operationRows.some((row) => row.operationalAmbiguity || row.operationEvidence.providerSourceConflict);
-      const operationResolution = !operationBlocked && operationRows.every((row) => row.operationEvidence.resolution === 'RESOLVED') ? 'RESOLVED' : 'UNRESOLVED';
+      const operationResolution = operationRows.every((row) => row.operationEvidence.resolution === 'RESOLVED') ? 'RESOLVED' : 'UNRESOLVED';
       for (const row of operationRows) {
         if (row.operationEvidence.resolution !== 'RESOLVED') row.warnings.push({ code: 'OPERATION_UNRESOLVED', field: 'simType' });
         if (row.operationEvidence.providerSourceConflict) row.warnings.push({ code: 'PROVIDER_SOURCE_OPERATION_MISMATCH', field: 'wmproductId' });
@@ -408,7 +407,6 @@ export const buildFullSyncCandidate = async ({
           candidate.warnings.push({ code: 'WMID_OPERATIONAL_AMBIGUITY', field: 'wmproductId' });
           candidate.normalizedData = {
             ...candidate.normalizedData,
-            operationResolution: 'UNRESOLVED',
             variantSourceKey: `${candidate.normalizedData.variantSourceKey}:ambiguous:source:${candidate.sheetRowNumber ?? candidate.id}`,
           };
           operationalAmbiguityKeys.add(`${candidate.sourceMedium}:${normalizedWmidFor(candidate.normalizedData?.wmproductId)}`);
@@ -577,7 +575,10 @@ export const buildFullSyncCandidate = async ({
         packageFamilyKey: variantData.packageFamilyKey,
         operationResolution,
         ...fulfillment,
-        providerResolution: row.providerResolution ?? PROVIDER_RESOLUTIONS.UNRESOLVED,
+        providerResolution: row.operationalAmbiguity
+          ? PROVIDER_RESOLUTIONS.AMBIGUOUS
+          : row.providerResolution ?? PROVIDER_RESOLUTIONS.UNRESOLVED,
+        ...(row.operationalAmbiguity ? { operationalAmbiguity: true } : {}),
         ...(variantData.wmproductId ? { wmproductId: variantData.wmproductId } : {}),
         ...(row.providerOffer ? { providerOfferId: row.providerOffer.id, wmproductId: row.providerOffer.wmproductId } : {}),
         ...(row.providerOffer?.providerProductId ? { providerProductId: row.providerOffer.providerProductId } : {}),

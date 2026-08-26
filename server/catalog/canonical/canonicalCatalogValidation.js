@@ -98,7 +98,6 @@ export const validateCanonicalCatalog = ({
   const duplicateVariantIds = findDuplicates(variantList.map((item) => item?.id));
   const duplicateSkuGroups = duplicateSkuGroupsFor(variantList);
   const duplicateSkus = [...new Set(duplicateSkuGroups.map((group) => group.sku))].sort();
-  const duplicateSkuVariants = new Set(duplicateSkuGroups.flatMap((group) => group.variants));
   const duplicatePublicSkus = findDuplicates(variantList.map((item) => item?.publicSku).filter(Boolean));
   const duplicateSlugs = findDuplicates(productList.map((item) => item?.slug));
   const productIds = new Set(productList.map((item) => item?.id));
@@ -181,9 +180,6 @@ export const validateCanonicalCatalog = ({
     const label = `Variant ${variant?.id ?? '<missing>'}`;
     if (variant?.operationResolution === 'UNRESOLVED') blockPublish(variant.id, 'operationUnresolved');
     if (variant?.needsReview) blockPublish(variant.id, 'needsReview');
-    if (duplicateSkuVariants.has(variant)) {
-      blockPublish(variant.id, 'duplicateSku');
-    }
     if (!isNonEmptyString(variant?.id)) errors.push(`${label} has invalid id.`);
     if (variant?.sku !== undefined && variant?.sku !== null && variant?.sku !== '' && !isNonEmptyString(variant?.sku)) {
       errors.push(`${label} has invalid sku.`);

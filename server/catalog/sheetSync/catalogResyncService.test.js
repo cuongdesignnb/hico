@@ -265,6 +265,40 @@ test('full sync keeps physical top-up as a no-shipping operation', async () => {
   assert.equal(candidate.variants[0].requiresExistingSim, true);
 });
 
+test('full sync keeps resolved top-up operation separate from commercial WMID ambiguity', async () => {
+  const ambiguousFirst = {
+    ...rowData,
+    sourceCategoryLabel: 'Sim & eSIM',
+    medium: 'physical_sim',
+    sku: 'SKU-TOPUP-AMBIGUOUS-A',
+    wmproductId: 'WM-TOPUP-AMBIGUOUS',
+    price: 70000,
+  };
+  const ambiguousSecond = { ...ambiguousFirst, sku: 'SKU-TOPUP-AMBIGUOUS-B', price: 71000 };
+  const goodSibling = { ...ambiguousFirst, sku: 'SKU-TOPUP-GOOD', wmproductId: 'WM-TOPUP-GOOD' };
+  const candidate = await buildFullSyncCandidate({
+    rows: [
+      { id: 'row-ambiguous-a', sourceMedium: 'physical_sim', normalizedData: ambiguousFirst, errors: [], warnings: [], status: 'VALID' },
+      { id: 'row-ambiguous-b', sourceMedium: 'physical_sim', normalizedData: ambiguousSecond, errors: [], warnings: [], status: 'VALID' },
+      { id: 'row-good', sourceMedium: 'physical_sim', normalizedData: goodSibling, errors: [], warnings: [], status: 'VALID' },
+    ],
+    categories: cloneSeedCategories(),
+    offers: [
+      { id: 'offer-ambiguous', provider: 'worldmove', wmproductId: ambiguousFirst.wmproductId, providerProductType: 2, active: true, leSIM: false },
+      { id: 'offer-good', provider: 'worldmove', wmproductId: goodSibling.wmproductId, providerProductType: 2, active: true, leSIM: false },
+    ],
+    previousCatalog: { products: [], variants: [] },
+  });
+  assert.equal(candidate.products.length, 1);
+  assert.equal(candidate.products[0].operation, 'topup');
+  assert.equal(candidate.products[0].operationResolution, 'RESOLVED');
+  assert.equal(candidate.summary.operationUnresolved, 0);
+  assert.equal(candidate.summary.operationalWmidAmbiguities, 1);
+  assert.equal(candidate.variants.filter((item) => item.operationalAmbiguity).length, 2);
+  assert.equal(candidate.variants.find((item) => item.wmproductId === goodSibling.wmproductId)?.operationalAmbiguity, undefined);
+  assert.ok(candidate.rows.some((row) => row.warnings?.some((warning) => warning.code === 'WMID_OPERATIONAL_AMBIGUITY')));
+});
+
 test('full sync blocks a resolved provider APN or network conflict', async () => {
   const row = { ...rowData, apn: 'internet', networkLabel: 'China Unicom', sku: 'SKU-CONFLICT', wmproductId: 'WM-CONFLICT' };
   const candidate = await buildFullSyncCandidate({

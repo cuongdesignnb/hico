@@ -9,6 +9,7 @@ const cart = read('src/components/CartDrawer/CartDrawer.tsx');
 const detail = read('src/components/ProductDetail/ProductDetail.tsx');
 const account = read('src/pages/account/AccountAssetDetailPage.tsx');
 const labels = read('src/utils/cartItemClassification.ts');
+const detailViewModel = read('src/adapters/productDetailViewModel.ts');
 
 if (!labels.includes('if (operation === \'topup\') return \'Nạp SIM\';')) failures.push('purchase label is not operation-aware for top-up');
 if (!labels.includes("if (operation === 'topup') return 'Dùng cho SIM hiện có';")) failures.push('fulfillment label is not operation-aware for top-up');
@@ -20,6 +21,9 @@ if (!detail.includes('purchaseOptions.length <= 1 && displayProduct.familyProduc
 if (detail.includes("familyProduct.medium === 'physical_sim' ? 'SIM vật lý'")) failures.push('family product label still derives from medium only');
 if (!account.includes("asset?.assetType === 'TOPUP'")) failures.push('physical asset can still guess a top-up CTA');
 if (account.includes("['TOPUP', 'PHYSICAL_SIM'].includes(asset.assetType)")) failures.push('physical asset CTA allowlist remains');
+if (!detailViewModel.includes("product.operation === 'topup'\n      ? 'Gói nạp cho SIM hiện có.'")) failures.push('top-up technical copy is not operation-aware');
+if (!detailViewModel.includes("product.operation === 'topup'\n      ? 'SIM cần hợp lệ và đủ điều kiện nạp.'")) failures.push('top-up compatibility copy is not operation-aware');
+if (detailViewModel.includes("product.operation === 'topup'\n      ? 'Thông tin gói SIM vật lý")) failures.push('top-up detail still uses physical SIM technical copy');
 
 if (failures.length > 0) {
   console.error(JSON.stringify({ success: false, failures }, null, 2));

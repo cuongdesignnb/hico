@@ -158,6 +158,16 @@ test('variant validates physical, top-up, manual QR and HICO stock rules', () =>
     providerOffers: [physicalOffer],
   }).valid, true);
 
+  const physicalReadiness = getVariantPublishReadiness({
+    variant: physical,
+    product,
+    products: [product],
+    variants: [physical],
+    providerOffers: [physicalOffer],
+  });
+  assert.equal(physicalReadiness.publishable, false);
+  assert.ok(physicalReadiness.errors.some((error) => error.code === 'WORLDMOVE_PHYSICAL_ORDER_NOT_READY'));
+
   const topupOffer = {
     ...offer,
     id: 'worldmove:topup',

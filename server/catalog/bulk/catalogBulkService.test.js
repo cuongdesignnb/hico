@@ -9,6 +9,7 @@ import { createCatalogCommandService } from '../write/catalogCommandService.js';
 import { createCatalogIdempotencyRepository } from '../write/catalogIdempotencyRepository.js';
 import { createCatalogVersionCommitService } from '../write/catalogVersionCommitService.js';
 import { createCatalogBulkService } from './catalogBulkService.js';
+import { applyBulkOperation } from './catalogBulkOperations.js';
 
 const timestamp = '2026-07-31T00:00:00.000Z';
 const product = {
@@ -111,6 +112,28 @@ test('bulk preview executes one canonical version and idempotent retry replays',
   assert.equal(first.body.affectedCount, 1);
   assert.equal(replay.replayed, true);
   assert.equal(replay.body.catalogVersionId, first.body.catalogVersionId);
+});
+
+test('bulk provider mapping keeps Worldmove top-up as a physical SIM operation', () => {
+  const result = applyBulkOperation({
+    entityType: 'variant',
+    entity: variant('variant-topup', { medium: 'physical_sim' }),
+    product: { ...product, operation: 'topup' },
+    products: [{ ...product, operation: 'topup' }],
+    variants: [variant('variant-topup', { medium: 'physical_sim' })],
+    operation: { type: 'SET_PROVIDER_MAPPING', providerOfferId: 'offer-topup' },
+    providerOffers: [{
+      id: 'offer-topup',
+      wmproductId: 'WM-TOPUP',
+      providerProductType: 2,
+      active: true,
+    }],
+  });
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.next.medium, 'physical_sim');
+  assert.equal(result.next.fulfillmentMethod, 'WORLDMOVE_TOPUP');
+  assert.equal(result.next.requiresExistingSim, true);
+  assert.equal(result.next.shippingRequired, false);
 });
 
 test('bulk execute is all-or-nothing when one selected item is blocked', async (t) => {

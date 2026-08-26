@@ -13,6 +13,7 @@ import { productCategoryLabel, toProductDetailViewModel } from '../../adapters/p
 import { fulfillmentLabelForPurchase, labelForPurchase } from '../../utils/cartItemClassification';
 import './ProductDetail.css';
 import { getCanonicalProductPath } from '../../routing/canonicalRoute';
+import { resolveVariantForTripDay } from '../../utils/productTripDay';
 
 type DetailTab = 'kythuat' | 'caidat' | 'tuongthich' | 'danhgia' | 'faq';
 
@@ -82,13 +83,12 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
 
   const variants = viewModel.variants;
   const tripDayChoices = useMemo(() => [...new Set(displayProduct.variants
-    .filter((item) => item.medium === 'esim')
+    .filter((item) => item.medium === 'esim'
+      && (!variant?.dataLimit || item.dataLimit === variant?.dataLimit)
+      && (!displayProduct.dataPolicy || (item.dataPolicy ?? displayProduct.dataPolicy) === (variant?.dataPolicy ?? displayProduct.dataPolicy)))
     .flatMap((item) => item.tripDayOptions ?? [])
-    .filter((value) => Number.isInteger(value) && value > 0))].sort((left, right) => left - right), [displayProduct.variants]);
+    .filter((value) => Number.isInteger(value) && value > 0))].sort((left, right) => left - right), [displayProduct.variants, displayProduct.dataPolicy, variant]);
   const hasTripDaySelector = displayProduct.operation === 'new_subscription' && tripDayChoices.length > 1;
-  const effectiveRequestedTripDays = hasTripDaySelector
-    ? requestedTripDays ?? tripDayChoices[0]
-    : undefined;
   const simTypes = displayProduct.operation === 'topup' ? [] : uniqueValues(variants.map((item) => item.simTypeLabel));
   const dataLimits = uniqueValues(variants.map((item) => item.dataLimitLabel));
   const durations = uniqueValues(variants.map((item) => item.durationLabel));
@@ -132,14 +132,22 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
   };
 
   const handleTripDayClick = (day: number) => {
-    const matchingVariant = displayProduct.variants.find((item) => item.medium === 'esim' && item.tripDayOptions?.includes(day));
-    if (!matchingVariant) return;
+    const matchingVariant = resolveVariantForTripDay({
+      variants: displayProduct.variants,
+      day,
+      selectedVariant: variant,
+      selectedDataPolicy: displayProduct.dataPolicy,
+    });
+    if (!matchingVariant) {
+      triggerNotification('Ngày chuyến đi không có trong gói đang chọn.', 'error');
+      return;
+    }
     setRequestedTripDays(day);
     setVariantId(matchingVariant.id);
   };
 
   const cartItem = selectedViewVariant && variant ? {
-    id: effectiveRequestedTripDays ? `${variant.id}:trip:${effectiveRequestedTripDays}` : variant.id,
+    id: requestedTripDays ? `${variant.id}:trip:${requestedTripDays}` : variant.id,
     productId: displayProduct.id,
     variantId: variant.id,
     slug: displayProduct.slug,
@@ -155,12 +163,16 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
     duration: variant.duration ?? undefined,
     dataLimit: variant.dataLimit ?? undefined,
     topupDays: variant.topupDays ?? (variant.durationUnit === 'day' ? variant.durationValue : undefined),
-    ...(effectiveRequestedTripDays ? { requestedTripDays: effectiveRequestedTripDays } : {}),
+    ...(requestedTripDays ? { requestedTripDays } : {}),
     ...(topupSimAssetId ? { topupSimAssetId } : {}),
     image: getProductMedia(displayProduct),
   } : null;
 
   const handleAddToCart = (openCart: boolean) => {
+    if (variant?.medium === 'esim' && (variant.tripDayOptions?.length ?? 0) > 1 && requestedTripDays === undefined) {
+      triggerNotification('Vui lòng chọn số ngày chuyến đi trước khi tiếp tục.', 'error');
+      return;
+    }
     if (!cartItem || !currentVariantAvailable) {
       triggerNotification('Gói sản phẩm hiện không khả dụng.', 'error');
       return;
@@ -250,12 +262,12 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
 
             {durations.length > 0 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn thời hạn</h3></div><div className="packages-card-grid">{durations.map((duration) => { const supported = displayProduct.variants.some((item) => item.duration === duration && (!currentDataLimit || item.dataLimit === currentDataLimit)); return <button type="button" key={duration} disabled={!supported} className={`package-card-option ${currentDuration === duration ? 'selected' : ''} ${!supported ? 'disabled' : ''}`} onClick={() => supported && handleDurationClick(duration)}><span className="pkg-card-limit">{duration}</span>{currentDuration === duration && <span className="selected-check-indicator"><Check size={10} strokeWidth={3} /></span>}</button>; })}</div><p className="package-disclaimer-note">Thời hạn và điều kiện sử dụng lấy từ variant canonical hiện tại.</p></div>}
 
-            {hasTripDaySelector && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Bạn đi bao nhiêu ngày?</h3><span className="package-badge-info">Chọn ngày chuyến đi</span></div><div className="packages-card-grid">{tripDayChoices.map((day) => <button type="button" key={day} className={`package-card-option ${effectiveRequestedTripDays === day ? 'selected' : ''}`} onClick={() => handleTripDayClick(day)}><span className="pkg-card-limit">{day} ngày</span>{effectiveRequestedTripDays === day && <span className="selected-check-indicator"><Check size={10} strokeWidth={3} /></span>}</button>)}</div><p className="package-disclaimer-note">Số ngày chuyến đi dùng để chọn đúng gói canonical, không phải thời hạn eSIM do Provider cấp.</p></div>}
+            {hasTripDaySelector && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Bạn đi bao nhiêu ngày?</h3><span className="package-badge-info">Chọn ngày chuyến đi</span></div><div className="packages-card-grid">{tripDayChoices.map((day) => <button type="button" key={day} className={`package-card-option ${requestedTripDays === day ? 'selected' : ''}`} onClick={() => handleTripDayClick(day)}><span className="pkg-card-limit">{day} ngày</span>{requestedTripDays === day && <span className="selected-check-indicator"><Check size={10} strokeWidth={3} /></span>}</button>)}</div><p className="package-disclaimer-note">Số ngày chuyến đi dùng để chọn đúng gói canonical, không phải thời hạn eSIM do Provider cấp.</p></div>}
 
-            {dataLimits.length === 0 && durations.length === 0 && variants.length > 1 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn phiên bản</h3></div><div className="packages-card-grid">{variants.map((item) => <button type="button" key={item.id} className={`package-card-option ${item.id === variantId ? 'selected' : ''}`} onClick={() => setVariantId(item.id)}><span className="pkg-card-limit">{item.deviceModelLabel || item.sku}</span><span className="pkg-card-duration">{item.currency}</span></button>)}</div></div>}
+            {dataLimits.length === 0 && durations.length === 0 && variants.length > 1 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn phiên bản</h3></div><div className="packages-card-grid">{variants.map((item) => <button type="button" key={item.id} className={`package-card-option ${item.id === variantId ? 'selected' : ''}`} onClick={() => { setRequestedTripDays(undefined); setVariantId(item.id); }}><span className="pkg-card-limit">{item.deviceModelLabel || item.sku}</span><span className="pkg-card-duration">{item.currency}</span></button>)}</div></div>}
           </div>
 
-          <div className="product-checkout-col"><div className="checkout-card-box"><span className="checkout-tag-label">{purchaseLabel}</span><div className="checkout-price-row"><span className="checkout-price">{variant ? `${(variant.price * effectiveQuantity).toLocaleString('vi-VN')} ${variant.currency}` : '—'}</span>{variant?.compareAtPrice && variant.compareAtPrice > variant.price && <span className="checkout-exchange-price">{variant.compareAtPrice.toLocaleString('vi-VN')} {variant.currency}</span>}</div><div className="checkout-meta-list"><div className="checkout-meta-item"><Check size={14} className="meta-check-icon" /><span>{selectedViewVariant?.dataLimitLabel || selectedViewVariant?.deviceModelLabel || product.name}</span></div><div className="checkout-meta-item"><Check size={14} className="meta-check-icon" /><span>{effectiveRequestedTripDays ? `Số ngày chuyến đi: ${effectiveRequestedTripDays} ngày` : selectedViewVariant?.durationLabel || (physical ? 'Có giao hàng' : displayProduct.operation === 'topup' ? 'Dùng cho SIM hiện có' : 'Theo gói')}</span></div><div className="checkout-meta-item"><Check size={14} className="meta-check-icon" /><span>{fulfillmentLabel}</span></div></div><div className="checkout-quantity-row"><span className="qty-label">Số lượng</span>{displayProduct.operation === 'topup' ? <span className="qty-number">1</span> : <div className="qty-selectors"><button type="button" className="qty-btn" onClick={() => setQuantity((value) => Math.max(1, value - 1))} disabled={quantity <= 1} aria-label="Giảm số lượng"><Minus size={14} /></button><span className="qty-number">{quantity}</span><button type="button" className="qty-btn" onClick={() => setQuantity((value) => Math.min(99, value + 1))} aria-label="Tăng số lượng"><Plus size={14} /></button></div>}</div><div className="checkout-actions"><button type="button" className="checkout-btn primary" onClick={() => handleAddToCart(false)} disabled={!currentVariantAvailable}>Thêm vào giỏ hàng</button><button type="button" className="checkout-btn secondary" onClick={() => handleAddToCart(true)} disabled={!currentVariantAvailable}>Mua ngay</button></div><div className="checkout-footer-trust"><span className="trust-title">Thanh toán an toàn & bảo mật</span><div className="payment-gateways-strip"><span className="pay-tag">VISA</span><span className="pay-tag">Mastercard</span><span className="pay-tag">PayPal</span><span className="pay-tag">Apple Pay</span></div></div></div></div>
+          <div className="product-checkout-col"><div className="checkout-card-box"><span className="checkout-tag-label">{purchaseLabel}</span><div className="checkout-price-row"><span className="checkout-price">{variant ? `${(variant.price * effectiveQuantity).toLocaleString('vi-VN')} ${variant.currency}` : '—'}</span>{variant?.compareAtPrice && variant.compareAtPrice > variant.price && <span className="checkout-exchange-price">{variant.compareAtPrice.toLocaleString('vi-VN')} {variant.currency}</span>}</div><div className="checkout-meta-list"><div className="checkout-meta-item"><Check size={14} className="meta-check-icon" /><span>{selectedViewVariant?.dataLimitLabel || selectedViewVariant?.deviceModelLabel || product.name}</span></div><div className="checkout-meta-item"><Check size={14} className="meta-check-icon" /><span>{requestedTripDays ? `Số ngày chuyến đi: ${requestedTripDays} ngày` : selectedViewVariant?.durationLabel || (physical ? 'Có giao hàng' : displayProduct.operation === 'topup' ? 'Dùng cho SIM hiện có' : 'Theo gói')}</span></div><div className="checkout-meta-item"><Check size={14} className="meta-check-icon" /><span>{fulfillmentLabel}</span></div></div><div className="checkout-quantity-row"><span className="qty-label">Số lượng</span>{displayProduct.operation === 'topup' ? <span className="qty-number">1</span> : <div className="qty-selectors"><button type="button" className="qty-btn" onClick={() => setQuantity((value) => Math.max(1, value - 1))} disabled={quantity <= 1} aria-label="Giảm số lượng"><Minus size={14} /></button><span className="qty-number">{quantity}</span><button type="button" className="qty-btn" onClick={() => setQuantity((value) => Math.min(99, value + 1))} aria-label="Tăng số lượng"><Plus size={14} /></button></div>}</div><div className="checkout-actions"><button type="button" className="checkout-btn primary" onClick={() => handleAddToCart(false)} disabled={!currentVariantAvailable}>Thêm vào giỏ hàng</button><button type="button" className="checkout-btn secondary" onClick={() => handleAddToCart(true)} disabled={!currentVariantAvailable}>Mua ngay</button></div><div className="checkout-footer-trust"><span className="trust-title">Thanh toán an toàn & bảo mật</span><div className="payment-gateways-strip"><span className="pay-tag">VISA</span><span className="pay-tag">Mastercard</span><span className="pay-tag">PayPal</span><span className="pay-tag">Apple Pay</span></div></div></div></div>
         </div>
 
         <div className="quick-benefits-strip"><div className="benefit-cell"><Mail className="benefit-icon" /><div><span className="benefit-title">{fulfillmentLabel}</span><span className="benefit-desc">Điều kiện lấy từ fulfillment canonical</span></div></div><div className="benefit-cell"><Globe className="benefit-icon" /><div><span className="benefit-title">Dữ liệu minh bạch</span><span className="benefit-desc">Sản phẩm và variant đang được publish</span></div></div><div className="benefit-cell"><Headphones className="benefit-icon" /><div><span className="benefit-title">Hỗ trợ HICO</span><span className="benefit-desc">Đội ngũ sẵn sàng hỗ trợ</span></div></div><div className="benefit-cell"><Settings className="benefit-icon" /><div><span className="benefit-title">Chọn đúng variant</span><span className="benefit-desc">Cart lưu productId và variantId</span></div></div></div>

@@ -53,6 +53,12 @@ export const getVariantPublishReadiness = ({
       message: 'Product chưa được xác nhận loại nghiệp vụ.',
     });
   }
+  if (variant.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER') {
+    errors.push({
+      code: 'WORLDMOVE_PHYSICAL_ORDER_NOT_READY',
+      message: 'Worldmove physical SIM chưa sẵn sàng để publish.',
+    });
+  }
   if (!products.some((item) => item.id === variant.productId)) {
     errors.push({
       code: 'PRODUCT_NOT_FOUND',

@@ -98,7 +98,7 @@ const mappingChange = ({ variant, product, operation, providerOffers }) => {
   if (offer.providerProductType !== expectedType) {
     return { error: operationError('PROVIDER_METHOD_MISMATCH', 'Offer provider không đúng loại fulfillment.') };
   }
-  const medium = offer.providerProductType === 1 ? 'physical_sim' : 'esim';
+  const medium = offer.providerProductType === 0 ? 'esim' : 'physical_sim';
   return {
     supplier: 'worldmove',
     medium,
@@ -108,8 +108,8 @@ const mappingChange = ({ variant, product, operation, providerOffers }) => {
     providerProductId: offer.providerProductId,
     leSIM: offer.leSIM,
     providerProductType: offer.providerProductType,
-    providerProductType: offer.providerProductType,
     requiresExistingSim: providerMethod === 'WORLDMOVE_TOPUP',
+    shippingRequired: providerMethod === 'WORLDMOVE_PHYSICAL_ORDER',
     active: false,
     needsReview: false,
   };

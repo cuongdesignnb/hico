@@ -313,8 +313,8 @@ try {
       },
     },
   );
-  summary.skuConflict = duplicateSku.status === 409
-    && duplicateSku.body.code === 'SKU_CONFLICT';
+  summary.duplicateSkuMetadataOnly = duplicateSku.status === 201
+    && duplicateSku.body.variant?.sku === variantSku;
 
   const duplicateSlug = await api('/api/admin/catalog/products', {
     method: 'POST',

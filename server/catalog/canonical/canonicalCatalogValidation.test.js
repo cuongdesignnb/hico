@@ -63,6 +63,46 @@ test('does not treat a shared SKU with distinct WMIDs as a publish blocker', () 
   assert.equal(result.publishSafety.blockedReasons.duplicateSku, undefined);
 });
 
+test('does not treat one legacy SKU reused across top-up days as a publish blocker', () => {
+  const topupProduct = product({
+    id: 'p-topup',
+    slug: 'nap-sim',
+    operation: 'topup',
+    coverageType: 'not_applicable',
+    coverageIds: [],
+  });
+  const topupOffer = {
+    id: 'offer-topup',
+    wmproductId: 'WM-TOPUP',
+    providerProductType: 2,
+    active: true,
+  };
+  const variants = [3, 5].map((topupDays, index) => variant({
+    id: `v-topup-${topupDays}`,
+    productId: topupProduct.id,
+    sku: 'SHARED-TOPUP-SKU',
+    medium: 'physical_sim',
+    supplier: 'worldmove',
+    fulfillmentMethod: 'WORLDMOVE_TOPUP',
+    providerProductType: 2,
+    providerOfferId: topupOffer.id,
+    wmproductId: topupOffer.wmproductId,
+    topupDays,
+    requiresExistingSim: true,
+    needsReview: false,
+    active: index === 0,
+  }));
+  const result = validateCanonicalCatalog({
+    products: [topupProduct],
+    variants,
+    providerOffers: [topupOffer],
+  });
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.duplicateSkus, ['SHARED-TOPUP-SKU']);
+  assert.equal(result.publishSafety.blockedReasons.duplicateSku, undefined);
+  assert.equal(result.publishSafety.publishableVariants, variants.length);
+});
+
 test('accepts an unresolved manual provider fallback while keeping it review-only', () => {
   const result = validateCanonicalCatalog({
     products: [product()],

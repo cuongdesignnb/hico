@@ -163,6 +163,13 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
     if (product.status !== 'active' || variant.active !== true || variant.needsReview === true) {
       throw new CheckoutError('Sản phẩm không thể thanh toán lúc này.', 'VARIANT_NOT_AVAILABLE');
     }
+    if (variant.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER') {
+      throw new CheckoutError(
+        'Worldmove physical SIM chưa sẵn sàng để thanh toán.',
+        'WORLDMOVE_PHYSICAL_ORDER_NOT_READY',
+        503,
+      );
+    }
     if (typeof variant.price !== 'number' || !Number.isFinite(variant.price) || variant.price < 0) {
       throw new CheckoutError('Giá sản phẩm không hợp lệ.', 'FULFILLMENT_INVALID');
     }
@@ -219,11 +226,19 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
         throw new CheckoutError('Loại sản phẩm Worldmove không khớp nghiệp vụ của gói.', 'PROVIDER_PRODUCT_TYPE_MISMATCH');
       }
     }
+    const allowedTripDays = Array.isArray(variant.tripDayOptions) ? variant.tripDayOptions : [];
+    if (
+      product.operation === 'new_subscription'
+      && variant.medium === 'esim'
+      && allowedTripDays.length > 1
+      && requested.requestedTripDays === undefined
+    ) {
+      throw new CheckoutError('Vui lòng chọn số ngày chuyến đi.', 'TRIP_DAY_REQUIRED');
+    }
     if (requested.requestedTripDays !== undefined) {
       if (product.operation === 'topup' || variant.medium !== 'esim') {
         throw new CheckoutError('Số ngày chuyến đi chỉ áp dụng cho eSIM.', 'TRIP_DAY_NOT_APPLICABLE');
       }
-      const allowedTripDays = Array.isArray(variant.tripDayOptions) ? variant.tripDayOptions : [];
       if (!allowedTripDays.includes(requested.requestedTripDays)) {
         throw new CheckoutError('Số ngày chuyến đi không khớp với biến thể canonical.', 'TRIP_DAY_MISMATCH');
       }
