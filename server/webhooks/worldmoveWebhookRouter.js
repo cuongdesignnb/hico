@@ -2,8 +2,9 @@ import express from 'express';
 import { sendCheckoutError } from '../checkout/checkoutError.js';
 import { readWebhookConfig, verifyWebhookSignature } from './webhookSignature.js';
 import { normalizeWebhookEvent } from './webhookValidation.js';
+import { normalizeWorldmoveCallback } from '../providers/worldmove/worldmoveCallback.js';
 
-export const createWorldmoveWebhookRouter = ({ fulfillmentService, replayRepository, env = process.env, logger = console, rateLimitPerMinute = Number(env.CHECKOUT_RATE_LIMIT_PER_MINUTE ?? 120) } = {}) => {
+export const createWorldmoveWebhookRouter = ({ fulfillmentService, replayRepository, merchantId = process.env.WORLDMOVE_MERCHANT_ID, token = process.env.WORLDMOVE_TOKEN, env = process.env, logger = console, rateLimitPerMinute = Number(env.CHECKOUT_RATE_LIMIT_PER_MINUTE ?? 120) } = {}) => {
   const router = express.Router();
   const config = readWebhookConfig(env);
   const rateLimit = Number.isFinite(rateLimitPerMinute) && rateLimitPerMinute > 0 ? rateLimitPerMinute : 120;
@@ -17,17 +18,22 @@ export const createWorldmoveWebhookRouter = ({ fulfillmentService, replayReposit
     else current.count += 1;
 
     const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : JSON.stringify(req.body ?? {});
-    const verified = verifyWebhookSignature({
-      rawBody,
-      timestamp: req.get('x-worldmove-timestamp'),
-      signature: req.get('x-worldmove-signature'),
-      secret: config.secret,
-      toleranceSeconds: config.toleranceSeconds,
-    });
-    if (!verified.valid) return res.status(401).json({ error: 'Webhook signature is invalid.', code: verified.code });
     let event;
     try {
-      event = normalizeWebhookEvent(JSON.parse(rawBody), rawBody);
+      const payload = JSON.parse(rawBody);
+      if (merchantId && token) {
+        event = normalizeWorldmoveCallback(payload, rawBody, { merchantId, token });
+      } else {
+        const verified = verifyWebhookSignature({
+          rawBody,
+          timestamp: req.get('x-worldmove-timestamp'),
+          signature: req.get('x-worldmove-signature'),
+          secret: config.secret,
+          toleranceSeconds: config.toleranceSeconds,
+        });
+        if (!verified.valid) return res.status(401).json({ error: 'Webhook signature is invalid.', code: verified.code });
+        event = normalizeWebhookEvent(payload, rawBody);
+      }
     } catch (error) {
       return sendCheckoutError(res, error);
     }
@@ -44,7 +50,7 @@ export const createWorldmoveWebhookRouter = ({ fulfillmentService, replayReposit
       }
     }).then((result) => {
       if (!result) return res.status(404).json({ error: 'Provider order not found.', code: 'PROVIDER_ORDER_NOT_FOUND' });
-      return res.status(200).json({ ok: true, duplicate: Boolean(result.duplicate), orderId: result.orderId ?? null, status: result.status ?? 'accepted' });
+      return res.type('text/plain').status(200).send('1');
     }).catch((error) => {
       logger.warn(`[webhook] processing failed code=${error?.code ?? 'unknown'}`);
       if (error?.retryable) return res.status(503).json({ error: 'Webhook processing is temporarily unavailable.', code: 'WEBHOOK_PROCESSING_RETRYABLE' });

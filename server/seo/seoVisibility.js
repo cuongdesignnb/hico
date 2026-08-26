@@ -4,8 +4,7 @@ export const isPublicVariant = (variant) => Boolean(
   variant
   && variant.active === true
   && variant.archived !== true
-  && variant.needsReview !== true
-  && variant.skuConflict !== true,
+  && variant.needsReview !== true,
 );
 
 export const getSeoVisibility = (product, variants = []) => {

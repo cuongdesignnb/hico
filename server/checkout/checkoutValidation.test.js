@@ -12,7 +12,7 @@ const request = { items: [{ variantId: 'v-1', quantity: 1 }], shipping: null, to
 test('canonical validation uses variant price and rejects empty or unavailable carts', () => {
   assert.throws(() => validateCanonicalCart({ catalog, request: { ...request, items: [] } }), (error) => error.code === 'CART_EMPTY');
   assert.throws(() => validateCanonicalCart({ catalog, request: { ...request, items: [{ variantId: 'missing', quantity: 1 }] } }), (error) => error.code === 'VARIANT_NOT_FOUND');
-  assert.throws(() => validateCanonicalCart({ catalog, request: { ...request, items: [{ variantId: 'v-1', quantity: 1, price: 1 }] } }), (error) => error.code === 'PRICE_CHANGED');
+  assert.throws(() => validateCanonicalCart({ catalog, request: { ...request, items: [{ variantId: 'v-1', quantity: 1, clientPrice: 1 }] } }), (error) => error.code === 'PRICE_CHANGED');
   assert.equal(validateCanonicalCart({ catalog, request }).subtotal, 280000);
   assert.equal(validateCanonicalCart({ catalog, request: { ...request, items: [{ variantId: 'v-1', quantity: 1, medium: 'physical_sim', operation: 'device_sale' }] } }).shipping, null);
 });
@@ -22,9 +22,9 @@ test('canonical validation blocks mixed currency, shipping, and invalid top-up i
   assert.throws(() => validateCanonicalCart({ catalog: { products: [product], variants: [baseVariant, usd] }, request: { ...request, items: [{ variantId: 'v-1', quantity: 1 }, { variantId: 'v-usd', quantity: 1 }] } }), (error) => error.code === 'MIXED_CURRENCY_CART');
   const physical = { ...baseVariant, medium: 'physical_sim', fulfillmentMethod: 'HICO_PHYSICAL_STOCK', id: 'v-physical' };
   assert.throws(() => validateCanonicalCart({ catalog: { products: [product], variants: [physical] }, request: { ...request, items: [{ variantId: 'v-physical', quantity: 1 }] } }), (error) => error.code === 'SHIPPING_REQUIRED');
-  const topup = { ...baseVariant, operation: 'topup', supplier: 'worldmove', providerProductType: 2, fulfillmentMethod: 'WORLDMOVE_TOPUP', providerOfferId: 'offer-topup', wmproductId: 'WM-TOPUP', id: 'v-topup' };
-  const topupCatalog = { products: [product], variants: [topup] };
-  assert.throws(() => validateCanonicalCart({ catalog: topupCatalog, providerOffers: [{ id: 'offer-topup', wmproductId: 'WM-TOPUP', active: true }], request: { ...request, items: [{ variantId: 'v-topup', quantity: 1 }] } }), (error) => error.code === 'TOPUP_INPUT_INVALID');
+  const topup = { ...baseVariant, operation: 'topup', medium: 'physical_sim', topupDays: 10, supplier: 'worldmove', providerProductType: 2, fulfillmentMethod: 'WORLDMOVE_TOPUP', providerOfferId: 'offer-topup', wmproductId: 'WM-TOPUP', id: 'v-topup' };
+  const topupCatalog = { products: [{ ...product, operation: 'topup' }], variants: [topup] };
+  assert.throws(() => validateCanonicalCart({ catalog: topupCatalog, providerOffers: [{ id: 'offer-topup', wmproductId: 'WM-TOPUP', providerProductType: 2, active: true }], request: { ...request, items: [{ variantId: 'v-topup', quantity: 1 }] } }), (error) => error.code === 'TOPUP_INPUT_INVALID');
 });
 
 test('canonical validation does not request shipping for a physical top-up', () => {
@@ -41,14 +41,37 @@ test('canonical validation does not request shipping for a physical top-up', () 
     providerOfferId: 'offer-physical-topup',
     wmproductId: 'WM-PHYSICAL-TOPUP',
     requiresExistingSim: true,
+    topupDays: 10,
   };
   const result = validateCanonicalCart({
     catalog: { products: [topupProduct], variants: [topupVariant] },
     providerOffers: [{ id: 'offer-physical-topup', wmproductId: 'WM-PHYSICAL-TOPUP', providerProductType: 2, active: true }],
-    request: { ...request, items: [{ variantId: topupVariant.id, quantity: 1 }], topup: { simNum: '0900000000', day: 10 } },
+    request: { ...request, items: [{ variantId: topupVariant.id, quantity: 1 }], topup: { simNum: '12345678901234567890', day: 10 } },
   });
   assert.equal(result.shipping, null);
-  assert.deepEqual(result.topup, { simNum: '0900000000', day: 10 });
+  assert.deepEqual(result.topup, { simNum: '12345678901234567890', day: 10 });
+});
+
+test('canonical validation accepts an owned SIM asset without a client SIM number', () => {
+  const topupProduct = { ...product, id: 'p-topup-asset', operation: 'topup' };
+  const topupVariant = {
+    ...baseVariant,
+    id: 'v-topup-asset',
+    productId: topupProduct.id,
+    medium: 'physical_sim',
+    supplier: 'worldmove',
+    providerProductType: 2,
+    fulfillmentMethod: 'WORLDMOVE_TOPUP',
+    providerOfferId: 'offer-topup-asset',
+    wmproductId: 'WM-TOPUP-ASSET',
+    topupDays: 10,
+  };
+  const result = validateCanonicalCart({
+    catalog: { products: [topupProduct], variants: [topupVariant] },
+    providerOffers: [{ id: 'offer-topup-asset', wmproductId: 'WM-TOPUP-ASSET', providerProductType: 2, active: true }],
+    request: { ...request, items: [{ variantId: topupVariant.id, quantity: 1 }], topup: { simAssetId: 'asset-1', day: 10 } },
+  });
+  assert.deepEqual(result.topup, { day: 10, simAssetId: 'asset-1' });
 });
 
 test('canonical checkout rejects unresolved operation with a typed reason', () => {

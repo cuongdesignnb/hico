@@ -59,5 +59,21 @@ export const createCustomerAssetRepository = ({ orderRepository, fulfillmentRepo
       if (!record || record.orderId !== asset.orderId || (record.itemIndex !== asset.itemIndex && record.orderItemId !== `${asset.orderId}:item:${asset.itemIndex}`)) throw notFound();
       return { asset, record };
     },
+    async resolveTopupSimNumber(customerId, assetId) {
+      const { asset, record } = await this.sourceFor(customerId, assetId);
+      if (!['TOPUP', 'PHYSICAL_SIM'].includes(asset.assetType)) throw notFound();
+      const order = await orderRepository.get?.(asset.orderId);
+      const item = order?.items?.[asset.itemIndex] ?? {};
+      const itemData = record?.itemData && typeof record.itemData === 'object' ? record.itemData : {};
+      const simNum = [
+        order?.topup?.simNum,
+        item.simNum,
+        item.simNumber,
+        itemData.simNum,
+        itemData.simNumber,
+      ].find((value) => typeof value === 'string' && /^\d{20}$/.test(value.trim()));
+      if (!simNum) throw Object.assign(new Error('Customer SIM number is unavailable.'), { code: 'SIM_NUMBER_UNAVAILABLE' });
+      return simNum.trim();
+    },
   };
 };

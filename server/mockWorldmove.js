@@ -1,12 +1,18 @@
 import express from 'express';
 import cors from 'cors';
-import CryptoJS from 'crypto-js';
 import axios from 'axios';
-import crypto from 'node:crypto';
+import {
+  createEsimOrderCallbackSignature,
+  createEsimRedeemCallbackSignature,
+  createRedeemCallbackSignature,
+  createTopupCallbackSignature,
+  createTopupSignature,
+  sha1Worldmove,
+} from './providers/worldmove/worldmoveSignature.js';
 
 const app = express();
 const PORT = 4000;
-const TOKEN = 'HICO_SECRET_TOKEN';
+const TOKEN = process.env.WORLDMOVE_TOKEN || 'HICO_SECRET_TOKEN';
 
 app.use(cors());
 app.use(express.json());
@@ -15,29 +21,25 @@ app.use(express.json());
 const activeOrders = new Map();
 const activeRedemptions = new Map();
 const esimUsageTracker = new Map(); // rcode -> totalBytes Used
-const webhookSecret = process.env.WORLDMOVE_WEBHOOK_SECRET || '';
 
 // SHA1 encryption helper
 function calculateSha1(content) {
-  return CryptoJS.SHA1(content).toString(CryptoJS.enc.Hex).toUpperCase();
+  return sha1Worldmove(content);
 }
 
 const canonicalRequest = (req) => req.get('X-HICO-Checkout-Engine') === 'canonical';
 
 async function sendCanonicalEvent(payload, attempt = 1) {
-  if (!webhookSecret) return;
   const rawBody = JSON.stringify(payload);
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const signature = `sha256=${crypto.createHmac('sha256', webhookSecret).update(`${timestamp}.${rawBody}`, 'utf8').digest('hex')}`;
   try {
     const response = await axios.post(
       process.env.HICO_WEBHOOK_URL || 'http://localhost:5000/api/webhooks/worldmove/events',
       rawBody,
-      { headers: { 'Content-Type': 'application/json', 'X-Worldmove-Timestamp': timestamp, 'X-Worldmove-Signature': signature } },
+      { headers: { 'Content-Type': 'application/json' } },
     );
-    if (!response.data?.ok) throw new Error('HICO did not acknowledge canonical event');
+    if (response.data !== '1' && response.data !== 1) throw new Error('HICO did not acknowledge canonical event');
   } catch (error) {
-    console.error(`[WM] Canonical callback failed: ${error.message}`);
+    console.error(`[WM] Canonical callback failed: ${error?.code ?? 'request_failed'}`);
     if (attempt < 4) setTimeout(() => sendCanonicalEvent(payload, attempt + 1), 5000);
   }
 }
@@ -97,7 +99,8 @@ app.post('/Api/SOrder/mybuyesim', (req, res) => {
     email,
     prodList,
     merchantId,
-    deptId
+    deptId,
+    flow: 'esim_order',
   });
 
   // Return success response immediately as per specs
@@ -110,18 +113,18 @@ app.post('/Api/SOrder/mybuyesim', (req, res) => {
 
 // 2b. Buy leSIM (Async Order Creation without Email)
 app.post('/Api/SOrder/mybuyesimRedemption', (req, res) => {
-  const { merchantId, deptId, prodList, systemMail, encStr } = req.body;
+  const { merchantId, deptId, qrcodeType = 2, prodList, encStr } = req.body;
 
   if (!merchantId || !deptId || !prodList || !encStr) {
     return res.json({ code: 400, msg: 'Parameters cannot be empty.' });
   }
 
-  // Validate encStr = SHA1(merchantId + deptId + '0' + sum(wmproductId + qty) + token)
+  // Validate the documented order-and-redeem signature.
   let prodSum = '';
   prodList.forEach(p => {
     prodSum += (p.wmproductId + p.qty);
   });
-  const expectedSignature = calculateSha1(merchantId + deptId + '0' + prodSum + TOKEN);
+  const expectedSignature = calculateSha1(merchantId + deptId + qrcodeType + prodSum + TOKEN);
   
   if (encStr !== expectedSignature) {
     return res.json({ code: 401, msg: 'Encryption verification failed.' });
@@ -136,7 +139,9 @@ app.post('/Api/SOrder/mybuyesimRedemption', (req, res) => {
     email: '0',
     prodList,
     merchantId,
-    deptId
+    deptId,
+    flow: 'esim_order_redeem',
+    qrcodeType,
   });
 
   // Return success response immediately as per specs
@@ -153,16 +158,39 @@ async function triggerCanonicalOrderEvent(orderId) {
   const itemList = order.prodList.map((p) => {
     const iccid = `89852${Math.floor(1000000000000 + Math.random() * 9000000000000)}`;
     const redemptionCode = `RC_${Math.random().toString(36).substring(2, 10).toLowerCase()}`;
-    activeRedemptions.set(redemptionCode, { iccid, productName: 'Worldmove eSIM', orderId });
-    return { iccid, productName: 'Worldmove eSIM', redemptionCode };
+    const productName = p.productName || 'Worldmove eSIM';
+    activeRedemptions.set(redemptionCode, { iccid, productName, orderId, merchantId: order.merchantId });
+    return order.flow === 'esim_order_redeem'
+      ? {
+        iccid,
+        productName,
+        rcode: redemptionCode,
+        qrcodeType: order.qrcodeType ?? 2,
+        qrcode: 'https://tfmshippingsys.fastmove.com.tw/tApi/images/redeem_sample.jpg',
+        qrcodeContent: `LPA:1$rsp.worldmove.com$${redemptionCode}`,
+        resultcode: '000',
+        resultmsg: 'success',
+        code: 0,
+        msg: 'success',
+        salePlanDays: 15,
+        pin1: '1111',
+        pin2: '2222',
+        puk1: '33334444',
+        puk2: '44445555',
+        cfCode: '849372',
+        apnExplain: 'Worldmove APN',
+      }
+      : { iccid, productName, redemptionCode };
   });
-  await sendCanonicalEvent({
-    eventId: `evt-${orderId}-order`,
-    eventType: 'ESIM_ORDER_CALLBACK',
-    providerOrderId: orderId,
+  const payload = {
     orderId,
+    ...(order.flow === 'esim_order' ? { orderSN: `SN_${Date.now()}`, orderTime: new Date().toISOString().slice(0, 19).replace('T', ' ') } : {}),
     itemList,
-  });
+  };
+  payload.encStr = order.flow === 'esim_order'
+    ? createEsimOrderCallbackSignature({ merchantId: order.merchantId, orderId, orderSN: payload.orderSN, orderTime: payload.orderTime, itemList, token: TOKEN })
+    : createEsimRedeemCallbackSignature({ merchantId: order.merchantId, orderId, itemList, token: TOKEN });
+  await sendCanonicalEvent(payload);
 }
 
 // Helper for Order Callback
@@ -244,7 +272,7 @@ app.post('/Api/OrderRedemption/redemption', (req, res) => {
     return res.json({ code: 411, msg: 'Redemption code does not exist.' });
   }
 
-  console.log(`[WM] Redemption received for ${rcode}. Scheduling redeem callback...`);
+  console.log('[WM] Redemption received. Scheduling redeem callback...');
   res.json({ code: 0, msg: '成功' });
 
   // Schedule async callback to HICO Backend in 3 seconds
@@ -255,23 +283,24 @@ app.post('/Api/OrderRedemption/redemption', (req, res) => {
 async function triggerCanonicalRedeemEvent(rcode, qrcodeType) {
   const details = activeRedemptions.get(rcode);
   if (!details) return;
-  await sendCanonicalEvent({
-    eventId: `evt-${details.orderId}-${rcode}-redeem`,
-    eventType: 'REDEEM_CALLBACK',
-    providerOrderId: details.orderId,
-    orderId: details.orderId,
-    item: {
-      iccid: details.iccid,
-      productName: details.productName,
-      rcode,
-      qrcodeType,
-      qrcode: 'https://tfmshippingsys.fastmove.com.tw/tApi/images/redeem_sample.jpg',
-      qrcodeContent: `LPA:1$rsp.worldmove.com$${rcode}`,
-      pin1: '1111',
-      puk1: '33334444',
-      apnExplain: 'Worldmove APN',
-    },
-  });
+  const qrcode = 'https://tfmshippingsys.fastmove.com.tw/tApi/images/redeem_sample.jpg';
+  const payload = {
+    rcode,
+    qrcodeType,
+    qrcode,
+    qrcodeContent: `LPA:1$rsp.worldmove.com$${rcode}`,
+    iccid: details.iccid,
+    productName: details.productName,
+    resultcode: '000',
+    pin1: '1111',
+    pin2: '2222',
+    puk1: '33334444',
+    puk2: '44445555',
+    cfCode: '849372',
+    apnExplain: 'Worldmove APN',
+  };
+  payload.encStr = createRedeemCallbackSignature({ merchantId: details.merchantId ?? activeOrders.get(details.orderId)?.merchantId, qrcode, rcode, qrcodeType, token: TOKEN });
+  await sendCanonicalEvent(payload);
 }
 
 app.post('/Api/SOrder/mybuysim', (req, res) => {
@@ -284,12 +313,40 @@ app.post('/Api/SOrder/mybuysim', (req, res) => {
 });
 
 app.post('/Api/SOrder/mydeposit', (req, res) => {
-  const { merchantId, deptId, email, prodList, encStr } = req.body;
-  if (!merchantId || !deptId || !email || !Array.isArray(prodList) || !encStr) return res.json({ code: 400, msg: 'Parameters cannot be empty.' });
+  const { merchantId, deptId, prodList, encStr } = req.body;
+  if (!merchantId || !deptId || !Array.isArray(prodList) || !encStr) return res.json({ code: 400, msg: 'Parameters cannot be empty.' });
+  if (prodList.some((item) => !/^\d{20}$/.test(String(item.simNum ?? '')) || Number(item.day) < 1 || Number(item.day) > 30)) return res.json({ code: 400, msg: 'Top-up parameters are invalid.' });
+  const expectedSignature = createTopupSignature({ merchantId, deptId, prodList, token: TOKEN });
+  if (encStr !== expectedSignature) return res.json({ code: 401, msg: 'Encryption verification failed.' });
   const orderId = `WM_TOPUP_${Date.now()}`;
+  activeOrders.set(orderId, { orderId, merchantId, deptId, prodList, flow: 'topup' });
   res.json({ code: 0, msg: 'Success', orderId });
-  if (canonicalRequest(req)) setTimeout(() => sendCanonicalEvent({ eventId: `evt-${orderId}-topup`, eventType: 'TOPUP_CALLBACK', providerOrderId: orderId, orderId, provisioned: true }), 1000);
+  if (canonicalRequest(req)) setTimeout(() => {
+    const payload = { orderId, itemList: prodList.map((item) => ({ wmproductId: item.wmproductId, day: item.day, simNum: item.simNum, code: 1, msg: 'success' })) };
+    payload.encStr = createTopupCallbackSignature({ merchantId, orderId, itemList: payload.itemList, token: TOKEN });
+    return sendCanonicalEvent(payload);
+  }, 1000);
 });
+
+app.post('/Api/SimQuery/simExists', (req, res) => {
+  const { merchantId, simNum, encStr } = req.body;
+  if (!merchantId || !/^\d{20}$/.test(String(simNum ?? '')) || encStr !== calculateSha1(`${merchantId}${simNum}${TOKEN}`)) return res.json({ code: 400, msg: 'SIM number is invalid.' });
+  return res.json({ code: 0, exists: true, simNum });
+});
+
+app.post('/Api/SOrder/querybuyesim', (req, res) => {
+  const order = activeOrders.get(req.body?.orderId);
+  return res.json(order ? { code: 0, orderId: order.orderId, status: 'SUCCESS' } : { code: 411, msg: 'Order not found.' });
+});
+
+app.post('/Api/SOrder/querybuyesimRedemption', (req, res) => {
+  const order = activeOrders.get(req.body?.orderId);
+  return res.json(order ? { code: 0, orderId: order.orderId, status: 'SUCCESS' } : { code: 411, msg: 'Order not found.' });
+});
+
+app.post('/Api/UseageDetail/queryUsage', (req, res) => res.json({ code: 0, itemList: [], esimStatus: 'ACTIVE', simStatus: 'ACTIVE' }));
+app.post('/Api/UseageDetail/queryEsimBasicInfo', (req, res) => res.json({ code: 0, rcode: req.body?.rcode ?? null }));
+app.post('/Api/UseageDetail/queryEsimProgress', (req, res) => res.json({ code: 0, rcode: req.body?.rcode ?? null, status: 'PROVISIONED' }));
 
 // Helper for Redeem Callback
 async function triggerRedeemCallback(rcode, qrcodeType, attempt = 1) {

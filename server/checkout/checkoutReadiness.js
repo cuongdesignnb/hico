@@ -114,6 +114,13 @@ const providerOfferForVariant = ({ variant, offers }) => offers.find((offer) => 
   && (offer.id === variant.providerOfferId || (variant.wmproductId && offer.wmproductId === variant.wmproductId))
 )) ?? null;
 
+const expectedProviderTypeFor = (variant) => {
+  if (variant?.operation === 'topup') return 2;
+  if (variant?.medium === 'esim') return 0;
+  if (variant?.medium === 'physical_sim') return 1;
+  return null;
+};
+
 const usesProviderResolver = ({ variant, activeBinding, activeProfile }) => Boolean(
   activeProfile || variant.durationDays || variant.familyKey || activeBinding,
 );
@@ -133,6 +140,13 @@ const providerReadyForVariant = ({ env, variant, offers, activeBinding, activePr
       fulfillmentProfile: activeProfile,
       requireFulfillmentProfile: Boolean(activeProfile),
     });
+    const offer = resolution.providerOfferId
+      ? offers.find((candidate) => candidate.id === resolution.providerOfferId)
+      : null;
+    const expectedProviderType = expectedProviderTypeFor(variant);
+    if (resolution.ok && expectedProviderType !== null && offer?.providerProductType !== expectedProviderType) {
+      return { ready: false, reason: 'ESIM_FULFILLMENT_NOT_READY', resolution, offer };
+    }
     return {
       ready: resolution.ok,
       reason: resolution.ok ? null : 'ESIM_FULFILLMENT_NOT_READY',
@@ -141,6 +155,10 @@ const providerReadyForVariant = ({ env, variant, offers, activeBinding, activePr
   }
 
   const offer = providerOfferForVariant({ variant, offers });
+  const expectedProviderType = expectedProviderTypeFor(variant);
+  if (offer && expectedProviderType !== null && offer.providerProductType !== expectedProviderType) {
+    return { ready: false, reason: 'ESIM_FULFILLMENT_NOT_READY', offer };
+  }
   return {
     ready: Boolean(offer),
     reason: offer ? null : 'ESIM_FULFILLMENT_NOT_READY',
@@ -241,7 +259,7 @@ export const createCheckoutReadinessService = ({
       }
       if (item.kind === CHECKOUT_FULFILLMENT_KINDS.TOPUP) {
         const offer = providerOfferForVariant({ variant: item.variant, offers: offerRows });
-        if (!offer) blockingReasons.push('TOPUP_PROVIDER_NOT_READY');
+        if (!offer || offer.providerProductType !== 2) blockingReasons.push('TOPUP_PROVIDER_NOT_READY');
       }
     }
 

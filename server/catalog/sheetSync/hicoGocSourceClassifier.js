@@ -35,9 +35,14 @@ export const classifySourceCategory = (value) => {
   return 'unknown';
 };
 
-export const operationEvidenceFor = ({ sourceCategoryLabel, packageClass = classifyHicoPackageClass(sourceCategoryLabel), providerOffer, previousOperation } = {}) => {
+export const operationEvidenceFor = ({ sourceCategoryLabel, sourceMedium, packageClass = classifyHicoPackageClass(sourceCategoryLabel), providerOffer, previousOperation } = {}) => {
   if (providerOffer?.providerProductType === 2) return { operation: 'topup', resolution: 'RESOLVED', evidence: 'PROVIDER_PRODUCT_TYPE' };
   if (providerOffer?.providerProductType === 0 || providerOffer?.providerProductType === 1) return { operation: 'new_subscription', resolution: 'RESOLVED', evidence: 'PROVIDER_PRODUCT_TYPE' };
+  // HICO GỐC's physical branch is the existing-SIM top-up branch. A new
+  // physical SIM purchase is represented only by an explicit provider type 1
+  // offer, handled above.
+  if (sourceMedium === 'physical_sim') return { operation: 'topup', resolution: 'RESOLVED', evidence: 'WMID_SIM_BRANCH' };
+  if (sourceMedium === 'esim') return { operation: 'new_subscription', resolution: 'RESOLVED', evidence: 'WMID_ESIM_BRANCH' };
   if (TOPUP_LABELS.has(normalize(sourceCategoryLabel))) return { operation: 'topup', resolution: 'RESOLVED', evidence: 'SOURCE_CATEGORY' };
   if (previousOperation === 'new_subscription' || previousOperation === 'topup' || previousOperation === 'device_sale') {
     return { operation: previousOperation, resolution: 'RESOLVED', evidence: 'PREVIOUS_CANONICAL' };

@@ -113,7 +113,7 @@ const normalizedValue = (value) => {
   return value ?? null;
 };
 
-export const wmidBusinessPayloadKeyFor = (row) => {
+const wmidPayloadKeyFor = (row, { includeDuration = true } = {}) => {
   const data = row?.normalizedData ?? row ?? {};
   return JSON.stringify(normalizedValue({
     medium: data.medium,
@@ -122,9 +122,11 @@ export const wmidBusinessPayloadKeyFor = (row) => {
     packageClass: data.packageClass,
     dataPolicy: data.dataPolicy,
     dataLimit: data.dataLimit,
-    duration: data.duration,
-    durationValue: data.durationValue,
-    durationUnit: data.durationUnit,
+    ...(includeDuration ? {
+      duration: data.duration,
+      durationValue: data.durationValue,
+      durationUnit: data.durationUnit,
+    } : {}),
     price: data.price,
     compareAtPrice: data.compareAtPrice,
     apn: data.apn,
@@ -141,6 +143,14 @@ export const wmidBusinessPayloadKeyFor = (row) => {
     installationGuide: data.installationGuide,
   }));
 };
+
+export const wmidBusinessPayloadKeyFor = (row) => wmidPayloadKeyFor(row);
+
+// A Worldmove top-up WMID can legitimately serve several day options. This
+// relaxed key is used only to distinguish that case from a real business
+// conflict; price, data, coverage, and other commercial fields remain part of
+// the comparison.
+const wmidSharedTopupPayloadKeyFor = (row) => wmidPayloadKeyFor(row, { includeDuration: false });
 
 const wmidGroupKeyFor = (row) => `${row.sourceMedium}:${normalizedWmidFor(row.normalizedData?.wmproductId)}`;
 
@@ -180,6 +190,15 @@ export const collapseHicoGocRows = (rows = []) => {
       continue;
     }
     const payloads = new Set(group.map(wmidBusinessPayloadKeyFor));
+    if (group[0].sourceMedium === 'physical_sim'
+      && payloads.size > 1
+      && new Set(group.map(wmidSharedTopupPayloadKeyFor)).size === 1) {
+      collapsed.push(...group.map((row) => ({
+        ...withSourceRows(row, group),
+        warnings: [...row.warnings, { code: 'WMID_SHARED_TOPUP_DURATION', field: 'duration' }],
+      })));
+      continue;
+    }
     if (payloads.size > 1) {
       collapsed.push(...group.map((row) => ({
         ...withSourceRows(row, group),
@@ -191,7 +210,12 @@ export const collapseHicoGocRows = (rows = []) => {
       continue;
     }
     const first = withSourceRows(group.find((row) => row.normalizedData?.sku) ?? group[0], group);
-    const options = [...new Set(group.flatMap((row) => row.normalizedData.tripDayOptions ?? []))].sort((a, b) => a - b);
+    const options = [...new Set(group.flatMap((row) => (
+      row.normalizedData.tripDayOptions
+      ?? (row.normalizedData.durationUnit === 'day' && Number.isInteger(row.normalizedData.durationValue)
+        ? [row.normalizedData.durationValue]
+        : [])
+    )))].sort((a, b) => a - b);
     const duplicate = {
       ...first,
       ...(group.length > 1 ? {

@@ -43,8 +43,8 @@ test('asset reveal requires recent re-auth and records only safe field names', a
   });
   await assert.rejects(() => service.reveal({ customerId: 'customer-1', assetId: 'asset-1', session: { lastAuthenticatedAt: '2026-08-01T23:59:00.000Z' } }), (error) => error.code === 'ESIM_REVEAL_REAUTH_REQUIRED');
   const result = await service.reveal({ customerId: 'customer-1', assetId: 'asset-1', session: { lastAuthenticatedAt: '2026-08-02T00:05:00.000Z' } });
-  assert.deepEqual(result.fields, { iccid: '898520400001234567', qrCode: null, lpa: 'LPA:1$secret', pin: '1234', puk: null, apn: null });
-  assert.deepEqual(audits[0].fieldsRevealed, ['iccid', 'lpa', 'pin']);
+  assert.deepEqual(result.fields, { couponIccid: '898520400001234567', cid: null, iccid: '898520400001234567', qrCode: null, lpa: 'LPA:1$secret', pin1: '1234', pin2: null, pin: '1234', puk1: null, puk2: null, puk: null, apn: null, confirmationCode: null });
+  assert.deepEqual(audits[0].fieldsRevealed, ['couponIccid', 'iccid', 'lpa', 'pin1', 'pin']);
   assert.equal(JSON.stringify(audits).includes('LPA:1$secret'), false);
 });
 
@@ -56,4 +56,36 @@ test('asset repository fails closed when fulfillment persistence is missing', as
   });
   assert.deepEqual((await repository.health()).status, 'not_ready');
   assert.equal((await repository.summary('customer-1')).available.esims, false);
+});
+
+test('customer asset repository resolves an owned SIM number without exposing it in projections', async () => {
+  const ownedOrder = {
+    orderId: 'HICO-TOPUP-1',
+    customerId: 'customer-1',
+    ownershipStatus: 'OWNED',
+    status: 'PROVISIONED',
+    currency: 'VND',
+    createdAt: '2026-08-02T00:00:00.000Z',
+    topup: { simNum: '12345678901234567890' },
+    items: [{ productName: 'Nạp SIM', productId: 'product-1', variantId: 'variant-1', operation: 'topup', medium: 'physical_sim', fulfillmentMethod: 'WORLDMOVE_TOPUP', quantity: 1, unitPrice: 80000, currency: 'VND', topupDays: 7 }],
+  };
+  const record = { id: 'ful-topup-1', orderId: ownedOrder.orderId, orderItemId: `${ownedOrder.orderId}:item:0`, itemIndex: 0, state: 'PROVISIONED', itemData: {} };
+  const repository = createCustomerAssetRepository({
+    orderRepository: {
+      countForCustomer: async (customerId) => customerId === 'customer-1' ? 1 : 0,
+      listForCustomer: async (customerId) => customerId === 'customer-1' ? [ownedOrder] : [],
+      get: async () => ownedOrder,
+    },
+    fulfillmentRepository: {
+      persistenceReady: async () => true,
+      findByOrderId: async () => [record],
+      get: async () => record,
+      list: async () => [record],
+    },
+    env: { CUSTOMER_ASSETS_ENABLED: 'true' },
+  });
+  const [asset] = (await repository.list('customer-1')).items;
+  assert.equal(asset.simNumberMasked, '****************7890');
+  assert.equal(await repository.resolveTopupSimNumber('customer-1', asset.id), '12345678901234567890');
+  await assert.rejects(repository.resolveTopupSimNumber('other-customer', asset.id), (error) => error.code === 'ASSET_NOT_FOUND');
 });

@@ -337,6 +337,7 @@ export const buildFullSyncCandidate = async ({
         ?? previousProductForRows([row], index, 'device_sale');
       const evidence = operationEvidenceFor({
         sourceCategoryLabel: row.normalizedData.sourceCategoryLabel,
+        sourceMedium: row.sourceMedium,
         packageClass: row.normalizedData.packageClass,
         providerOffer: row.providerOffer,
       });
@@ -350,12 +351,21 @@ export const buildFullSyncCandidate = async ({
       for (const row of operationRows) {
         if (row.operationEvidence.resolution !== 'RESOLVED') row.warnings.push({ code: 'OPERATION_UNRESOLVED', field: 'simType' });
         const sourceKey = productSourceKeyFor({ ...row.normalizedData, operation, medium: row.sourceMedium });
+        const topupDays = operation === 'topup'
+          ? row.normalizedData.topupDays
+            ?? (row.normalizedData.durationUnit === 'day' ? row.normalizedData.durationValue : null)
+            ?? row.normalizedData.durationDays
+          : null;
+        const variantSourceKey = topupDays
+          ? `${variantSourceKeyFor({ ...row.normalizedData, operation, medium: row.sourceMedium })}:day:${topupDays}`
+          : variantSourceKeyFor({ ...row.normalizedData, operation, medium: row.sourceMedium });
         row.normalizedData = {
           ...row.normalizedData,
           operation,
           operationResolution,
           sourceKey,
-          variantSourceKey: variantSourceKeyFor({ ...row.normalizedData, operation, medium: row.sourceMedium }),
+          ...(topupDays ? { topupDays } : {}),
+          variantSourceKey,
         };
         const key = sourceKey;
         groups.set(key, [...(groups.get(key) ?? []), row]);
@@ -548,6 +558,7 @@ export const buildFullSyncCandidate = async ({
         ...(variantData.durationValue !== undefined ? { durationValue: variantData.durationValue } : {}),
         ...(variantData.durationUnit ? { durationUnit: variantData.durationUnit } : {}),
         ...(variantData.tripDayOptions ? { tripDayOptions: variantData.tripDayOptions } : {}),
+        ...(operation === 'topup' && Number.isInteger(variantData.topupDays) ? { topupDays: variantData.topupDays } : {}),
         price: variantData.price ?? 0,
         compareAtPrice: variantData.compareAtPrice ?? null,
         currency: 'VND',
@@ -566,7 +577,9 @@ export const buildFullSyncCandidate = async ({
         ...(variantData.publicNote ? { publicNote: variantData.publicNote } : {}),
         ...(variantData.speedLabel ? { speedLabel: variantData.speedLabel } : {}),
         ...(typeof variantData.cancellable === 'boolean' ? { cancellable: variantData.cancellable } : {}),
-        shippingRequired: operation === 'new_subscription' && row.sourceMedium === 'physical_sim',
+        shippingRequired: operation === 'new_subscription'
+          && row.sourceMedium === 'physical_sim'
+          && fulfillment.providerProductType === 1,
         stock: previousVariant?.stock ?? null,
         active: false,
         needsReview: true,

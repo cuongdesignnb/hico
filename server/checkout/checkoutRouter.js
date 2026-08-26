@@ -35,6 +35,15 @@ export const createCheckoutRouter = ({
   const handleExistingOrder = (handler) => async (req, res) => {
     try { return res.json(await handler(req)); } catch (error) { return sendCheckoutError(res, error); }
   };
+  const customerForAssetTopup = async (req) => {
+    if (typeof req.body?.topup?.simAssetId !== 'string' || !req.body.topup.simAssetId.trim()) return null;
+    const token = parseCookies(req.get('cookie')).hico_customer_session;
+    if (!token) throw new CheckoutError('Vui lòng đăng nhập để nạp từ SIM đã sở hữu.', 'CUSTOMER_AUTH_REQUIRED', 401);
+    if (!customerAuthService) throw new CheckoutError('Customer authentication is unavailable.', 'CUSTOMER_AUTH_NOT_READY', 503);
+    const auth = await customerAuthService.authenticate(token, req.requestId);
+    if (auth.status !== 'active') throw new CheckoutError('Customer authentication is required.', 'CUSTOMER_AUTH_REQUIRED', 401);
+    return auth.customer;
+  };
 
   router.get('/checkout/config', (req, res) => res.json({ engine, canonicalCheckout: engine === 'canonical' }));
   router.get('/admin/catalog/source-status', async (_req, res) => {
@@ -50,7 +59,7 @@ export const createCheckoutRouter = ({
       checkoutEngine: engine,
     });
   });
-  router.post('/checkout/validate', requireReadyCanonical((req) => checkoutService.validate(req.body)));
+  router.post('/checkout/validate', requireReadyCanonical(async (req) => checkoutService.validate(req.body, await customerForAssetTopup(req))));
   router.post('/checkout/orders', requireReadyCanonical(async (req) => {
     const token = parseCookies(req.get('cookie')).hico_customer_session;
     if (!token) return checkoutService.createOrder(req.body);

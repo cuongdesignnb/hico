@@ -24,6 +24,8 @@ export const CartDrawer: React.FC = () => {
   });
   const [topupDetails, setTopupDetails] = useState({ simNum: '', day: '' });
 
+  const topupDays = [...new Set(cart.filter(requiresTopupForCartItem).map((item) => item.topupDays).filter((value): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0))];
+  const topupAssetIds = [...new Set(cart.filter(requiresTopupForCartItem).map((item) => item.topupSimAssetId).filter((value): value is string => Boolean(value)))];
   if (!isCartOpen) return null;
 
   // Format currency helper
@@ -33,7 +35,7 @@ export const CartDrawer: React.FC = () => {
 
   // Sum all items (all are now in VND)
   const cartCurrency = cart[0]?.currency ?? 'VND';
-  const totalInCurrency = cart.reduce((sum, item) => sum + (item.currency === cartCurrency ? item.price * item.quantity : 0), 0);
+  const totalInCurrency = cart.reduce((sum, item) => sum + (item.currency === cartCurrency ? (item.displayedPrice ?? item.price) * item.quantity : 0), 0);
 
   // Apply promo discount
   const discountedTotalVND = totalInCurrency * (1 - discount);
@@ -59,6 +61,9 @@ export const CartDrawer: React.FC = () => {
 
   const hasPhysicalItem = cart.some(requiresShippingForCartItem);
   const hasTopupItem = cart.some(requiresTopupForCartItem);
+  const ownedTopupAssetId = topupAssetIds.length === 1 ? topupAssetIds[0] : undefined;
+  const hasMixedTopupSources = topupAssetIds.length > 1 || (topupAssetIds.length === 1 && cart.some((item) => requiresTopupForCartItem(item) && !item.topupSimAssetId));
+  const effectiveTopupDay = topupDays.length === 1 ? String(topupDays[0]) : topupDetails.day;
   const currencyGroups = new Set(cart.map((item) => item.currency ?? 'VND'));
   const hasMixedCurrency = currencyGroups.size > 1;
 
@@ -90,8 +95,12 @@ export const CartDrawer: React.FC = () => {
       triggerNotification('Vui lòng điền đầy đủ địa chỉ giao hàng cho SIM vật lý!', 'error');
       return;
     }
-    if (hasTopupItem && (!topupDetails.simNum.trim() || !Number.isInteger(Number(topupDetails.day)) || Number(topupDetails.day) < 1)) {
-      triggerNotification('Vui lòng nhập số SIM và số ngày cần nạp.', 'error');
+    if (hasTopupItem && hasMixedTopupSources) {
+      triggerNotification('Các gói nạp trong giỏ phải dùng cùng một SIM đã chọn hoặc cùng một SIM nhập tay.', 'error');
+      return;
+    }
+    if (hasTopupItem && ((!ownedTopupAssetId && !/^\d{20}$/.test(topupDetails.simNum.trim())) || !Number.isInteger(Number(effectiveTopupDay)) || Number(effectiveTopupDay) < 1 || Number(effectiveTopupDay) > 30)) {
+      triggerNotification('Vui lòng nhập đúng số SIM gồm 20 chữ số và số ngày từ 1 đến 30.', 'error');
       return;
     }
     setIsCheckingOut(true);
@@ -101,7 +110,7 @@ export const CartDrawer: React.FC = () => {
       if (checkoutConfig.engine === 'canonical') {
         if (hasMixedCurrency) throw new Error('Giỏ hàng có nhiều loại tiền tệ. Vui lòng thanh toán riêng từng nhóm.');
         if (cart.some((item) => !item.variantId)) throw new Error('Một sản phẩm trong giỏ chưa có biến thể canonical. Vui lòng xóa sản phẩm và chọn lại.');
-        const items = cart.map((item) => ({ variantId: item.variantId as string, quantity: item.quantity }));
+        const items = cart.map((item) => ({ variantId: item.variantId as string, quantity: item.quantity, clientPrice: item.displayedPrice ?? item.price }));
         const shipping = hasPhysicalItem ? {
           recipientName: checkoutForm.name,
           phone: checkoutForm.phone,
@@ -111,7 +120,7 @@ export const CartDrawer: React.FC = () => {
           province: shippingAddress.city,
           country: 'VN',
         } : null;
-        const topup = hasTopupItem ? { simNum: topupDetails.simNum.trim(), day: Number(topupDetails.day) } : null;
+        const topup = hasTopupItem ? { day: Number(effectiveTopupDay), ...(ownedTopupAssetId ? { simAssetId: ownedTopupAssetId } : { simNum: topupDetails.simNum.trim() }) } : null;
         await validateCheckout({ items, shipping, topup });
         await createCheckoutOrder({
           idempotencyKey: window.crypto?.randomUUID?.() ?? `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -196,7 +205,7 @@ export const CartDrawer: React.FC = () => {
                       </p>
                     )}
                     <p className="cart-item-price">
-                      {formatPrice(item.price, item.currency)}
+                      {formatPrice(item.displayedPrice ?? item.price, item.currency)}
                     </p>
                   </div>
                   
@@ -317,21 +326,22 @@ export const CartDrawer: React.FC = () => {
                     <div className="checkout-title" style={{ marginBottom: '4px' }}>
                       <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#2b6cb0' }}>Thông tin SIM cần nạp</span>
                     </div>
-                    <input
+                    {ownedTopupAssetId ? <p className="checkout-input" style={{ color: '#166534', background: '#f0fdf4' }}>SIM trong tài khoản đã được chọn. Hệ thống sẽ xác thực quyền sở hữu và không hiển thị số SIM đầy đủ.</p> : <input
                       type="text"
                       placeholder="Số SIM cần nạp"
                       required={hasTopupItem}
                       value={topupDetails.simNum}
                       onChange={(e) => setTopupDetails({ ...topupDetails, simNum: e.target.value })}
                       className="checkout-input"
-                    />
+                    />}
                     <input
                       type="number"
                       min="1"
-                      max="365"
+                      max="30"
                       placeholder="Số ngày top-up"
                       required={hasTopupItem}
-                      value={topupDetails.day}
+                      value={effectiveTopupDay}
+                      disabled={topupDays.length === 1}
                       onChange={(e) => setTopupDetails({ ...topupDetails, day: e.target.value })}
                       className="checkout-input"
                     />

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Check, Clock, Database, Globe, HardDrive, Headphones, Mail, MapPin,
   Minus, Plus, Radio, Settings, ShieldCheck, Star, Users, Zap,
@@ -7,7 +7,7 @@ import {
 import { useApp } from '../../context/useApp';
 import { useProductVariantSelection } from '../../hooks/catalog/useProductVariantSelection';
 import { getProductMedia } from '../../utils/productMedia';
-import type { PublicProduct, PublicVariant } from '../../types/publicCatalog';
+import type { PublicProduct, PublicPurchaseOption, PublicVariant } from '../../types/publicCatalog';
 import type { ProductReview } from '../../types/legacy';
 import { productCategoryLabel, toProductDetailViewModel } from '../../adapters/productDetailViewModel';
 import './ProductDetail.css';
@@ -20,8 +20,27 @@ const htmlToText = (value: string | undefined) => value?.replace(/<[^>]*>/g, ' '
 
 export const ProductDetail = ({ product }: { product: PublicProduct }) => {
   const { addToCart, setIsCartOpen, triggerNotification } = useApp();
-  const { variant, variantId, setVariantId } = useProductVariantSelection(product);
-  const viewModel = useMemo(() => toProductDetailViewModel(product), [product]);
+  const [searchParams] = useSearchParams();
+  const fallbackPurchaseOptions = useMemo<PublicPurchaseOption[]>(() => [{
+    productId: product.id,
+    slug: product.slug,
+    action: product.operation === 'topup' ? 'topup_sim' as const : product.medium === 'esim' ? 'buy_esim' as const : 'buy_physical_sim' as const,
+    operation: product.operation,
+    medium: product.medium ?? null,
+    label: product.operation === 'topup' ? 'Nạp SIM' : product.medium === 'esim' ? 'Mua eSIM' : 'SIM vật lý',
+    variants: product.variants,
+  }], [product]);
+  const purchaseOptions: PublicPurchaseOption[] = product.purchaseOptions?.length ? product.purchaseOptions : fallbackPurchaseOptions;
+  const [selectedOption, setSelectedOption] = useState<{ productId: string; action: string } | null>(null);
+  const selectedAction = selectedOption?.productId === product.id ? selectedOption.action : purchaseOptions[0]?.action ?? null;
+  const activePurchaseOption = purchaseOptions.find((option) => option.action === selectedAction) ?? purchaseOptions[0];
+  const activeProductReference = [product, ...(product.familyProducts ?? [])].find((candidate) => candidate.id === activePurchaseOption?.productId);
+  const displayProduct: PublicProduct = activePurchaseOption
+    ? { ...product, id: activePurchaseOption.productId, slug: activePurchaseOption.slug, name: activeProductReference?.name ?? product.name, operation: activePurchaseOption.operation, medium: activePurchaseOption.medium, variants: activePurchaseOption.variants }
+    : product;
+  const topupSimAssetId = displayProduct.operation === 'topup' ? searchParams.get('simAssetId')?.trim() : undefined;
+  const { variant, variantId, setVariantId } = useProductVariantSelection(displayProduct);
+  const viewModel = toProductDetailViewModel(displayProduct);
   const selectedViewVariant = viewModel.variants.find((item) => item.id === variantId) ?? viewModel.variants[0];
   const [selectedImage, setSelectedImage] = useState(viewModel.primaryImage);
   const [quantity, setQuantity] = useState(1);
@@ -41,7 +60,7 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
       setActiveTab('kythuat');
       setIsDescExpanded(false);
     });
-  }, [product.id, viewModel.primaryImage]);
+  }, [displayProduct.id, viewModel.primaryImage]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -66,12 +85,12 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
   const currentDataLimit = selectedViewVariant?.dataLimitLabel;
   const currentDuration = selectedViewVariant?.durationLabel;
   const currentVariantAvailable = selectedViewVariant?.availability === 'available';
-  const physical = product.operation === 'device_sale' || (product.operation === 'new_subscription' && variant?.medium === 'physical_sim');
-  const categoryLabel = productCategoryLabel(product);
+  const physical = displayProduct.operation === 'device_sale' || (displayProduct.operation === 'new_subscription' && variant?.medium === 'physical_sim');
+  const categoryLabel = productCategoryLabel(displayProduct);
   const shortDescription = viewModel.description || `Thông tin ${categoryLabel.toLowerCase()} được lấy từ dữ liệu canonical của HICO.`;
 
   const selectVariant = (predicate: (item: PublicVariant) => boolean) => {
-    const next = product.variants.find((item) => predicate(item));
+    const next = displayProduct.variants.find((item) => predicate(item));
     if (next) setVariantId(next.id);
   };
 
@@ -80,37 +99,40 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
       (item.medium === 'physical_sim' ? 'SIM vật lý' : item.medium === 'esim' ? 'eSIM' : 'Gói canonical') === label
       && (!currentDataLimit || item.dataLimit === currentDataLimit)
       && (!currentDuration || item.duration === currentDuration));
-    if (!product.variants.some((item) => (item.medium === 'physical_sim' ? 'SIM vật lý' : item.medium === 'esim' ? 'eSIM' : 'Gói canonical') === label && item.dataLimit === currentDataLimit && item.duration === currentDuration)) {
+    if (!displayProduct.variants.some((item) => (item.medium === 'physical_sim' ? 'SIM vật lý' : item.medium === 'esim' ? 'eSIM' : 'Gói canonical') === label && item.dataLimit === currentDataLimit && item.duration === currentDuration)) {
       selectVariant((item) => (item.medium === 'physical_sim' ? 'SIM vật lý' : item.medium === 'esim' ? 'eSIM' : 'Gói canonical') === label);
     }
   };
 
   const handleDataLimitClick = (value: string) => {
     selectVariant((item) => item.dataLimit === value && (!currentSimType || (item.medium === 'physical_sim' ? 'SIM vật lý' : item.medium === 'esim' ? 'eSIM' : 'Gói canonical') === currentSimType) && (!currentDuration || item.duration === currentDuration));
-    if (!product.variants.some((item) => item.dataLimit === value && item.duration === currentDuration)) selectVariant((item) => item.dataLimit === value);
+    if (!displayProduct.variants.some((item) => item.dataLimit === value && item.duration === currentDuration)) selectVariant((item) => item.dataLimit === value);
   };
 
   const handleDurationClick = (value: string) => {
     selectVariant((item) => item?.duration === value && (!currentSimType || (item.medium === 'physical_sim' ? 'SIM vật lý' : item.medium === 'esim' ? 'eSIM' : 'Gói canonical') === currentSimType) && (!currentDataLimit || item.dataLimit === currentDataLimit));
-    if (!product.variants.some((item) => item.duration === value && item.dataLimit === currentDataLimit)) selectVariant((item) => item?.duration === value);
+    if (!displayProduct.variants.some((item) => item.duration === value && item.dataLimit === currentDataLimit)) selectVariant((item) => item?.duration === value);
   };
 
   const cartItem = selectedViewVariant && variant ? {
     id: variant.id,
-    productId: product.id,
+    productId: displayProduct.id,
     variantId: variant.id,
-    slug: product.slug,
-    name: product.name,
-    operation: product.operation,
-    type: product.operation === 'device_sale' ? 'device' as const : variant.medium === 'physical_sim' ? 'physical' as const : 'esim' as const,
+    slug: displayProduct.slug,
+    name: displayProduct.name,
+    operation: displayProduct.operation,
+    type: displayProduct.operation === 'device_sale' ? 'device' as const : variant.medium === 'physical_sim' ? 'physical' as const : 'esim' as const,
     medium: variant.medium ?? undefined,
     simType: selectedViewVariant.simTypeLabel,
     price: variant.price,
+    displayedPrice: variant.price,
     currency: variant.currency,
     originalPrice: variant.compareAtPrice ?? undefined,
     duration: variant.duration ?? undefined,
     dataLimit: variant.dataLimit ?? undefined,
-    image: getProductMedia(product),
+    topupDays: variant.topupDays ?? (variant.durationUnit === 'day' ? variant.durationValue : undefined),
+    ...(topupSimAssetId ? { topupSimAssetId } : {}),
+    image: getProductMedia(displayProduct),
   } : null;
 
   const handleAddToCart = (openCart: boolean) => {
@@ -154,17 +176,17 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
         <div className="breadcrumb-row">
           <span>Trang chủ</span><span className="breadcrumb-sep">&gt;</span>
           <span>{viewModel.coverageLabel}</span><span className="breadcrumb-sep">&gt;</span>
-          <span className="breadcrumb-active">{product.name}</span>
+          <span className="breadcrumb-active">{displayProduct.name}</span>
         </div>
 
         <div className="product-main-grid">
           <div className="product-gallery-col">
             <div className="gallery-main-box">
-              <img src={selectedImage} alt={product.name} className="gallery-main-img" />
+              <img src={selectedImage} alt={displayProduct.name} className="gallery-main-img" />
               <div className="gallery-overlay">
                 <div className="overlay-flag-title">
                   <span className="overlay-flag"><MapPin size={20} /></span>
-                  <div><h2 className="overlay-title-large">{product.name.toUpperCase()}</h2><p className="overlay-subtitle-large">{categoryLabel}</p></div>
+                  <div><h2 className="overlay-title-large">{displayProduct.name.toUpperCase()}</h2><p className="overlay-subtitle-large">{categoryLabel}</p></div>
                 </div>
               </div>
               <div className="gallery-badge-row">
@@ -180,7 +202,7 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
 
           <div className="product-info-col">
             {(selectedViewVariant?.networkLabel || selectedViewVariant?.apn || selectedViewVariant?.publicNote) && <div className="checkout-meta-list product-variant-metadata"><>{selectedViewVariant.networkLabel && <div className="checkout-meta-item"><Radio size={14} className="meta-check-icon" /><span>{selectedViewVariant.networkLabel}</span></div>}{selectedViewVariant.apn && <div className="checkout-meta-item"><Settings size={14} className="meta-check-icon" /><span>APN: {selectedViewVariant.apn}</span></div>}{selectedViewVariant.publicNote && <div className="checkout-meta-item"><Check size={14} className="meta-check-icon" /><span>{selectedViewVariant.publicNote}</span></div>}</></div>}
-            <h1 className="product-title-text">{product.name}</h1>
+            <h1 className="product-title-text">{displayProduct.name}</h1>
             <div className="product-rating-row" aria-label={`${reviews.length} đánh giá`}>
               <div className="star-rating">{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={14} stroke="#FF9F00" />)}</div>
               <span className="rating-count">({reviews.length} đánh giá)</span>
@@ -194,13 +216,14 @@ export const ProductDetail = ({ product }: { product: PublicProduct }) => {
               <div className="feature-item"><Headphones size={18} className="feature-icon" /><div><span className="feat-lbl">Trạng thái</span><span className="feat-val">{currentVariantAvailable ? 'Có thể chọn' : 'Hết hàng'}</span></div></div>
             </div>
 
+            {purchaseOptions.length > 1 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn cách sử dụng</h3><span className="package-badge-info">Theo gói đã chọn</span></div><div className="packages-card-grid">{purchaseOptions.map((option) => <button type="button" key={option.action} className={`package-card-option ${activePurchaseOption?.action === option.action ? 'selected' : ''}`} onClick={() => setSelectedOption({ productId: product.id, action: option.action })}><span className="pkg-card-limit">{option.label}</span><span className="pkg-card-duration">{option.operation === 'topup' ? 'Dùng cho SIM hiện có' : option.medium === 'esim' ? 'Nhận eSIM online' : 'Giao SIM mới'}</span>{activePurchaseOption?.action === option.action && <span className="selected-check-indicator"><Check size={10} strokeWidth={3} /></span>}</button>)}</div></div>}
             {simTypes.length > 1 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn loại SIM</h3><span className="package-badge-info">Dữ liệu canonical</span></div><div className="packages-card-grid">{simTypes.map((type) => <button type="button" key={type} className={`package-card-option ${currentSimType === type ? 'selected' : ''}`} onClick={() => handleSimTypeClick(type)}><span className="pkg-card-limit">{type}</span><span className="pkg-card-duration">{type === 'SIM vật lý' ? 'Giao hàng tận nơi' : 'Theo gói hiện tại'}</span>{currentSimType === type && <span className="selected-check-indicator"><Check size={10} strokeWidth={3} /></span>}</button>)}</div></div>}
 
-            {product.familyProducts && product.familyProducts.length > 0 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Phiên bản cùng họ gói</h3><span className="package-badge-info">Chọn đúng loại</span></div><div className="packages-card-grid">{product.familyProducts.map((familyProduct) => <Link className="package-card-option" key={familyProduct.id} to={getCanonicalProductPath(familyProduct)}><span className="pkg-card-limit">{familyProduct.medium === 'physical_sim' ? 'SIM vật lý' : familyProduct.medium === 'esim' ? 'eSIM' : familyProduct.name}</span><span className="pkg-card-duration">{familyProduct.name}</span></Link>)}</div></div>}
+            {displayProduct.familyProducts && displayProduct.familyProducts.length > 0 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Phiên bản cùng họ gói</h3><span className="package-badge-info">Chọn đúng loại</span></div><div className="packages-card-grid">{displayProduct.familyProducts.map((familyProduct) => <Link className="package-card-option" key={familyProduct.id} to={getCanonicalProductPath(familyProduct)}><span className="pkg-card-limit">{familyProduct.medium === 'physical_sim' ? 'SIM vật lý' : familyProduct.medium === 'esim' ? 'eSIM' : familyProduct.name}</span><span className="pkg-card-duration">{familyProduct.name}</span></Link>)}</div></div>}
 
             {dataLimits.length > 0 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn dung lượng</h3><span className="package-badge-info">Theo variant</span></div><div className="packages-card-grid">{dataLimits.map((limit) => <button type="button" key={limit} className={`package-card-option ${currentDataLimit === limit ? 'selected' : ''}`} onClick={() => handleDataLimitClick(limit)}><span className="pkg-card-limit">{limit}</span><span className="pkg-card-duration">{currentSimType || categoryLabel}</span>{currentDataLimit === limit && <span className="selected-check-indicator"><Check size={10} strokeWidth={3} /></span>}</button>)}</div></div>}
 
-            {durations.length > 0 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn thời hạn</h3></div><div className="packages-card-grid">{durations.map((duration) => { const supported = product.variants.some((item) => item.duration === duration && (!currentDataLimit || item.dataLimit === currentDataLimit)); return <button type="button" key={duration} disabled={!supported} className={`package-card-option ${currentDuration === duration ? 'selected' : ''} ${!supported ? 'disabled' : ''}`} onClick={() => supported && handleDurationClick(duration)}><span className="pkg-card-limit">{duration}</span>{currentDuration === duration && <span className="selected-check-indicator"><Check size={10} strokeWidth={3} /></span>}</button>; })}</div><p className="package-disclaimer-note">Thời hạn và điều kiện sử dụng lấy từ variant canonical hiện tại.</p></div>}
+            {durations.length > 0 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn thời hạn</h3></div><div className="packages-card-grid">{durations.map((duration) => { const supported = displayProduct.variants.some((item) => item.duration === duration && (!currentDataLimit || item.dataLimit === currentDataLimit)); return <button type="button" key={duration} disabled={!supported} className={`package-card-option ${currentDuration === duration ? 'selected' : ''} ${!supported ? 'disabled' : ''}`} onClick={() => supported && handleDurationClick(duration)}><span className="pkg-card-limit">{duration}</span>{currentDuration === duration && <span className="selected-check-indicator"><Check size={10} strokeWidth={3} /></span>}</button>; })}</div><p className="package-disclaimer-note">Thời hạn và điều kiện sử dụng lấy từ variant canonical hiện tại.</p></div>}
 
             {dataLimits.length === 0 && durations.length === 0 && variants.length > 1 && <div className="package-selector-section"><div className="package-selector-header"><h3 className="package-selector-title">Chọn phiên bản</h3></div><div className="packages-card-grid">{variants.map((item) => <button type="button" key={item.id} className={`package-card-option ${item.id === variantId ? 'selected' : ''}`} onClick={() => setVariantId(item.id)}><span className="pkg-card-limit">{item.deviceModelLabel || item.sku}</span><span className="pkg-card-duration">{item.currency}</span></button>)}</div></div>}
           </div>

@@ -19,7 +19,7 @@ const normalizeCartItem = (value: unknown): CartItem | null => {
     ? record.medium
     : record.type === 'physical' ? 'physical_sim' : record.type === 'esim' ? 'esim' : undefined;
   const type = operation === 'device_sale' ? 'device' : medium === 'physical_sim' ? 'physical' : 'esim';
-  return { ...record, operation, medium, type, quantity: Math.max(1, Math.floor(record.quantity)) } as CartItem;
+  return { ...record, operation, medium, type, displayedPrice: typeof record.displayedPrice === 'number' ? record.displayedPrice : record.price, quantity: Math.max(1, Math.floor(record.quantity)) } as CartItem;
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -83,7 +83,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return updatedCart;
       }
       triggerNotification(`Đã thêm ${newItem.name} vào giỏ hàng!`);
-      return [...prevCart, { ...newItem, quantity: 1 }];
+      return [...prevCart, { ...newItem, displayedPrice: newItem.displayedPrice ?? newItem.price, quantity: 1 }];
     });
   };
 

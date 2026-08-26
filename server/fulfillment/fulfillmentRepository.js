@@ -26,6 +26,9 @@ export const createFulfillmentRepository = ({
     async get(id) { return (await read()).find((record) => record.id === id) ?? null; },
     async findByOrderId(orderId) { return (await read()).filter((record) => record.orderId === orderId); },
     async findByProviderReference(reference) { return (await read()).filter((record) => record.providerReference === reference); },
+    async findByItemData(field, value) {
+      return (await read()).filter((record) => record.itemData?.[field] === value);
+    },
     async create(record) {
       return withLock(async () => {
         const records = await read();

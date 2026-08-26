@@ -69,6 +69,8 @@ export const createFulfillmentService = ({
         ...next,
         providerReference: response.providerReference ?? processing.providerReference,
         providerResponse: response.providerResponse,
+        completedAt: response.completedAt ?? processing.completedAt,
+        failureCode: response.failureCode ?? processing.failureCode,
         itemData: { ...(processing.itemData ?? {}), ...(response.itemData ?? {}) },
         inventoryMovementId: response.inventoryMovementId ?? processing.inventoryMovementId,
         internalNote: response.internalNote ?? processing.internalNote,
@@ -184,7 +186,10 @@ export const createFulfillmentService = ({
       const existing = await eventRepository.get(event.eventId);
       if (existing) return { duplicate: true, orderId: existing.orderId, status: existing.status };
     }
-    const records = await repository.findByProviderReference(event.providerOrderId ?? event.orderId);
+    let records = await repository.findByProviderReference(event.providerOrderId ?? event.orderId);
+    if (!records.length && event.callbackType === 'REDEEM_CALLBACK' && event.rcode && repository.findByItemData) {
+      records = await repository.findByItemData('redemptionCode', event.rcode);
+    }
     if (!records.length) return null;
     const order = await orderRepository.get(records[0].orderId);
     if (!order || order.status === 'CANCELLED') {

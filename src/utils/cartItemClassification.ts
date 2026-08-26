@@ -23,7 +23,7 @@ export const requiresTopupForCartItem = (item: Pick<CartItem, 'operation' | 'typ
 
 export const cartLabelFor = (item: Pick<CartItem, 'operation' | 'medium' | 'type'>) => {
   const operation = cartOperationFor(item);
-  if (operation === 'topup') return cartMediumFor(item) === 'physical_sim' ? 'Nạp SIM vật lý' : 'Nạp eSIM';
+  if (operation === 'topup') return 'Nạp SIM';
   if (operation === 'device_sale') return 'Thiết bị';
   return cartMediumFor(item) === 'physical_sim' ? 'SIM vật lý' : 'eSIM';
 };

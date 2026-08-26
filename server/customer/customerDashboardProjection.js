@@ -2,7 +2,7 @@ import { publicSkuForOrderItem } from '../catalog/public/publicSku.js';
 
 const COMPLETED = new Set(['PROVISIONED', 'SHIPPED', 'COMPLETED']);
 const CANCELLED = new Set(['CANCELLED']);
-const PENDING = new Set(['PENDING', 'PROCESSING']);
+const PENDING = new Set(['PENDING', 'PROCESSING', 'FAILED_RETRYABLE']);
 
 const numberOrZero = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const maskEmail = (email = '') => {
@@ -22,10 +22,15 @@ const safeItem = (item = {}, status = 'PENDING') => ({
   variantId: item.variantId ?? null,
   sku: publicSkuForOrderItem(item),
   operation: item.operation ?? null,
+  medium: item.medium ?? null,
   quantity: Math.max(1, numberOrZero(item.quantity ?? 1)),
-  unitPrice: numberOrZero(item.unitPrice ?? item.price),
-  currency: String(item.currency ?? 'VND').toUpperCase(),
+  unitPrice: numberOrZero(item.soldPrice ?? item.unitPrice ?? item.price),
+  currency: String(item.soldCurrency ?? item.currency ?? 'VND').toUpperCase(),
+  soldPrice: numberOrZero(item.soldPrice ?? item.unitPrice ?? item.price),
+  soldCurrency: String(item.soldCurrency ?? item.currency ?? 'VND').toUpperCase(),
   ...(Number.isInteger(item.soldDurationDays) && item.soldDurationDays > 0 ? { soldDurationDays: item.soldDurationDays } : {}),
+  ...(Number.isInteger(item.topupDays) && item.topupDays > 0 ? { topupDays: item.topupDays } : {}),
+  ...(item.soldDataLimit ? { soldDataLimit: String(item.soldDataLimit) } : item.dataLimit ? { soldDataLimit: String(item.dataLimit) } : {}),
   ...(COMPLETED.has(status) && Number.isInteger(item.providerDurationDays) && item.providerDurationDays > 0 ? { providerDurationDays: item.providerDurationDays, upgradeDays: Math.max(0, Number(item.upgradeDays) || 0) } : {}),
 });
 

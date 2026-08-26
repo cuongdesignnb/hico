@@ -2,6 +2,7 @@ export type PublicOperation = 'new_subscription' | 'topup' | 'device_sale';
 export type PublicCoverageType = 'country' | 'region' | 'global' | 'not_applicable';
 export type PublicMedium = 'esim' | 'physical_sim' | null;
 export type PublicCurrency = 'VND' | 'USD';
+export type PublicPurchaseAction = 'buy_esim' | 'topup_sim' | 'buy_physical_sim';
 
 export interface PublicDeviceSpecs {
   brand?: string;
@@ -53,6 +54,7 @@ export interface PublicVariant {
   duration: string | null;
   durationValue?: number;
   durationUnit?: 'day' | 'month';
+  topupDays?: number;
   tripDayOptions?: number[];
   cancellable?: boolean;
   medium: PublicMedium;
@@ -82,6 +84,16 @@ export interface PublicVariant {
   deviceSpecs?: PublicDeviceSpecs;
 }
 
+export interface PublicPurchaseOption {
+  productId: string;
+  slug: string;
+  action: PublicPurchaseAction;
+  operation: Exclude<PublicOperation, 'device_sale'> | 'device_sale';
+  medium: Exclude<PublicMedium, null> | null;
+  label: string;
+  variants: PublicVariant[];
+}
+
 export interface PublicPriceSummaryItem {
   currency: string;
   medium?: PublicMedium;
@@ -107,6 +119,7 @@ export interface PublicProduct {
   operation: PublicOperation;
   medium?: PublicMedium;
   familyProducts?: Array<{ id: string; slug: string; name: string; medium: PublicMedium; operation: PublicOperation }>;
+  purchaseOptions?: PublicPurchaseOption[];
   categoryId: string | null;
   categoryPath: Array<{ id: string; slug: string; name: string }>;
   status: 'active';

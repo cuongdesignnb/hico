@@ -11,7 +11,7 @@ test('customer order projection allowlists safe fields and removes fulfillment s
     items: [{ productName: 'Japan eSIM', productId: 'p1', variantId: 'v1', quantity: 1, unitPrice: 100000, currency: 'VND', soldDurationDays: 1, providerDurationDays: 2, upgradeDays: 1, iccid: '8985', redemptionCode: 'SECRET', qrcode: 'QR', qrcodeContent: 'LPA', pin1: '1234', puk1: '5678' }],
     providerResponse: { token: 'SECRET' }, audit: { actor: 'admin' },
   });
-  assert.deepEqual(order.items[0], { productName: 'Japan eSIM', productId: 'p1', variantId: 'v1', sku: publicSkuForVariantId('v1'), operation: null, quantity: 1, unitPrice: 100000, currency: 'VND', soldDurationDays: 1, providerDurationDays: 2, upgradeDays: 1 });
+  assert.deepEqual(order.items[0], { productName: 'Japan eSIM', productId: 'p1', variantId: 'v1', sku: publicSkuForVariantId('v1'), operation: null, medium: null, quantity: 1, unitPrice: 100000, currency: 'VND', soldPrice: 100000, soldCurrency: 'VND', soldDurationDays: 1, providerDurationDays: 2, upgradeDays: 1 });
   assert.equal(order.shipping.phone, '********78');
   assert.equal('providerResponse' in order, false);
   assert.equal(JSON.stringify(order).includes('SECRET'), false);

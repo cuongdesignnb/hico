@@ -136,8 +136,8 @@ export const createCatalogService = (
         ...product,
         ...(product.packageFamilyKey ? {
           familyProducts: attached
-            .filter((candidate) => candidate.packageFamilyKey === product.packageFamilyKey && candidate.operation === product.operation && candidate.id !== product.id)
-            .map((candidate) => ({ id: candidate.id, slug: candidate.slug, name: candidate.name, medium: candidate.medium ?? candidate.variants.find((variant) => variant.medium)?.medium ?? null, operation: candidate.operation })),
+            .filter((candidate) => candidate.packageFamilyKey === product.packageFamilyKey && candidate.id !== product.id)
+            .map((candidate) => ({ id: candidate.id, slug: candidate.slug, name: candidate.name, medium: candidate.medium ?? candidate.variants.find((variant) => variant.medium)?.medium ?? null, operation: candidate.operation, variants: candidate.variants })),
         } : {}),
       }));
       cachedVersion = version;

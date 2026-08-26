@@ -258,7 +258,7 @@ test('compare price is a warning and manual processing cannot publish', () => {
   assert.ok(readiness.errors.some((error) => error.code === 'NEEDS_REVIEW'));
 });
 
-test('product readiness requires a publishable variant and blocks SKU conflict', () => {
+test('product readiness does not use SKU conflict as a business blocker', () => {
   const readyVariant = variant();
   const ready = getProductPublishReadiness({
     product,
@@ -276,8 +276,6 @@ test('product readiness requires a publishable variant and blocks SKU conflict',
     variants: [conflicted, duplicate],
     providerOffers: [],
   });
-  assert.equal(blocked.publishable, false);
-  assert.ok(blocked.errors.some(
-    (error) => error.code === 'NO_PUBLISHABLE_VARIANT',
-  ));
+  assert.equal(blocked.publishable, true);
+  assert.equal(blocked.errors.some((error) => error.code === 'SKU_CONFLICT'), false);
 });

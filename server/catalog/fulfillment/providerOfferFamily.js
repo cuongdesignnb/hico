@@ -70,8 +70,12 @@ const normalizeMedium = (value) => {
 const mediumFor = (source) => {
   const explicit = firstValue(source, ['medium', 'simType', 'legacySimType']);
   if (explicit !== null) return normalizeMedium(explicit);
+  // Worldmove productType is authoritative when a provider snapshot is the
+  // only source of medium metadata. Top-up is still tied to an existing
+  // physical SIM, but it is not a shipping order.
+  if (source?.providerProductType === 2) return 'PHYSICAL_SIM';
   if (source?.providerProductType === 1) return 'PHYSICAL_SIM';
-  if (source?.providerProductType === 0 && source?.leSIM === true) return 'ESIM';
+  if (source?.providerProductType === 0) return 'ESIM';
   return null;
 };
 

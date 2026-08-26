@@ -34,6 +34,8 @@ export const createOrderItemSnapshot = ({ product, variant, providerOffer = null
   soldVariantId: variant.id,
   soldSku: variant.sku,
   soldDurationDays: providerResolution?.requestedDays ?? variant.durationDays ?? null,
+  topupDays: variant.topupDays ?? (variant.durationUnit === 'day' ? variant.durationValue : null) ?? variant.durationDays ?? null,
+  soldDataLimit: optional(variant.dataLimit),
   soldPrice: variant.price,
   soldCurrency: variant.currency,
   providerDurationDays: providerResolution?.providerDurationDays ?? null,

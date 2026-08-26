@@ -73,3 +73,34 @@ test('request readiness returns typed blocker details without exposing global he
     });
   });
 });
+
+test('owned-SIM top-up validation authenticates the customer before resolving the asset', async () => {
+  let authenticatedCustomer = null;
+  const router = createCheckoutRouter({
+    env: { CHECKOUT_ENGINE: 'canonical' },
+    checkoutReadinessService: { assertReady: async () => ({ ready: true }) },
+    customerAuthService: {
+      authenticate: async (token) => {
+        assert.equal(token, 'customer-session');
+        return { status: 'active', customer: { id: 'customer-1', email: 'a@example.com' } };
+      },
+    },
+    checkoutService: {
+      validate: async (_request, customer) => {
+        authenticatedCustomer = customer;
+        return { valid: true };
+      },
+    },
+    logger: { warn() {} },
+  });
+
+  await withServer(router, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/checkout/validate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: 'hico_customer_session=customer-session' },
+      body: JSON.stringify({ items: [{ variantId: 'v-topup', quantity: 1 }], topup: { simAssetId: 'asset-1', day: 7 } }),
+    });
+    assert.equal(response.status, 200);
+  });
+  assert.deepEqual(authenticatedCustomer, { id: 'customer-1', email: 'a@example.com' });
+});

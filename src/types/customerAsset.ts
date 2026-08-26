@@ -1,5 +1,5 @@
 export type CustomerAssetType = 'ESIM' | 'PHYSICAL_SIM' | 'DEVICE' | 'TOPUP';
-export type CustomerAssetStatus = 'PENDING_CALLBACK' | 'PENDING_QR_ASSIGN' | 'PROVISIONED' | 'PENDING_SHIP' | 'SHIPPED' | 'CANCELLED';
+export type CustomerAssetStatus = 'PENDING_CALLBACK' | 'PENDING_QR_ASSIGN' | 'PROVISIONED' | 'PENDING_SHIP' | 'SHIPPED' | 'CANCELLED' | 'FAILED' | 'FAILED_RETRYABLE';
 
 export interface CustomerAsset {
   id: string;
@@ -16,13 +16,17 @@ export interface CustomerAsset {
   quantity: number;
   unitPrice: number;
   currency: string;
+  soldPrice?: number;
+  soldCurrency?: string;
   operation: string | null;
   medium: string | null;
   supplier: string | null;
   fulfillmentMethod: string | null;
   coverage: { type: string | null; ids: string[] };
   dataLimit: string | null;
+  soldDataLimit?: string | null;
   duration: string | null;
+  topupDays?: number | null;
   status: CustomerAssetStatus | string;
   activationStatus: string | null;
   activatedAt: string | null;
@@ -56,4 +60,4 @@ export interface CustomerAssetSummary {
 }
 
 export interface CustomerAssetList { items: CustomerAsset[]; pagination: { page: number; pageSize: number; totalItems: number; totalPages: number }; generatedAt: string; }
-export interface CustomerAssetSecrets { assetId: string; fields: { iccid: string | null; qrCode: string | null; lpa: string | null; pin: string | null; puk: string | null; apn: string | null }; revealedAt: string; }
+export interface CustomerAssetSecrets { assetId: string; fields: { couponIccid: string | null; cid: string | null; iccid: string | null; qrCode: string | null; lpa: string | null; pin1: string | null; pin2: string | null; pin: string | null; puk1: string | null; puk2: string | null; puk: string | null; apn: string | null; confirmationCode: string | null }; revealedAt: string; }

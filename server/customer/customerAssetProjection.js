@@ -51,7 +51,9 @@ const getAssetType = (item = {}) => {
 const statusFor = (record, order) => {
   const state = String(record?.state ?? record?.status ?? order?.status ?? 'PENDING').toUpperCase();
   if (state === 'PENDING_QR_ASSIGN') return 'PENDING_QR_ASSIGN';
-  if (state === 'PENDING_CALLBACK' || state === 'PENDING' || state === 'PROCESSING' || state === 'FAILED_RETRYABLE') return 'PENDING_CALLBACK';
+  if (state === 'PENDING_CALLBACK' || state === 'PENDING' || state === 'PROCESSING') return 'PENDING_CALLBACK';
+  if (state === 'FAILED_RETRYABLE') return 'FAILED_RETRYABLE';
+  if (state === 'FAILED') return 'FAILED';
   if (state === 'SHIPPED') return 'SHIPPED';
   if (state === 'PROVISIONED') return 'PROVISIONED';
   if (state === 'CANCELLED') return 'CANCELLED';
@@ -80,15 +82,19 @@ const baseAsset = ({ assetId, assetType, order, item, record, index }) => {
     variantId: first(item.variantId),
     sku: publicSkuForOrderItem(item),
     quantity: Math.max(1, Number(item.quantity) || 1),
-    unitPrice: numberValue(item.unitPrice ?? item.price) ?? 0,
-    currency: String(item.currency ?? order.currency ?? 'VND').toUpperCase(),
+    unitPrice: numberValue(item.soldPrice ?? item.unitPrice ?? item.price) ?? 0,
+    currency: String(item.soldCurrency ?? item.currency ?? order.currency ?? 'VND').toUpperCase(),
+    soldPrice: numberValue(item.soldPrice ?? item.unitPrice ?? item.price) ?? 0,
+    soldCurrency: String(item.soldCurrency ?? item.currency ?? order.currency ?? 'VND').toUpperCase(),
     operation: first(item.operation),
     medium: first(item.medium),
     supplier: first(item.supplier),
     fulfillmentMethod: first(item.fulfillmentMethod, record?.fulfillmentMethod),
     coverage: safeCoverage(item),
-    dataLimit: first(item.dataLimit, itemData.dataLimit),
+    dataLimit: first(item.soldDataLimit, item.dataLimit, itemData.dataLimit),
+    soldDataLimit: first(item.soldDataLimit, item.dataLimit, itemData.dataLimit),
     duration: first(item.duration, itemData.duration),
+    topupDays: numberValue(item.topupDays ?? itemData.topupDays),
     status,
     activationStatus: first(itemData.activationStatus, itemData.activationState),
     activatedAt: first(itemData.activatedAt),
@@ -121,13 +127,13 @@ const projectEsim = (asset, record) => {
   };
 };
 
-const projectTopup = (asset, record, item) => {
+const projectTopup = (asset, record, item, order) => {
   const data = record?.itemData && typeof record.itemData === 'object' ? record.itemData : {};
   const providerReference = first(record?.providerReference);
   return {
     ...asset,
     packageName: first(item.productName, item.name),
-    simNumberMasked: maskValue(first(item.simNum, item.simNumber, data.simNum, data.simNumber)),
+    simNumberMasked: maskValue(first(item.simNum, item.simNumber, order.topup?.simNum, data.simNum, data.simNumber)),
     providerReferenceMasked: providerReference && !isMockValue(providerReference) ? maskValue(providerReference) : null,
     completedAt: first(record?.completedAt),
     failureCode: first(record?.failureCode, record?.lastErrorCode),
@@ -145,7 +151,7 @@ export const projectCustomerAsset = ({ order, item, record, index }) => {
   if (!assetType || !record || isMockAssetSource(record)) return null;
   const asset = baseAsset({ assetId: assetIdFor(order.orderId, index, assetType), assetType, order, item, record, index });
   if (assetType === 'ESIM') return projectEsim(asset, record);
-  if (assetType === 'TOPUP') return projectTopup(asset, record, item);
+  if (assetType === 'TOPUP') return projectTopup(asset, record, item, order);
   return asset;
 };
 
@@ -161,7 +167,7 @@ export const projectOwnedAssets = ({ orders = [], fulfillments = [] } = {}) => o
 
 export const projectCustomerAssetSummary = (assets = [], { available = false } = {}) => {
   const count = (type) => assets.filter((asset) => asset.assetType === type).length;
-  const pending = (type) => assets.filter((asset) => asset.assetType === type && String(asset.status).startsWith('PENDING')).length;
+  const pending = (type) => assets.filter((asset) => asset.assetType === type && (String(asset.status).startsWith('PENDING') || asset.status === 'FAILED_RETRYABLE')).length;
   const completed = (type) => assets.filter((asset) => asset.assetType === type && ['PROVISIONED', 'SHIPPED'].includes(asset.status)).length;
   return {
     esims: { total: count('ESIM'), active: assets.filter((asset) => asset.assetType === 'ESIM' && asset.activationStatus === 'ACTIVE').length, pending: pending('ESIM') },

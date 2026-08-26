@@ -867,6 +867,7 @@ const canonicalCheckoutService = createCheckoutService({
   idempotencyRepository: createCheckoutIdempotencyRepository(),
   fulfillmentBindingRepository,
   fulfillmentProfileRepository,
+  customerAssetRepository,
 });
 const canonicalCheckoutReadinessService = createCheckoutReadinessService({
   env: process.env,
@@ -918,6 +919,8 @@ app.use('/api', createProductionReadinessRouter({ readinessService: productionRe
 app.use('/api/webhooks/worldmove', createWorldmoveWebhookRouter({
   fulfillmentService: canonicalFulfillmentService,
   replayRepository: createWebhookReplayRepository(),
+  merchantId: process.env.WORLDMOVE_MERCHANT_ID || apiConfig.merchantId,
+  token: process.env.WORLDMOVE_TOKEN || apiConfig.token,
   env: process.env,
   rateLimitPerMinute: checkoutRateLimitPerMinute,
 }));
@@ -2269,7 +2272,7 @@ app.post('/api/webhooks/worldmove/esim-order', handleEsimOrderCallback);
 
 // Helper for Redemption
 async function triggerRedemption(rcode) {
-  console.log(`[HICO] Automatically trigger redemption for code ${rcode}...`);
+  console.log('[HICO] Automatically triggering redemption...');
   const qrcodeType = 2; // LPA + QR Code
   const encStr = calculateSha1(apiConfig.merchantId + rcode + qrcodeType + apiConfig.token);
 
@@ -2283,10 +2286,10 @@ async function triggerRedemption(rcode) {
   try {
     const wmResponse = await axios.post(`${apiConfig.apiUrl}/Api/OrderRedemption/redemption`, payload);
     if (wmResponse.data.code === 0) {
-      console.log(`[HICO] Redemption registered for ${rcode}. Waiting for redeem callback...`);
+      console.log('[HICO] Redemption registered. Waiting for redeem callback...');
     }
   } catch (error) {
-    console.error(`[HICO] Failed to request redemption for code ${rcode}: ${error.message}`);
+    console.error(`[HICO] Failed to request redemption: ${error?.code ?? 'provider_request_failed'}`);
   }
 }
 
@@ -2319,7 +2322,7 @@ const handleEsimOrderRedeemCallback = (req, res) => {
         esim.puk1 = item.puk1;
         esim.apnExplain = item.apnExplain;
         esimsDb.set(item.iccid, esim);
-        console.log(`[HICO] eSIM ${item.iccid} updated with QR & APN info.`);
+        console.log('[HICO] eSIM updated with QR and APN info.');
       } else {
         // If not found in memory, create a new one
         esimsDb.set(item.iccid, {
@@ -2338,7 +2341,7 @@ const handleEsimOrderRedeemCallback = (req, res) => {
           puk1: item.puk1,
           apnExplain: item.apnExplain
         });
-        console.log(`[HICO] New eSIM ${item.iccid} created from eSIM Order and Redeem Callback.`);
+        console.log('[HICO] New eSIM created from eSIM Order and Redeem Callback.');
       }
 
       // Update HICO order status and send email
@@ -2364,7 +2367,7 @@ app.post('/api/esim-order-redeem', handleEsimOrderRedeemCallback);
 // 3. Redeem Redemption Code Callback (Section 3.2)
 const handleRedeemCodeCallback = (req, res) => {
   const { qrcode, rcode, qrcodeType, encStr, resultcode, resultmsg, iccid, qrcodeContent, salePlanDays, pin1, pin2, puk1, puk2, cfCode, apnExplain } = req.body;
-  console.log(`[HICO] Redeem Code Callback received for rcode: ${rcode}, iccid: ${iccid}`);
+  console.log('[HICO] Redeem Code Callback received.');
 
   const expectedSignature = calculateSha1(apiConfig.merchantId + qrcode + rcode + qrcodeType + apiConfig.token);
   if (encStr !== expectedSignature) {
@@ -2387,7 +2390,7 @@ const handleRedeemCodeCallback = (req, res) => {
       console.warn(`[HICO] Redeem failed with code ${resultcode}: ${resultmsg}`);
     }
     esimsDb.set(esim.iccid, esim);
-    console.log(`[HICO] eSIM ${esim.iccid} updated from Redeem Code Callback.`);
+    console.log('[HICO] eSIM updated from Redeem Code Callback.');
   } else {
     // If not found in memory, create a new one
     esimsDb.set(iccid, {
@@ -2406,7 +2409,7 @@ const handleRedeemCodeCallback = (req, res) => {
       puk1,
       apnExplain
     });
-    console.log(`[HICO] New eSIM ${iccid} created from Redeem Code Callback.`);
+    console.log('[HICO] New eSIM created from Redeem Code Callback.');
   }
 
   // Update HICO order status and trigger email sending when QR becomes available
@@ -2467,9 +2470,9 @@ const handleTopupCallback = (req, res) => {
           esim.totalData += 5; // e.g. add 5GB per topup
           esim.usedData = 0; // reset data usage
           esimsDb.set(item.simNum, esim);
-          console.log(`[HICO] eSIM ${item.simNum} topped up successfully (+5GB data, reset usage).`);
+          console.log('[HICO] eSIM topped up successfully (+5GB data, reset usage).');
         } else {
-          console.warn(`[HICO] Top-up target eSIM ${item.simNum} not found in database.`);
+          console.warn('[HICO] Top-up target eSIM not found in database.');
         }
       } else {
         console.warn(`[HICO] Top-up item failed: ${item.msg}`);
@@ -2486,7 +2489,7 @@ app.post('/api/webhooks/worldmove/topup', handleTopupCallback);
 // 5. eSIM Activation Notification (Section 2.7)
 const handleActivationNotification = (req, res) => {
   const { orderId, rcode, iccid, useSDate, useEDate } = req.body;
-  console.log(`[HICO] eSIM Activation Notification received for ICCID: ${iccid}`);
+  console.log('[HICO] eSIM Activation Notification received.');
 
   const esim = esimsDb.get(iccid);
   if (esim) {
@@ -2494,7 +2497,7 @@ const handleActivationNotification = (req, res) => {
     // Format timestamp
     esim.expiry = new Date(parseInt(useEDate) * 1000).toLocaleDateString('vi-VN');
     esimsDb.set(iccid, esim);
-    console.log(`[HICO] eSIM ${iccid} marked ACTIVE in database.`);
+    console.log('[HICO] eSIM marked ACTIVE in database.');
   } else {
     // create eSIM if not found
     esimsDb.set(iccid, {
@@ -2510,7 +2513,7 @@ const handleActivationNotification = (req, res) => {
       qrcode: null,
       qrcodeContent: null
     });
-    console.log(`[HICO] eSIM ${iccid} created and marked ACTIVE from Activation Notification.`);
+    console.log('[HICO] eSIM created and marked ACTIVE from Activation Notification.');
   }
 
   res.send('1');
@@ -2534,7 +2537,7 @@ app.get('/api/legacy-customer/esim/:iccid', async (req, res) => {
     const encStr = calculateSha1(apiConfig.merchantId + esim.rcode + apiConfig.token);
     
     try {
-      console.log(`[HICO] Querying live data usage from Worldmove for rcode: ${esim.rcode}`);
+      console.log('[HICO] Querying live data usage from Worldmove.');
       const wmResponse = await axios.post(`${apiConfig.apiUrl}/Api/UseageDetail/queryUsage`, {
         merchantId: apiConfig.merchantId,
         rcode: esim.rcode,
@@ -2547,7 +2550,7 @@ app.get('/api/legacy-customer/esim/:iccid', async (req, res) => {
         const gigabytesUsed = (parseInt(totalUsage) / (1024 * 1024 * 1024)).toFixed(2);
         esim.usedData = parseFloat(gigabytesUsed);
         esimsDb.set(iccid, esim);
-        console.log(`[HICO] Synced live data usage for ${iccid}: ${gigabytesUsed} GB`);
+        console.log(`[HICO] Synced live data usage: ${gigabytesUsed} GB`);
       }
     } catch (error) {
       console.warn(`[HICO] Failed to fetch live usage from Worldmove: ${error.message}`);
@@ -2572,14 +2575,14 @@ app.post('/api/legacy-customer/topup', (req, res) => {
     return res.status(404).json({ error: 'eSIM not found' });
   }
 
-  console.log(`[HICO] Topup of ${days} days requested for eSIM ${iccid}`);
+  console.log(`[HICO] Topup of ${days} days requested.`);
   
   // Update status or package dates
   esim.totalData += 5; // Add 5GB data
   esim.usedData = 0; // Reset usage
   esimsDb.set(iccid, esim);
 
-  triggerNotificationSimulated(`Nạp thành công +5GB dữ liệu vào eSIM ${iccid}!`);
+  triggerNotificationSimulated('Nạp thành công +5GB dữ liệu!');
 
   res.json({ success: true, esim });
 });

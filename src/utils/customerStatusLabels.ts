@@ -9,6 +9,8 @@ export const orderStatusLabels: Record<string, string> = {
   SHIPPED: 'Đã giao',
   COMPLETED: 'Hoàn tất',
   CANCELLED: 'Đã hủy',
+  FAILED: 'Nạp thất bại',
+  FAILED_RETRYABLE: 'Đang chờ xử lý lại',
 };
 
 export const assetStatusLabels: Record<string, string> = {

@@ -96,6 +96,34 @@ const providerPublicMetadata = (variant, providerOffers = []) => {
   };
 };
 
+const purchaseActionFor = ({ operation, medium }) => {
+  if (operation === 'topup') return 'topup_sim';
+  if (operation === 'device_sale') return 'buy_physical_sim';
+  if (medium === 'esim') return 'buy_esim';
+  return 'buy_physical_sim';
+};
+
+const purchaseLabelFor = ({ operation, medium }) => {
+  if (operation === 'topup') return 'Nạp SIM';
+  if (operation === 'device_sale') return 'Thiết bị';
+  if (medium === 'esim') return 'Mua eSIM';
+  return 'SIM vật lý';
+};
+
+const purchaseOptionFor = ({ product, variants, providerOffers }) => {
+  const summary = summarizeVariants(variants, { providerOffers, productOperation: product.operation });
+  const medium = product.medium ?? summary.allRows.find((variant) => variant.medium)?.medium ?? null;
+  return {
+    productId: product.id,
+    slug: product.slug,
+    action: purchaseActionFor({ operation: product.operation, medium }),
+    operation: product.operation,
+    medium,
+    label: purchaseLabelFor({ operation: product.operation, medium }),
+    variants: summary.allRows,
+  };
+};
+
 export const toPublicVariant = (variant, { providerOffers = [], productOperation } = {}) => {
   if (!isPublicVariant(variant)) return null;
   const stock = Number.isInteger(variant.stock) && variant.stock >= 0 ? variant.stock : null;
@@ -200,6 +228,10 @@ export const toPublicProduct = (product, variants = [], { includeVariants = true
     description: product.description,
     guide: product.guide,
     ...(content ?? {}),
+    purchaseOptions: [
+      purchaseOptionFor({ product, variants, providerOffers }),
+      ...(Array.isArray(product.familyProducts) ? product.familyProducts.map((sibling) => purchaseOptionFor({ product: sibling, variants: sibling.variants ?? [], providerOffers })) : []),
+    ].filter((option, index, options) => options.findIndex((candidate) => candidate.action === option.action) === index),
     ...(deviceSpecifications ? { deviceSpecifications, deviceSpecs: deviceSpecifications } : {}),
     faqItems,
     seo: {

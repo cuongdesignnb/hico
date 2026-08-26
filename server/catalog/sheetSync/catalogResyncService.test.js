@@ -74,9 +74,9 @@ test('full sync keeps structurally valid rows when provider offers are unavailab
   const [variant] = candidate.variants;
   assert.equal(candidate.products.length, 1);
   assert.equal(candidate.variants.length, 1);
-  assert.equal(candidate.products[0].categoryId, 'cat-sim-vat-ly');
+  assert.equal(candidate.products[0].categoryId, 'cat-nap-them');
   assert.equal(candidate.products[0].categoryNeedsReview, false);
-  assert.equal(candidate.products[0].operationResolution, 'UNRESOLVED');
+  assert.equal(candidate.products[0].operationResolution, 'RESOLVED');
   assert.equal(candidate.rows[0].status, 'VALID');
   assert.equal(candidate.rows[0].providerResolution, 'UNRESOLVED');
   assert.deepEqual(candidate.rows[0].errors, []);
@@ -85,7 +85,8 @@ test('full sync keeps structurally valid rows when provider offers are unavailab
   assert.equal(variant.fulfillmentMethod, 'MANUAL_PROCESSING');
   assert.equal(variant.providerProductType, null);
   assert.equal(variant.leSIM, null);
-  assert.equal(variant.requiresExistingSim, false);
+  assert.equal(variant.requiresExistingSim, true);
+  assert.equal(variant.topupDays, 10);
   assert.equal(variant.wmproductId, rowData.wmproductId);
   assert.equal(variant.active, false);
   assert.equal(variant.needsReview, true);
@@ -139,8 +140,8 @@ test('full sync does not reuse a previous operation as new source evidence', asy
     rows: [{ id: 'row-operation', sourceMedium: sourceRow.medium, normalizedData: sourceRow, errors: [], warnings: [], status: 'VALID' }],
     categories: cloneSeedCategories(), offers: [], previousCatalog: { products: [previousProduct], variants: [] },
   });
-  assert.equal(candidate.products[0].operationResolution, 'UNRESOLVED');
-  assert.equal(candidate.rows[0].operationEvidence.evidence, 'NO_EXPLICIT_EVIDENCE');
+  assert.equal(candidate.products[0].operationResolution, 'RESOLVED');
+  assert.equal(candidate.rows[0].operationEvidence.evidence, 'WMID_SIM_BRANCH');
 });
 
 test('full sync splits one package family by medium and uses operation-aware fulfillment', async () => {

@@ -26,7 +26,7 @@ const args = (argv) => {
 };
 
 const isActive = (variant) => variant?.active !== false && variant?.status !== 'archived';
-const usable = (variant) => isActive(variant) && variant.needsReview !== true && variant.skuConflict !== true;
+const usable = (variant) => isActive(variant) && variant.needsReview !== true;
 const list = (value) => (Array.isArray(value) ? value : Object.values(value ?? {}));
 
 export const buildStrategyReadiness = ({ variants = [], providerOffers = [], manualQrs = [], inventory = [] } = {}) => {

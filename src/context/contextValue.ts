@@ -11,10 +11,13 @@ export interface CartItem {
   medium?: 'esim' | 'physical_sim';
   simType?: string;
   price: number;
+  displayedPrice?: number;
   currency: 'VND' | 'USD';
   originalPrice?: number;
   duration?: string;
   dataLimit?: string;
+  topupDays?: number;
+  topupSimAssetId?: string;
   image?: string;
   quantity: number;
 }

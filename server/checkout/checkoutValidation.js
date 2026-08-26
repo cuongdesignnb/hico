@@ -67,12 +67,30 @@ export const validateTopup = (topup, required) => {
     if (required) throw new CheckoutError('Vui lòng nhập thông tin top-up.', 'TOPUP_INPUT_INVALID');
     return null;
   }
-  const simNum = asText(topup.simNum, 'SIM cần top-up', { max: 80 });
+  const simAssetId = typeof topup.simAssetId === 'string' && topup.simAssetId.trim()
+    ? asText(topup.simAssetId, 'SIM đã chọn', { max: 120 })
+    : undefined;
+  const simNum = simAssetId
+    ? undefined
+    : asText(topup.simNum, 'SIM cần top-up', { max: 20 });
+  if (simNum && !/^\d{20}$/.test(simNum)) throw new CheckoutError('Số SIM phải gồm đúng 20 chữ số.', 'SIM_NUMBER_INVALID');
   const day = Number(topup.day ?? topup.days);
-  if (!Number.isInteger(day) || day < 1 || day > 365) {
+  if (!Number.isInteger(day) || day < 1 || day > 30) {
     throw new CheckoutError('Số ngày top-up không hợp lệ.', 'TOPUP_INPUT_INVALID');
   }
-  return { simNum, day };
+  return { ...(simNum ? { simNum } : {}), day, ...(simAssetId ? { simAssetId } : {}) };
+};
+
+const canonicalTopupDays = (variant) => variant?.topupDays
+  ?? (variant?.durationUnit === 'day' ? variant.durationValue : null)
+  ?? variant?.durationDays
+  ?? null;
+
+const expectedWorldmoveProductType = (product, variant) => {
+  if (product?.operation === 'topup') return 2;
+  if (product?.operation === 'new_subscription' && variant?.medium === 'esim') return 0;
+  if (product?.operation === 'new_subscription' && variant?.medium === 'physical_sim') return 1;
+  return null;
 };
 
 const validateItems = (items) => {
@@ -88,7 +106,7 @@ const validateItems = (items) => {
     return {
       variantId,
       quantity,
-      clientPrice: item?.price ?? item?.clientPrice,
+      clientPrice: item?.clientPrice,
     };
   });
 };
@@ -137,7 +155,7 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
     if (product.operationResolution === 'UNRESOLVED' || variant.operationResolution === 'UNRESOLVED') {
       throw new CheckoutError('Nghiệp vụ của sản phẩm chưa được xác nhận.', 'CANONICAL_OPERATION_UNRESOLVED');
     }
-    if (product.status !== 'active' || variant.active !== true || variant.needsReview === true || variant.skuConflict) {
+    if (product.status !== 'active' || variant.active !== true || variant.needsReview === true) {
       throw new CheckoutError('Sản phẩm không thể thanh toán lúc này.', 'VARIANT_NOT_AVAILABLE');
     }
     if (typeof variant.price !== 'number' || !Number.isFinite(variant.price) || variant.price < 0) {
@@ -190,6 +208,12 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
         operation: variant.operation ?? product.operation,
       }
       : { ...variant, operation: variant.operation ?? product.operation };
+    const expectedProviderType = expectedWorldmoveProductType(product, variant);
+    if (expectedProviderType !== null && (product.operation === 'topup' || String(fulfillmentVariant.fulfillmentMethod ?? '').startsWith('WORLDMOVE_'))) {
+      if (!providerOffer || providerOffer.providerProductType !== expectedProviderType) {
+        throw new CheckoutError('Loại sản phẩm Worldmove không khớp nghiệp vụ của gói.', 'PROVIDER_PRODUCT_TYPE_MISMATCH');
+      }
+    }
     assertFulfillmentSupported(fulfillmentVariant);
     const requiresShipping = product.operation === 'device_sale'
       || (product.operation === 'new_subscription' && variant.medium === 'physical_sim');
@@ -214,6 +238,15 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
   }
   const shipping = validateShipping(request?.shipping, resolved.some((item) => item.requiresShipping));
   const topup = validateTopup(request?.topup, resolved.some((item) => item.requiresTopup));
+  for (const item of resolved.filter((candidate) => candidate.requiresTopup)) {
+    const expectedDay = canonicalTopupDays(item.variant);
+    if (!expectedDay) {
+      throw new CheckoutError('Biến thể top-up chưa có số ngày canonical.', 'TOPUP_DAY_UNRESOLVED');
+    }
+    if (expectedDay && expectedDay !== topup.day) {
+      throw new CheckoutError('Số ngày top-up không khớp với biến thể canonical.', 'TOPUP_DAY_MISMATCH');
+    }
+  }
   return {
     customer: requireCustomer ? validateCustomer(request?.customer) : null,
     items: resolved,
