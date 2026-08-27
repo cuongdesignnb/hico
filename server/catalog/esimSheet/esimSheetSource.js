@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { isWorldmoveEsimOffer } from '../fulfillment/fulfillmentContracts.js';
 
 export const ESIM_SHEET_SOURCE = 'HICO_ESIM_SHEET';
-export const ESIM_SHEET_PARSER_REVISION = 2;
+export const ESIM_SHEET_PARSER_REVISION = 3;
 export const SIM_HICO_SHEET_TAB = 'SimHICO';
 export const SIM_HICO_ESIM_COLUMN_CONTRACT = Object.freeze({
   medium: 0,
@@ -84,9 +84,10 @@ const normalizeDataPolicy = (value) => {
 
 const labelsFromProductName = (value, dataPolicy) => {
   const name = nonEmpty(value) ?? '';
-  const matches = [...name.matchAll(/(\d+(?:[.,]\d+)?)\s*(KB|MB|GB|TB)\b/gi)];
+  const matches = [...name.matchAll(/(\d+(?:[.,]\d+)?)\s*(KB|MB|GB|TB)\b(?!\s*\/\s*s\b)/gi)];
   const unlimitedMatches = [...name.matchAll(/\b(?:unlimited(?:\s+data)?|không\s+giới\s+hạn)\b/gi)];
   const formatted = (match) => `${match[1].replace(',', '.')} ${match[2].toUpperCase()}`;
+  const uniqueFormatted = (items) => [...new Set(items.map(formatted))];
   const dailyMatches = matches.filter((match) => {
     const suffix = name.slice((match.index ?? 0) + match[0].length);
     return /^\s*(?:\/\s*|per\s+)(?:day|ngày)\b/i.test(suffix);
@@ -95,24 +96,29 @@ const labelsFromProductName = (value, dataPolicy) => {
     const prefix = name.slice(0, match.index ?? 0);
     return /(?:tổng|total)\s*(?:dữ\s*liệu|data)?\s*[:,-]?\s*$/i.test(prefix);
   });
+  const firstNumericIndex = matches[0]?.index ?? Number.POSITIVE_INFINITY;
+  const firstUnlimitedIndex = unlimitedMatches[0]?.index ?? Number.POSITIVE_INFINITY;
+  const hasPrimaryUnlimited = unlimitedMatches.length > 0
+    && (matches.length === 0 || firstUnlimitedIndex < firstNumericIndex);
+  const primaryDailyValues = uniqueFormatted(dailyMatches);
   let dataLimit;
   const errors = [];
   const warnings = [];
-  if (unlimitedMatches.length > 0 && matches.length === 0) {
-    dataLimit = 'Unlimited';
-  } else if (unlimitedMatches.length > 0) {
-    errors.push('DATA_LIMIT_AMBIGUOUS');
-  } else if (dataPolicy === 'daily') {
-    if (dailyMatches.length === 1) dataLimit = formatted(dailyMatches[0]);
-    else if (dailyMatches.length > 1) errors.push('DATA_LIMIT_AMBIGUOUS');
+  if (dataPolicy === 'daily') {
+    if (primaryDailyValues.length === 1) dataLimit = primaryDailyValues[0];
+    else if (primaryDailyValues.length > 1) errors.push('DATA_LIMIT_AMBIGUOUS');
+    else if (hasPrimaryUnlimited) dataLimit = 'Unlimited';
   } else if (dataPolicy === 'total') {
     if (totalMatches.length === 1) dataLimit = formatted(totalMatches[0]);
     else if (totalMatches.length > 1) errors.push('DATA_LIMIT_AMBIGUOUS');
+    else if (hasPrimaryUnlimited) dataLimit = 'Unlimited';
     else {
       const nonDailyMatches = matches.filter((match) => !dailyMatches.includes(match));
       if (nonDailyMatches.length === 1) dataLimit = formatted(nonDailyMatches[0]);
       else if (nonDailyMatches.length > 1) errors.push('DATA_LIMIT_AMBIGUOUS');
     }
+  } else if (hasPrimaryUnlimited) {
+    dataLimit = 'Unlimited';
   } else if (matches.length) {
     dataLimit = formatted(matches[0]);
   }

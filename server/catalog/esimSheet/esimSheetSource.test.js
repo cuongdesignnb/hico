@@ -9,7 +9,7 @@ test('eSIM Sheet parser is independent and keeps WMID and selling price semantic
     values: [headers, ['eSIM', ' WM-e-CN-500MB-1D ', 'China 1D', '180,000', '1', '1,3', 'Hỗ trợ eSIM']],
   });
   assert.equal(parsed.source, 'HICO_ESIM_SHEET');
-  assert.equal(parsed.parserRevision, 2);
+  assert.equal(parsed.parserRevision, 3);
   assert.deepEqual(parsed.rows[0], {
     sourceRowNumber: 2,
     medium: 'esim',
@@ -164,6 +164,26 @@ test('SimHICO treats unlimited labels as an explicit data limit and missing quot
   ]);
   assert.equal(parsed.rows[3].dataLimit, undefined);
   assert.deepEqual(parsed.rows[3].warnings, ['DATA_LIMIT_NOT_DECLARED']);
+});
+
+test('SimHICO parses primary daily quotas and Unlimited high-speed plans without false ambiguity', () => {
+  const parsed = parseEsimSheetRows({
+    values: [
+      ['WMID', 'Tên gói', 'Giá bán', 'Số ngày', 'Loại data'],
+      ['WM-UNLIMITED-DAY', 'Mainland China, 1 Day, Unlimited data /day', 100000, 1, 'Chia ngày'],
+      ['WM-UNLIMITED-HIGH-1', 'Nhật Bản KDDI, Không giới hạn (1GB tốc độ cao + 10Mb/s không giới hạn)', 100000, 5, 'Chia ngày'],
+      ['WM-UNLIMITED-HIGH-2', 'Nhật Bản KDDI, Không giới hạn (2GB tốc độ cao + 5Mb/s không giới hạn)', 100000, 5, 'Chia ngày'],
+      ['WM-DAILY-FALLBACK-1', 'Đài Loan, 500MB /Ngày (hết 500MB dùng không giới hạn 128kbps)', 100000, 1, 'Chia ngày'],
+      ['WM-DAILY-FALLBACK-2', 'Đài Loan, 1GB /Ngày (hết 1GB dùng không giới hạn 128kbps)', 100000, 1, 'Chia ngày'],
+    ],
+  });
+  assert.deepEqual(parsed.rows.map((row) => ({ dataLimit: row.dataLimit, errors: row.errors, warnings: row.warnings })), [
+    { dataLimit: 'Unlimited', errors: [], warnings: [] },
+    { dataLimit: 'Unlimited', errors: [], warnings: [] },
+    { dataLimit: 'Unlimited', errors: [], warnings: [] },
+    { dataLimit: '500 MB', errors: [], warnings: [] },
+    { dataLimit: '1 GB', errors: [], warnings: [] },
+  ]);
 });
 
 test('multiple explicit daily quotas remain a blocking data ambiguity', () => {
