@@ -61,6 +61,15 @@ const currentVersionId = (manifest) => (
 
 const findById = (items, id) => items.find((item) => item.id === id);
 
+const assertSellableProductOperation = (operation) => {
+  if (operation === 'topup') {
+    throw new CatalogWriteError('Top-up đã ngừng hỗ trợ cho dữ liệu bán mới.', {
+      status: 410,
+      code: 'FULFILLMENT_RETIRED',
+    });
+  }
+};
+
 const assertUniqueProductId = (products, id) => {
   if (products.some((product) => product.id === id)) {
     throw new CatalogWriteError('Product ID đã tồn tại.', {
@@ -502,6 +511,7 @@ export const createCatalogWriteService = ({
           requireBaseVersion(request, context.manifest);
           await assertMediaReferences(request.product);
           const input = normalizeProductInput(request.product);
+          assertSellableProductOperation(input.operation);
           const timestamp = now().toISOString();
           const product = {
             ...input,
@@ -574,6 +584,7 @@ export const createCatalogWriteService = ({
           const changes = normalizeProductInput(request.changes, {
             partial: true,
           });
+          assertSellableProductOperation(changes.operation);
           if (changes.slug) {
             assertUniqueSlug(context.products, changes.slug, productId);
           }
@@ -583,6 +594,7 @@ export const createCatalogWriteService = ({
             version: existing.version + 1,
             updatedAt: now().toISOString(),
           };
+          assertSellableProductOperation(updated.operation);
           assertProductCategory(updated, context.categories);
           assertValidEntity(validateProductRecord(updated));
           const products = context.products.map(
@@ -798,6 +810,7 @@ export const createCatalogWriteService = ({
             variant,
             product,
             providerOffers: context.providerOffers,
+            allowLegacy: false,
           }));
           const committed = await commit({
             context,
@@ -891,6 +904,7 @@ export const createCatalogWriteService = ({
             variant: updated,
             product,
             providerOffers: context.providerOffers,
+            allowLegacy: false,
           }));
           const candidateVariants = applySkuConflictMetadata(
             context.variants.map(

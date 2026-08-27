@@ -99,7 +99,7 @@ test('product input is draft-safe, validates coverage and sanitizes HTML', () =>
   );
 });
 
-test('variant validates Worldmove leSIM and local carrier mappings', () => {
+test('variant validates both Worldmove eSIM leSIM mappings', () => {
   const worldmove = variant({
     supplier: 'worldmove',
     fulfillmentMethod: 'WORLDMOVE_ESIM_REDEEM',
@@ -119,19 +119,19 @@ test('variant validates Worldmove leSIM and local carrier mappings', () => {
     providerOffers: [offer],
   }).valid, false);
 
-  const localOffer = { ...offer, id: 'local:1', leSIM: false };
-  const local = variant({
-    supplier: 'local_carrier',
+  const orderThenRedeemOffer = { ...offer, id: 'worldmove:order-then-redeem', leSIM: false };
+  const orderThenRedeem = variant({
+    supplier: 'worldmove',
     fulfillmentMethod: 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM',
-    providerOfferId: localOffer.id,
-    wmproductId: localOffer.wmproductId,
+    providerOfferId: orderThenRedeemOffer.id,
+    wmproductId: orderThenRedeemOffer.wmproductId,
     providerProductType: 0,
     leSIM: false,
   });
   assert.equal(validateVariantRecord({
-    variant: local,
+    variant: orderThenRedeem,
     product,
-    providerOffers: [localOffer],
+    providerOffers: [orderThenRedeemOffer],
   }).valid, true);
 });
 

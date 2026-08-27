@@ -90,7 +90,7 @@ export const createPublicRouteResolver = ({
 } = {}) => {
   const readProducts = async () => {
     const catalog = await catalogReader.readCatalog();
-    return attachVariants(catalog).filter((product) => getSeoVisibility(product, product.variants).public);
+    return attachVariants(catalog).filter((product) => product.operation !== 'topup' && getSeoVisibility(product, product.variants).public);
   };
   const readCoverage = async () => coverageEntries(await readProducts());
   const readArticles = async () => (await articleProvider())

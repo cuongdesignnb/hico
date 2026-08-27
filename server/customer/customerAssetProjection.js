@@ -119,8 +119,8 @@ const projectEsim = (asset, record) => {
   return {
     ...asset,
     iccidMasked: maskValue(data.iccid),
-    hasQr: Boolean(stringValue(data.qrcode)),
-    hasLpa: Boolean(stringValue(data.qrcodeContent)),
+    hasQr: Boolean(stringValue(data.qrcode) || stringValue(data.manualQrId)),
+    hasLpa: Boolean(stringValue(data.qrcodeContent) || stringValue(data.manualQrId)),
     hasPin: Boolean(stringValue(data.pin1) || stringValue(data.pin2)),
     hasPuk: Boolean(stringValue(data.puk1) || stringValue(data.puk2)),
     apnAvailable: Boolean(stringValue(data.apnExplain) || stringValue(data.apn)),

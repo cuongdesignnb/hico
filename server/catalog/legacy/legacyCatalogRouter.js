@@ -28,6 +28,7 @@ export const createLegacyCatalogRouter = ({
   packagesStore,
   catalogGuard = (_req, _res, next) => next(),
   mediaAssetRepository = null,
+  legacySourceEnabled = true,
 } = {}) => {
   const service = legacyCatalogService ?? createLegacyCatalogService({
     destinationsStore,
@@ -41,6 +42,9 @@ export const createLegacyCatalogRouter = ({
     if (!asset) throw new LegacyCatalogProjectionError('MediaAsset không tồn tại hoặc đã archive.');
     return { ...input, image: asset.publicUrl };
   };
+  if (!legacySourceEnabled) {
+    router.use(['/admin/destinations', '/admin/packages', '/admin/catalog/source-status', '/admin/catalog/legacy-parity'], (_req, res) => res.status(410).json({ error: 'Nguồn HICO GỐC đã ngừng cho catalog mới.', code: 'HICO_GOC_SOURCE_RETIRED' }));
+  }
   router.use(['/admin/destinations', '/admin/packages', '/admin/catalog/legacy-parity'], catalogGuard);
 
   router.get('/admin/destinations', async (_req, res) => {

@@ -126,6 +126,8 @@ export const resolveProviderOffer = ({
   const activeWorldmoveOffers = offers.filter((offer) => (
     offer?.active === true
     && providerForOffer(offer) === 'WORLDMOVE'
+    && offer.providerProductType === 0
+    && typeof offer.leSIM === 'boolean'
     && durationDaysForOffer(offer)
   ));
   const mediumOffers = activeWorldmoveOffers.filter((offer) => mediumForSource(offer) === variantMedium);

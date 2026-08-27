@@ -24,6 +24,7 @@ export const getVariantPublishReadiness = ({
     variant,
     product,
     providerOffers,
+    allowLegacy: false,
   });
   const errors = [...validation.errors];
   const category = categoryById(categories, product?.categoryId);

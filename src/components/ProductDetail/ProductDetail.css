@@ -1486,3 +1486,23 @@
   margin: 16px 0;
   box-shadow: var(--shadow-sm);
 }
+
+.product-retired-notice {
+  max-width: 720px;
+  margin: 96px auto;
+  padding: 32px;
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+  background: #fffaf5;
+  text-align: center;
+}
+
+.product-retired-notice h1 {
+  margin: 0 0 12px;
+}
+
+.product-retired-notice p {
+  margin: 0;
+  color: #6b7280;
+  line-height: 1.6;
+}

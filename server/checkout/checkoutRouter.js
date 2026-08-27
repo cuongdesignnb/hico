@@ -1,7 +1,7 @@
 import express from 'express';
+import { parseCookies } from '../auth/authCookies.js';
 import { readCheckoutEngine } from './checkoutValidation.js';
 import { CheckoutError, sendCheckoutError } from './checkoutError.js';
-import { parseCookies } from '../auth/authCookies.js';
 
 export const createCheckoutRouter = ({
   checkoutService,
@@ -37,12 +37,7 @@ export const createCheckoutRouter = ({
   };
   const customerForAssetTopup = async (req) => {
     if (typeof req.body?.topup?.simAssetId !== 'string' || !req.body.topup.simAssetId.trim()) return null;
-    const token = parseCookies(req.get('cookie')).hico_customer_session;
-    if (!token) throw new CheckoutError('Vui lòng đăng nhập để nạp từ SIM đã sở hữu.', 'CUSTOMER_AUTH_REQUIRED', 401);
-    if (!customerAuthService) throw new CheckoutError('Customer authentication is unavailable.', 'CUSTOMER_AUTH_NOT_READY', 503);
-    const auth = await customerAuthService.authenticate(token, req.requestId);
-    if (auth.status !== 'active') throw new CheckoutError('Customer authentication is required.', 'CUSTOMER_AUTH_REQUIRED', 401);
-    return auth.customer;
+    throw new CheckoutError('Nguồn cấp này đã ngừng hỗ trợ cho đơn hàng mới.', 'FULFILLMENT_RETIRED', 410);
   };
 
   router.get('/checkout/config', (req, res) => res.json({ engine, canonicalCheckout: engine === 'canonical' }));

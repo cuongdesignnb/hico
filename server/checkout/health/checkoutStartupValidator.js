@@ -12,9 +12,7 @@ export const REQUIRED_FULFILLMENT_METHODS = Object.freeze([
   'WORLDMOVE_ESIM_REDEEM',
   'WORLDMOVE_ESIM_ORDER_THEN_REDEEM',
   'HICO_MANUAL_QR',
-  'WORLDMOVE_PHYSICAL_ORDER',
   'HICO_PHYSICAL_STOCK',
-  'WORLDMOVE_TOPUP',
   'MANUAL_PROCESSING',
 ]);
 
@@ -228,7 +226,8 @@ export const validateCanonicalCheckoutStorage = async ({
   const activePhysicalStock = activeVariants.filter((variant) => variant.fulfillmentMethod === 'HICO_PHYSICAL_STOCK');
   if (activePhysicalStock.length > 0 && inventoryRows.length === 0) addBlocker(blockers, 'PHYSICAL_INVENTORY_NOT_CONFIGURED');
   const activeManualQr = activeVariants.filter((variant) => variant.fulfillmentMethod === 'HICO_MANUAL_QR');
-  if (activeManualQr.length > 0 && !qrRows.some((row) => !row.assignedOrderId && hasText(row.qrcode))) addBlocker(blockers, 'MANUAL_QR_INVENTORY_NOT_CONFIGURED');
+  const manualQrConfigured = qrRows.some((row) => !row.assignedOrderId && (hasText(row.qrcode) || hasText(row.storageKey)));
+  if (activeManualQr.length > 0 && !manualQrConfigured) addBlocker(blockers, 'MANUAL_QR_INVENTORY_NOT_CONFIGURED');
 
   return {
     ready: blockers.length === 0,
@@ -243,7 +242,7 @@ export const validateCanonicalCheckoutStorage = async ({
       catalogVariants: Number(catalogHealth?.variants ?? variants.length),
       webhookConfigured: hasText(webhookConfig.secret),
       physicalInventoryConfigured: inventoryRows.length > 0,
-      manualQrConfigured: qrRows.some((row) => !row.assignedOrderId && hasText(row.qrcode)),
+      manualQrConfigured,
     },
   };
 };

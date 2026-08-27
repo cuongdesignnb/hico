@@ -66,6 +66,18 @@ test('resolver blocks conflicting candidates and family or medium mismatch', () 
   );
 });
 
+test('resolver ignores Worldmove physical and top-up quotation types for new eSIM fulfillment', () => {
+  const result = resolveProviderOffer({
+    variant: variant(1),
+    offers: [
+      offer(1, 'physical-type', { providerProductType: 1, leSIM: null }),
+      offer(1, 'topup-type', { providerProductType: 2, leSIM: null }),
+    ],
+  });
+  assert.equal(result.code, PROVIDER_RESOLUTION_CODES.MEDIUM_MISMATCH);
+  assert.equal(result.providerOfferId, null);
+});
+
 test('approved mapping is used only after exact resolution is absent and is revalidated', () => {
   const mapping = {
     id: 'binding-1',

@@ -206,11 +206,11 @@ export const CatalogLifecycleControls = ({ onChanged }: { onChanged?: () => void
     </section>}
     <div className={`catalog-maintenance-status ${maintenanceStatus?.enabled ? 'is-enabled' : 'is-disabled'}`} role="status">
       <strong>Catalog Maintenance: {maintenanceStatus ? (maintenanceStatus.enabled ? 'Đã bật' : 'Đang khóa') : 'Đang kiểm tra'}</strong>
-      {maintenanceStatus?.enabled && <span>Chỉ sử dụng để Reset hoặc Full Sync HICO GỐC.</span>}
+      {maintenanceStatus?.enabled && <span>Chỉ sử dụng cho thao tác bảo trì đã được phê duyệt.</span>}
     </div>
     {conflictingPreview && <p className="catalog-lifecycle-message" role="status">{CATALOG_PREVIEW_MODE_LABELS[conflictingPreview.mode]} đang chạy ở màn Đồng bộ Sheet. Hãy chờ hoặc hủy Preview đó trước khi chạy Full Preview.</p>}
     <div className="catalog-lifecycle-actions" aria-label="Thao tác toàn bộ catalog">
-      <button type="button" className="catalog-secondary-button" onClick={() => { if (fullJob?.status === 'SUCCEEDED') setMode('full'); else void openFull(); }} disabled={busy || previewRunning || Boolean(conflictingPreview)}><RefreshCw size={16} /> {conflictingPreview ? 'Đang chờ Preview khác' : previewRunning ? 'Đang tạo Preview...' : fullJob?.status === 'SUCCEEDED' ? 'Xem kết quả Preview' : fullJob && previewTerminal ? 'Chạy lại Preview' : 'Đồng bộ lại toàn bộ HICO GỐC'}</button>
+      <button type="button" className="catalog-secondary-button" onClick={() => { if (fullJob?.status === 'SUCCEEDED') setMode('full'); }} disabled={busy || previewRunning || Boolean(conflictingPreview) || !fullJob || fullJob.status !== 'SUCCEEDED'}><RefreshCw size={16} /> {fullJob?.status === 'SUCCEEDED' ? 'Xem Preview legacy' : 'HICO GỐC đã ngừng đồng bộ'}</button>
       <button type="button" className="catalog-danger-button" onClick={() => void openReset()} disabled={busy}><Trash2 size={16} /> Xóa toàn bộ sản phẩm</button>
     </div>
     {error && !mode && <p className="catalog-lifecycle-error" role="alert">{error}</p>}

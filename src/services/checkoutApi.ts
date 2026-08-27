@@ -11,7 +11,7 @@ export const getCheckoutConfig = async (): Promise<{ engine: CheckoutEngine }> =
   return response.json();
 };
 
-export const validateCheckout = async (payload: { items: CheckoutItemRequest[]; shipping: CheckoutShipping | null; topup: unknown }) : Promise<CheckoutValidationResponse> => {
+export const validateCheckout = async (payload: { items: CheckoutItemRequest[]; shipping?: CheckoutShipping | null }) : Promise<CheckoutValidationResponse> => {
   const response = await fetch('/api/checkout/validate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -21,7 +21,7 @@ export const validateCheckout = async (payload: { items: CheckoutItemRequest[]; 
   return response.json();
 };
 
-export const createCheckoutOrder = async (payload: { idempotencyKey: string; items: CheckoutItemRequest[]; customer: CheckoutCustomer; shipping: CheckoutShipping | null; topup: unknown }) => {
+export const createCheckoutOrder = async (payload: { idempotencyKey: string; items: CheckoutItemRequest[]; customer: CheckoutCustomer; shipping?: CheckoutShipping | null }) => {
   const response = await fetch('/api/checkout/orders', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': payload.idempotencyKey },

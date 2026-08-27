@@ -31,6 +31,8 @@ const attachVariants = ({ products, variants, categories = cloneSeedCategories()
 };
 
 const versionIdFor = (manifest) => manifest?.versionId ?? manifest?.migrationId ?? null;
+const PUBLIC_CATEGORY_KINDS = new Set(['esim', 'physical_sim', 'device', 'accessory']);
+const isNewSellableProduct = (product) => product?.operation !== 'topup';
 
 const toAdminVariantSummary = (variant) => ({
   id: variant.id,
@@ -176,6 +178,7 @@ export const createCatalogService = (
       const categoryIds = filters.category ? categoryFilterIds(categories, filters.category) : new Set();
       const [mediaAssets, providerOffers] = await Promise.all([publicMediaAssets(), publicProviderOffers()]);
       const publicProducts = products
+        .filter(isNewSellableProduct)
         .filter((product) => getSeoVisibility(product, product.variants).public)
         .map((product) => toPublicProduct(product, product.variants, { includeVariants: false, mediaAssets, providerOffers }));
       const normalizedSearch = typeof filters.search === 'string' ? filters.search.trim().toLocaleLowerCase('vi-VN') : '';
@@ -234,6 +237,9 @@ export const createCatalogService = (
       const { products, categories } = await readModel();
       return categories
         .filter((category) => category.status === 'active')
+        .filter((category) => category.parentId
+          ? PUBLIC_CATEGORY_KINDS.has(category.kind)
+          : categories.some((child) => child.parentId === category.id && PUBLIC_CATEGORY_KINDS.has(child.kind)))
         .sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name, 'vi'))
         .map((category) => ({
           id: category.id,
@@ -252,6 +258,7 @@ export const createCatalogService = (
       const { products } = await readModel();
       const product = products.find(
         (product) => product.id === productId
+          && isNewSellableProduct(product)
           && getSeoVisibility(product, product.variants).public,
       );
       if (!product) return null;
@@ -263,6 +270,7 @@ export const createCatalogService = (
       const { products } = await readModel();
       const product = products.find(
         (candidate) => candidate.slug === slug
+          && isNewSellableProduct(candidate)
           && getSeoVisibility(candidate, candidate.variants).public,
       );
       if (!product) return null;
@@ -273,7 +281,7 @@ export const createCatalogService = (
     async getPublicVariants(productId) {
       const { products } = await readModel();
       const product = products.find((candidate) => candidate.id === productId);
-      if (!product || !getSeoVisibility(product, product.variants).public) return null;
+      if (!product || !isNewSellableProduct(product) || !getSeoVisibility(product, product.variants).public) return null;
       return publicVariantsForProduct(product, product.variants, { providerOffers: await publicProviderOffers() });
     },
   };

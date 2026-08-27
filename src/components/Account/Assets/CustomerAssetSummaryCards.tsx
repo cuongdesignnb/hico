@@ -1,11 +1,10 @@
-import { Cpu, CreditCard, Gauge, Smartphone } from 'lucide-react';
+import { Cpu, CreditCard, Smartphone } from 'lucide-react';
 import type { CustomerAssetSummary } from '../../../types/customerAsset';
 
 const entries = [
   ['esims', 'eSIM', Smartphone, 'total'],
   ['physicalSims', 'SIM vật lý', CreditCard, 'total'],
   ['devices', 'Thiết bị', Cpu, 'total'],
-  ['topups', 'Nạp thêm', Gauge, 'total'],
 ] as const;
 
 export const CustomerAssetSummaryCards = ({ summary }: { summary: CustomerAssetSummary }) => <section className="account-summary-grid account-asset-summary-grid" aria-label="Tài sản Customer">

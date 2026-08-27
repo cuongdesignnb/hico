@@ -1,6 +1,7 @@
 import { CheckoutError } from './checkoutError.js';
 import { assertFulfillmentSupported } from '../fulfillment/fulfillmentValidation.js';
 import { PROVIDER_RESOLUTION_CODES, resolveProviderOffer } from '../catalog/fulfillment/providerOfferResolver.js';
+import { isLegacyFulfillmentMethod } from '../catalog/fulfillment/fulfillmentContracts.js';
 
 export const CHECKOUT_ENGINES = new Set(['legacy', 'canonical']);
 export const CURRENCIES = new Set(['VND', 'USD']);
@@ -128,8 +129,6 @@ const validateProviderMapping = (variant, offers) => {
   const providerMethods = new Set([
     'WORLDMOVE_ESIM_REDEEM',
     'WORLDMOVE_ESIM_ORDER_THEN_REDEEM',
-    'WORLDMOVE_PHYSICAL_ORDER',
-    'WORLDMOVE_TOPUP',
   ]);
   if (!providerMethods.has(variant.fulfillmentMethod)) return null;
   const offer = findOffer(offers, variant);
@@ -163,11 +162,11 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
     if (product.status !== 'active' || variant.active !== true || variant.needsReview === true) {
       throw new CheckoutError('Sản phẩm không thể thanh toán lúc này.', 'VARIANT_NOT_AVAILABLE');
     }
-    if (variant.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER') {
+    if (isLegacyFulfillmentMethod(variant.fulfillmentMethod) || product.operation === 'topup') {
       throw new CheckoutError(
-        'Worldmove physical SIM chưa sẵn sàng để thanh toán.',
-        'WORLDMOVE_PHYSICAL_ORDER_NOT_READY',
-        503,
+        'Nguồn cấp này đã ngừng hỗ trợ cho đơn hàng mới.',
+        'FULFILLMENT_RETIRED',
+        410,
       );
     }
     if (typeof variant.price !== 'number' || !Number.isFinite(variant.price) || variant.price < 0) {

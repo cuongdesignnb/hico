@@ -99,7 +99,7 @@ const buildProductPayload = (product: ProductDraft) => ({
 });
 
 const buildVariantPayload = (variant: VariantDraft, operation: ProductDraft['operation']) => {
-  const source = variant.sourceMode ? sourceTechnicalFields(variant.sourceMode) : null;
+  const source = variant.sourceMode ? sourceTechnicalFields(variant.sourceMode, variant.leSIM ?? true) : null;
   return {
     sku: variant.sku.trim(),
     dataLimit: variant.dataLimit.trim() || undefined,
@@ -154,7 +154,7 @@ const validateWizard = (product: ProductDraft, variants: VariantDraft[], categor
     if (!variant.sourceMode) errors.push({ step: 3, message: `Gói ${row} chưa chọn nguồn cấp.` });
     if (variant.sourceMode && !getCompatibleSources(product.operation, categoryKind).includes(variant.sourceMode)) errors.push({ step: 3, message: `Nguồn cấp của gói ${row} không khớp danh mục đã chọn.` });
     if (variant.sourceMode === 'hico_physical' && (!/^\d+$/.test(variant.stock) || Number(variant.stock) < 0)) errors.push({ step: 3, message: `Tồn kho của gói ${row} phải là số nguyên không âm.` });
-    if (variant.sourceMode && ['worldmove_esim', 'local_esim', 'worldmove_physical', 'worldmove_topup'].includes(variant.sourceMode) && !variant.providerOfferId) errors.push({ step: 3, message: `Gói ${row} cần chọn Provider Offer active.` });
+    if (variant.sourceMode === 'worldmove_esim' && !variant.providerOfferId) errors.push({ step: 3, message: `Gói ${row} cần chọn Provider Offer eSIM active.` });
     if (variant.compareAtPrice && Number(variant.compareAtPrice) < Number(variant.price)) warnings.push({ step: 3, message: `Giá so sánh của gói ${row} thấp hơn giá bán.` });
     if (variant.sourceMode === 'manual_processing') warnings.push({ step: 3, message: `Gói ${row} là xử lý thủ công và sẽ không publishable.` });
   });

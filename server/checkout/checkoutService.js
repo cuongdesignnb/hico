@@ -62,6 +62,9 @@ export const createCheckoutService = ({
     return validateCanonicalCart({ catalog, providerOffers, providerBindings, providerProfiles, request, requireCustomer });
   };
   const resolveRequest = async (request, customerIdentity) => {
+    if (request?.topup && typeof request.topup === 'object') {
+      throw new CheckoutError('Nguồn cấp này đã ngừng hỗ trợ cho đơn hàng mới.', 'FULFILLMENT_RETIRED', 410);
+    }
     const assetId = typeof request?.topup?.simAssetId === 'string' ? request.topup.simAssetId.trim() : '';
     if (!assetId) return request;
     if (!customerIdentity?.id) throw new CheckoutError('Vui lòng đăng nhập để nạp từ SIM đã sở hữu.', 'CUSTOMER_AUTH_REQUIRED', 401);

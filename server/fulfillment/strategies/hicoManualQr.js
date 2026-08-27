@@ -13,9 +13,8 @@ export const createHicoManualQrStrategy = ({ qrRepository }) => ({
       providerReference: qr.id,
       itemData: {
         productName: item.productName,
-        qrcode: qr.qrcode,
-        qrcodeContent: qr.qrcodeContent,
-        redemptionCode: qr.redemptionCode,
+        manualQrId: qr.id,
+        manualQrAssignedAt: qr.assignedAt,
       },
     });
   },

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/useApp';
 import { X, Trash2, Minus, Plus, CreditCard, ShoppingBag } from 'lucide-react';
 import { createCheckoutOrder, getCheckoutConfig, validateCheckout } from '../../services/checkoutApi';
-import { cartFulfillmentLabelFor, cartLabelFor, requiresShippingForCartItem, requiresTopupForCartItem } from '../../utils/cartItemClassification';
+import { cartFulfillmentLabelFor, cartLabelFor, requiresShippingForCartItem } from '../../utils/cartItemClassification';
 import './CartDrawer.css';
 
 export const CartDrawer: React.FC = () => {
@@ -22,10 +22,6 @@ export const CartDrawer: React.FC = () => {
     district: '',
     ward: '',
   });
-  const [topupDetails, setTopupDetails] = useState({ simNum: '', day: '' });
-
-  const topupDays = [...new Set(cart.filter(requiresTopupForCartItem).map((item) => item.topupDays).filter((value): value is number => typeof value === 'number' && Number.isInteger(value) && value > 0))];
-  const topupAssetIds = [...new Set(cart.filter(requiresTopupForCartItem).map((item) => item.topupSimAssetId).filter((value): value is string => Boolean(value)))];
   if (!isCartOpen) return null;
 
   // Format currency helper
@@ -60,19 +56,11 @@ export const CartDrawer: React.FC = () => {
   };
 
   const hasPhysicalItem = cart.some(requiresShippingForCartItem);
-  const hasTopupItem = cart.some(requiresTopupForCartItem);
-  const topupItems = cart.filter(requiresTopupForCartItem);
-  const hasInvalidTopupCart = hasTopupItem && (cart.length !== 1 || topupItems.length !== 1 || topupItems[0].quantity !== 1);
-  const ownedTopupAssetId = topupAssetIds.length === 1 ? topupAssetIds[0] : undefined;
-  const hasMixedTopupSources = topupAssetIds.length > 1 || (topupAssetIds.length === 1 && cart.some((item) => requiresTopupForCartItem(item) && !item.topupSimAssetId));
-  const effectiveTopupDay = topupDays.length === 1 ? String(topupDays[0]) : topupDetails.day;
   const currencyGroups = new Set(cart.map((item) => item.currency ?? 'VND'));
   const hasMixedCurrency = currencyGroups.size > 1;
 
-  const finishCheckout = (physical: boolean, topup: boolean) => {
-    if (topup) {
-      triggerNotification('Đặt hàng thành công! Yêu cầu nạp SIM đang được xử lý.', 'success');
-    } else if (physical) {
+  const finishCheckout = (physical: boolean) => {
+    if (physical) {
       triggerNotification('Đặt hàng thành công! Đơn hàng SIM vật lý đang chờ chuẩn bị giao hàng.', 'success');
     } else {
       triggerNotification('Thanh toán thành công! Mã QR kích hoạt eSIM đã được gửi vào email của bạn.', 'success');
@@ -84,7 +72,6 @@ export const CartDrawer: React.FC = () => {
     setPromoApplied(false);
     setDiscount(0);
     setShippingAddress({ address: '', city: '', district: '', ward: '' });
-    setTopupDetails({ simNum: '', day: '' });
   };
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
@@ -93,20 +80,8 @@ export const CartDrawer: React.FC = () => {
       triggerNotification('Vui lòng điền đầy đủ thông tin thanh toán!', 'error');
       return;
     }
-    if (hasInvalidTopupCart) {
-      triggerNotification('Nạp SIM phải được thanh toán riêng với số lượng 1.', 'error');
-      return;
-    }
     if (hasPhysicalItem && (!shippingAddress.address || !shippingAddress.city || !shippingAddress.district || !shippingAddress.ward)) {
       triggerNotification('Vui lòng điền đầy đủ địa chỉ giao hàng cho SIM vật lý!', 'error');
-      return;
-    }
-    if (hasTopupItem && hasMixedTopupSources) {
-      triggerNotification('Các gói nạp trong giỏ phải dùng cùng một SIM đã chọn hoặc cùng một SIM nhập tay.', 'error');
-      return;
-    }
-    if (hasTopupItem && ((!ownedTopupAssetId && !/^\d{20}$/.test(topupDetails.simNum.trim())) || !Number.isInteger(Number(effectiveTopupDay)) || Number(effectiveTopupDay) < 1 || Number(effectiveTopupDay) > 30)) {
-      triggerNotification('Vui lòng nhập đúng số SIM gồm 20 chữ số và số ngày từ 1 đến 30.', 'error');
       return;
     }
     setIsCheckingOut(true);
@@ -131,16 +106,14 @@ export const CartDrawer: React.FC = () => {
           province: shippingAddress.city,
           country: 'VN',
         } : null;
-        const topup = hasTopupItem ? { day: Number(effectiveTopupDay), ...(ownedTopupAssetId ? { simAssetId: ownedTopupAssetId } : { simNum: topupDetails.simNum.trim() }) } : null;
-        await validateCheckout({ items, shipping, topup });
+        await validateCheckout({ items, shipping });
         await createCheckoutOrder({
           idempotencyKey: window.crypto?.randomUUID?.() ?? `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
           items,
           customer: checkoutForm,
           shipping,
-          topup,
         });
-        finishCheckout(hasPhysicalItem, hasTopupItem);
+        finishCheckout(hasPhysicalItem);
         return;
       }
       const promises = cart.map(async (item) => {
@@ -165,7 +138,7 @@ export const CartDrawer: React.FC = () => {
       });
       const responses = await Promise.all(promises);
       if (!responses.every(Boolean)) throw new Error('Legacy checkout không hoàn tất.');
-      finishCheckout(hasPhysicalItem, hasTopupItem);
+      finishCheckout(hasPhysicalItem);
     } catch (err) {
       console.warn('Payment webhook connection failed:', err);
       triggerNotification(err instanceof Error ? err.message : 'Không thể hoàn tất thanh toán.', 'error');
@@ -218,11 +191,11 @@ export const CartDrawer: React.FC = () => {
                     <p className="cart-item-price">
                       {formatPrice(item.displayedPrice ?? item.price, item.currency)}
                     </p>
-                    <p className="cart-item-fulfillment">{cartFulfillmentLabelFor(item)}{requiresTopupForCartItem(item) ? ' · Không giao hàng' : ''}</p>
+                    <p className="cart-item-fulfillment">{cartFulfillmentLabelFor(item)}</p>
                   </div>
                   
                   <div className="cart-item-actions">
-                    {requiresTopupForCartItem(item) ? <span className="quantity-val">Số lượng: 1</span> : <div className="quantity-controller">
+                    <div className="quantity-controller">
                       <button
                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
                         className="quantity-btn"
@@ -236,7 +209,7 @@ export const CartDrawer: React.FC = () => {
                       >
                         <Plus size={14} />
                       </button>
-                    </div>}
+                    </div>
                     <button
                       onClick={() => removeFromCart(item.id)}
                       className="delete-item-btn"
@@ -332,33 +305,6 @@ export const CartDrawer: React.FC = () => {
                   onChange={(e) => setCheckoutForm({ ...checkoutForm, phone: e.target.value })}
                   className="checkout-input"
                 />
-
-                {hasTopupItem && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', borderTop: '1px dashed #cbd5e0', paddingTop: '12px' }}>
-                    <div className="checkout-title" style={{ marginBottom: '4px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#2b6cb0' }}>Thông tin SIM cần nạp</span>
-                    </div>
-                    {ownedTopupAssetId ? <p className="checkout-input" style={{ color: '#166534', background: '#f0fdf4' }}>SIM trong tài khoản đã được chọn. Hệ thống sẽ xác thực quyền sở hữu và không hiển thị số SIM đầy đủ.</p> : <input
-                      type="text"
-                      placeholder="Số SIM cần nạp"
-                      required={hasTopupItem}
-                      value={topupDetails.simNum}
-                      onChange={(e) => setTopupDetails({ ...topupDetails, simNum: e.target.value })}
-                      className="checkout-input"
-                    />}
-                    <input
-                      type="number"
-                      min="1"
-                      max="30"
-                      placeholder="Số ngày top-up"
-                      required={hasTopupItem}
-                      value={effectiveTopupDay}
-                      disabled={topupDays.length === 1}
-                      onChange={(e) => setTopupDetails({ ...topupDetails, day: e.target.value })}
-                      className="checkout-input"
-                    />
-                  </div>
-                )}
 
                 {hasPhysicalItem && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', borderTop: '1px dashed #cbd5e0', paddingTop: '12px' }}>

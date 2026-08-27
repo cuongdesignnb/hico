@@ -17,7 +17,7 @@ interface VariantSourceSelectorProps {
 const VariantSourceSelector = ({ operation, categoryKind, variant, offers, offersLoading, hideModeChoices = false, onChange }: VariantSourceSelectorProps) => {
   const sourceModes = getCompatibleSources(operation, categoryKind);
   const setSource = (sourceMode: WizardSourceMode) => onChange({ sourceMode, providerOfferId: undefined, wmproductId: undefined, providerProductType: undefined, leSIM: undefined });
-  const needsOffer = variant.sourceMode === 'worldmove_esim' || variant.sourceMode === 'local_esim' || variant.sourceMode === 'worldmove_physical' || variant.sourceMode === 'worldmove_topup';
+  const needsOffer = variant.sourceMode === 'worldmove_esim';
 
   return (
     <div className="product-wizard-source-selector">

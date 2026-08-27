@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AppContext, type CartItem, type CurrentUser } from './contextValue';
-import { requiresTopupForCartItem } from '../utils/cartItemClassification';
 
 const normalizeCartItem = (value: unknown): CartItem | null => {
   if (!value || typeof value !== 'object') return null;
@@ -13,6 +12,7 @@ const normalizeCartItem = (value: unknown): CartItem | null => {
     || typeof record.currency !== 'string'
     || typeof record.price !== 'number'
     || typeof record.quantity !== 'number') return null;
+  if (record.operation === 'topup') return null;
   const operation = record.operation === 'topup' || record.operation === 'device_sale' || record.operation === 'new_subscription'
     ? record.operation
     : record.type === 'device' ? 'device_sale' : 'new_subscription';
@@ -20,7 +20,7 @@ const normalizeCartItem = (value: unknown): CartItem | null => {
     ? record.medium
     : record.type === 'physical' ? 'physical_sim' : record.type === 'esim' ? 'esim' : undefined;
   const type = operation === 'device_sale' ? 'device' : medium === 'physical_sim' ? 'physical' : 'esim';
-  const quantity = operation === 'topup' ? 1 : Math.max(1, Math.floor(record.quantity));
+  const quantity = Math.max(1, Math.floor(record.quantity));
   const requestedTripDays = Number(record.requestedTripDays);
   return {
     ...record,
@@ -28,7 +28,7 @@ const normalizeCartItem = (value: unknown): CartItem | null => {
     medium,
     type,
     displayedPrice: typeof record.displayedPrice === 'number' ? record.displayedPrice : record.price,
-    ...(operation !== 'topup' && medium === 'esim' && Number.isInteger(requestedTripDays) && requestedTripDays > 0 ? { requestedTripDays } : {}),
+    ...(medium === 'esim' && Number.isInteger(requestedTripDays) && requestedTripDays > 0 ? { requestedTripDays } : {}),
     quantity,
   } as CartItem;
 };
@@ -85,18 +85,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [cart]);
 
   const addToCart = (newItem: Omit<CartItem, 'quantity'>) => {
+    if (newItem.operation === 'topup') {
+      triggerNotification('Sản phẩm nạp SIM đã ngừng mở bán.', 'error');
+      return;
+    }
     setCart((prevCart) => {
       const existingItemIndex = prevCart.findIndex((item) => item.id === newItem.id);
-      const newItemIsTopup = requiresTopupForCartItem(newItem);
-      const hasTopup = prevCart.some(requiresTopupForCartItem);
-      if (newItemIsTopup && existingItemIndex > -1) {
-        triggerNotification('Mỗi checkout chỉ được có 1 gói Nạp SIM.', 'info');
-        return prevCart;
-      }
-      if ((newItemIsTopup && prevCart.length > 0) || (!newItemIsTopup && hasTopup)) {
-        triggerNotification('Nạp SIM cần được thanh toán riêng, không thể ghép với sản phẩm khác.', 'error');
-        return prevCart;
-      }
       if (existingItemIndex > -1) {
         const updatedCart = [...prevCart];
         updatedCart[existingItemIndex].quantity += 1;
@@ -124,7 +118,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setCart((prevCart) => prevCart.map((item) => (item.id === id
-      ? { ...item, quantity: requiresTopupForCartItem(item) ? 1 : Math.floor(quantity) }
+      ? { ...item, quantity: Math.floor(quantity) }
       : item)));
   };
 

@@ -32,8 +32,8 @@ export const ProductListPage = ({ operation }: { operation?: PublicProduct['oper
   if (products === null) return <Loading />;
   if (error) return <main className="route-state"><h1>Không thể tải danh mục sản phẩm</h1><p>Hãy thử lại sau giây lát.</p><button type="button" onClick={() => setAttempt((value) => value + 1)}>Thử lại</button></main>;
   const filtered = products.filter((product) => (!operation || product.operation === operation) && product.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  const path = operation === 'topup' ? '/nap-them' : operation === 'device_sale' ? '/thiet-bi' : '/san-pham';
-  const heading = operation === 'topup' ? 'Top-up packages' : operation === 'device_sale' ? '4G / 5G devices' : 'Travel eSIM packages';
+  const path = operation === 'device_sale' ? '/thiet-bi' : '/san-pham';
+  const heading = operation === 'device_sale' ? '4G / 5G devices' : 'Travel eSIM packages';
   return <main id="main-content" tabIndex={-1} className="public-page"><SeoHead path={path} metadata={{ ...defaultMetadata(), title: `${heading} | HICO eSIM`, description: `Browse ${heading.toLowerCase()} from HICO.` }} /><div className="container"><div className="page-heading"><p>HICO catalog</p><h1>{heading}</h1></div>{filtered.length ? <div className="public-card-grid">{filtered.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <div className="route-state compact"><h2>No public packages are available yet.</h2></div>}</div></main>;
 };
 

@@ -241,6 +241,7 @@ export const validateVariantRecord = ({
   variant,
   product,
   providerOffers = [],
+  allowLegacy = true,
 }) => {
   const errors = [];
   const warnings = [];
@@ -329,13 +330,13 @@ export const validateVariantRecord = ({
     case 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM':
       if (
         variant.medium !== 'esim'
-        || variant.supplier !== 'local_carrier'
+        || variant.supplier !== 'worldmove'
         || variant.providerProductType !== 0
         || variant.leSIM !== false
       ) {
         errors.push(providerError(
-          'INVALID_LOCAL_CARRIER_ESIM',
-          'Cấu hình eSIM local carrier không hợp lệ.',
+          'INVALID_WORLDMOVE_ESIM',
+          'Cấu hình Worldmove eSIM order-then-redeem không hợp lệ.',
         ));
       }
       errors.push(...validateProviderOffer(variant, offersById, {
@@ -344,6 +345,13 @@ export const validateVariantRecord = ({
       }));
       break;
     case 'WORLDMOVE_PHYSICAL_ORDER':
+      if (!allowLegacy) {
+        errors.push(providerError(
+          'FULFILLMENT_RETIRED',
+          'Worldmove physical SIM đã ngừng hỗ trợ cho dữ liệu bán mới.',
+        ));
+        break;
+      }
       if (
         variant.medium !== 'physical_sim'
         || variant.supplier !== 'worldmove'
@@ -359,6 +367,13 @@ export const validateVariantRecord = ({
       }));
       break;
     case 'WORLDMOVE_TOPUP':
+      if (!allowLegacy) {
+        errors.push(providerError(
+          'FULFILLMENT_RETIRED',
+          'Worldmove top-up đã ngừng hỗ trợ cho dữ liệu bán mới.',
+        ));
+        break;
+      }
       if (
         product?.operation !== 'topup'
         || variant.medium !== null
@@ -380,6 +395,11 @@ export const validateVariantRecord = ({
         variant.medium !== 'esim'
         || variant.supplier !== 'hico'
         || variant.requiresExistingSim !== false
+        || variant.providerProductType != null
+        || variant.leSIM != null
+        || variant.providerOfferId
+        || variant.wmproductId
+        || variant.shippingRequired === true
       ) {
         errors.push(providerError(
           'INVALID_MANUAL_QR',
@@ -394,6 +414,11 @@ export const validateVariantRecord = ({
         || variant.requiresExistingSim !== false
         || !Number.isInteger(variant.stock)
         || variant.stock < 0
+        || variant.providerProductType != null
+        || variant.leSIM != null
+        || variant.providerOfferId
+        || variant.wmproductId
+        || (!allowLegacy && variant.shippingRequired !== true)
       ) {
         errors.push(providerError(
           'INVALID_HICO_PHYSICAL_STOCK',

@@ -5,29 +5,36 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 const failures = [];
+const assertAbsent = (content, needle, message) => {
+  if (content.includes(needle)) failures.push(message);
+};
+
 const cart = read('src/components/CartDrawer/CartDrawer.tsx');
 const detail = read('src/components/ProductDetail/ProductDetail.tsx');
 const account = read('src/pages/account/AccountAssetDetailPage.tsx');
-const labels = read('src/utils/cartItemClassification.ts');
-const detailViewModel = read('src/adapters/productDetailViewModel.ts');
+const header = read('src/components/Header/Header.tsx');
+const router = read('src/routing/AppRouter.tsx');
+const appContext = read('src/context/AppContext.tsx');
+const publicPages = read('src/pages/PublicPages.tsx');
 
-if (!labels.includes('if (operation === \'topup\') return \'Nạp SIM\';')) failures.push('purchase label is not operation-aware for top-up');
-if (!labels.includes("if (operation === 'topup') return 'Dùng cho SIM hiện có';")) failures.push('fulfillment label is not operation-aware for top-up');
-if (!cart.includes('requiresTopupForCartItem(item) ? <span className="quantity-val">Số lượng: 1</span>')) failures.push('cart does not lock top-up quantity to one');
-if (!cart.includes('Không giao hàng')) failures.push('cart does not state that top-up is not shipped');
-if (!detail.includes("const simTypes = displayProduct.operation === 'topup' ? []")) failures.push('product detail still exposes SIM type selector for top-up');
-if (!detail.includes("const effectiveQuantity = displayProduct.operation === 'topup' ? 1")) failures.push('product detail does not force top-up quantity to one');
-if (!detail.includes('purchaseOptions.length <= 1 && displayProduct.familyProducts')) failures.push('redundant family selector is not hidden when purchase options are plural');
-if (detail.includes("familyProduct.medium === 'physical_sim' ? 'SIM vật lý'")) failures.push('family product label still derives from medium only');
-if (!account.includes("asset?.assetType === 'TOPUP'")) failures.push('physical asset can still guess a top-up CTA');
-if (account.includes("['TOPUP', 'PHYSICAL_SIM'].includes(asset.assetType)")) failures.push('physical asset CTA allowlist remains');
-if (!detailViewModel.includes("product.operation === 'topup'\n      ? 'Gói nạp cho SIM hiện có.'")) failures.push('top-up technical copy is not operation-aware');
-if (!detailViewModel.includes("product.operation === 'topup'\n      ? 'SIM cần hợp lệ và đủ điều kiện nạp.'")) failures.push('top-up compatibility copy is not operation-aware');
-if (detailViewModel.includes("product.operation === 'topup'\n      ? 'Thông tin gói SIM vật lý")) failures.push('top-up detail still uses physical SIM technical copy');
+for (const needle of ['topupDetails', 'topupDays', 'topupSimAssetId', 'simNum', 'Số ngày top-up', 'Thông tin SIM cần nạp']) {
+  assertAbsent(cart, needle, `active cart still contains retired top-up field: ${needle}`);
+}
+assertAbsent(cart, 'validateCheckout({ ...', 'active cart still builds a top-up checkout payload');
+assertAbsent(detail, 'simAssetId', 'product detail still links an active top-up asset');
+assertAbsent(detail, 'topupDays', 'product detail still exposes top-up days');
+assertAbsent(account, "asset?.assetType === 'TOPUP'", 'account asset detail still offers a top-up CTA');
+assertAbsent(account, 'Số ngày top-up', 'account asset detail still exposes top-up days');
+assertAbsent(header, '/nap-them', 'public header still exposes a top-up route');
+assertAbsent(router, '/nap-them', 'router still exposes an active top-up route');
+assertAbsent(publicPages, "operation === 'topup' ? '/nap-them'", 'public catalog still creates a top-up route');
+if (!detail.includes('Sản phẩm nạp SIM này đã ngừng mở bán.')) failures.push('product detail does not show the retired-product guard');
+if (!appContext.includes("if (record.operation === 'topup') return null;")) failures.push('cart hydration does not reject historical top-up records');
+if (!appContext.includes("if (newItem.operation === 'topup')")) failures.push('cart add path does not reject new top-up items');
 
 if (failures.length > 0) {
   console.error(JSON.stringify({ success: false, failures }, null, 2));
   process.exitCode = 1;
 } else {
-  console.log(JSON.stringify({ success: true, checks: 10 }));
+  console.log(JSON.stringify({ success: true, checks: 16 }));
 }

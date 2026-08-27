@@ -35,12 +35,11 @@ test('checkout idempotency serializes duplicate concurrent creates and rejects p
   await assert.rejects(service.createOrder({ ...request, items: [{ variantId: 'v-1', quantity: 2 }] }), (error) => error.code === 'CHECKOUT_IDEMPOTENCY_CONFLICT');
 });
 
-test('customer-owned top-up resolves simAssetId server-side and ignores client sim number', async () => {
+test('retired top-up checkout is rejected before resolving a customer SIM asset', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hico-checkout-asset-'));
   const offers = path.join(directory, 'provider_offers.json');
   await atomicWriteJson(offers, [{ id: 'offer-topup', wmproductId: 'WM-TOPUP', providerProductType: 2, active: true }]);
   let resolved = null;
-  let createdRequest = null;
   const service = createCheckoutService({
     env: { CHECKOUT_ENGINE: 'canonical' },
     providerOffersFile: offers,
@@ -55,10 +54,7 @@ test('customer-owned top-up resolves simAssetId server-side and ignores client s
       variants: [{ id: 'v-topup', productId: 'p-topup', price: 80000, currency: 'VND', medium: 'physical_sim', supplier: 'worldmove', fulfillmentMethod: 'WORLDMOVE_TOPUP', providerProductType: 2, active: true, needsReview: false, topupDays: 10, providerOfferId: 'offer-topup', wmproductId: 'WM-TOPUP' }],
     }) },
     idempotencyRepository: createCheckoutIdempotencyRepository({ filePath: path.join(directory, 'idempotency.json') }),
-    orderService: { createCanonicalOrder: async ({ snapshotFactory, request: payload, validated }) => {
-      createdRequest = payload;
-      return snapshotFactory({ orderId: 'o-topup', request: payload, validated, createdAt: new Date().toISOString() });
-    } },
+    orderService: { createCanonicalOrder: async () => { throw new Error('must not create'); } },
   });
   const topupRequest = {
     idempotencyKey: 'asset-key',
@@ -67,14 +63,15 @@ test('customer-owned top-up resolves simAssetId server-side and ignores client s
     shipping: null,
     topup: { simAssetId: 'asset-1', simNum: 'not-a-client-authority', day: 10 },
   };
-  const response = await service.createOrder(topupRequest, { id: 'customer-1', displayName: 'A', email: 'a@example.com', phone: '0900000000' });
-  assert.equal(response.orderId, 'o-topup');
-  assert.deepEqual(resolved, { customerId: 'customer-1', assetId: 'asset-1' });
-  assert.equal(createdRequest.topup.simNum, '12345678901234567890');
-  await assert.rejects(service.validate(topupRequest), (error) => error.code === 'CUSTOMER_AUTH_REQUIRED');
+  await assert.rejects(
+    service.createOrder(topupRequest, { id: 'customer-1', displayName: 'A', email: 'a@example.com', phone: '0900000000' }),
+    (error) => error.code === 'FULFILLMENT_RETIRED' && error.status === 410,
+  );
+  assert.equal(resolved, null);
+  await assert.rejects(service.validate(topupRequest), (error) => error.code === 'FULFILLMENT_RETIRED' && error.status === 410);
 });
 
-test('checkout rejects top-up quantity before creating an order', async () => {
+test('checkout rejects retired top-up before creating an order', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hico-checkout-topup-rules-'));
   const offers = path.join(directory, 'provider_offers.json');
   await atomicWriteJson(offers, [{ id: 'offer-topup', wmproductId: 'WM-TOPUP', providerProductType: 2, active: true }]);
@@ -95,6 +92,6 @@ test('checkout rejects top-up quantity before creating an order', async () => {
     customer: { name: 'A', email: 'a@example.com', phone: '0900000000' },
     shipping: null,
     topup: { simNum: '12345678901234567890', day: 10 },
-  }), (error) => error.code === 'TOPUP_QUANTITY_INVALID' && error.status === 422);
+  }), (error) => error.code === 'FULFILLMENT_RETIRED' && error.status === 410);
   assert.equal(creates, 0);
 });

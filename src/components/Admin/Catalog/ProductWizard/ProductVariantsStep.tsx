@@ -24,7 +24,7 @@ const ProductVariantsStep = ({ operation, categoryKind, variants, offers, offers
   const compatibleSources = getCompatibleSources(operation, categoryKind);
   const [bulkSource, setBulkSource] = useState<WizardSourceMode>(compatibleSources[0]);
   const [selectedOffers, setSelectedOffers] = useState<string[]>([]);
-  const providerSources = compatibleSources.filter((source) => ['worldmove_esim', 'local_esim', 'worldmove_physical', 'worldmove_topup'].includes(source));
+  const providerSources = compatibleSources.filter((source) => source === 'worldmove_esim');
   const providerOffers = offers.filter((offer) => offer.active && providerSources.some((source) => offerMatchesSource(offer, source)));
   const appliedSource = compatibleSources.includes(bulkSource) ? bulkSource : compatibleSources[0];
   const toggleOffer = (offerId: string) => setSelectedOffers((current) => current.includes(offerId) ? current.filter((id) => id !== offerId) : [...current, offerId]);

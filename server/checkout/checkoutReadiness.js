@@ -45,6 +45,7 @@ const MESSAGE_BY_REASON = Object.freeze({
   PHYSICAL_INVENTORY_NOT_CONFIGURED: 'Kho SIM vật lý chưa được cấu hình.',
   DEVICE_INVENTORY_NOT_CONFIGURED: 'Kho thiết bị chưa được cấu hình.',
   TOPUP_PROVIDER_NOT_READY: 'Nhà cung cấp top-up chưa sẵn sàng.',
+  FULFILLMENT_RETIRED: 'Nguồn cấp này đã ngừng hỗ trợ cho đơn hàng mới.',
 });
 
 const canonicalVariantReady = ({ product, variant }) => (
@@ -104,7 +105,7 @@ export const getRequiredCheckoutCapabilities = (cartKinds = []) => {
       required.add(CHECKOUT_CAPABILITIES.DEVICE_INVENTORY);
       required.add(CHECKOUT_CAPABILITIES.SHIPPING);
     }
-    if (kind === CHECKOUT_FULFILLMENT_KINDS.TOPUP) required.add(CHECKOUT_CAPABILITIES.TOPUP_PROVIDER);
+    // Historical top-up records remain classifiable, but never become a new checkout capability.
   }
   return CAPABILITY_ORDER.filter((capability) => required.has(capability));
 };
@@ -169,13 +170,17 @@ const providerReadyForVariant = ({ env, variant, offers, activeBinding, activePr
 const inventoryMatches = ({ rows, variant }) => rows.some((row) => (
   row?.variantId === variant.id || row?.sku === variant.sku
 ));
+const inventoryAvailable = ({ rows, variant, quantity }) => rows.some((row) => {
+  if (row?.variantId !== variant.id && row?.sku !== variant.sku) return false;
+  const available = Number(row.available ?? row.quantity ?? row.stock);
+  return Number.isFinite(available) && available >= quantity;
+});
 
 const hasAvailableManualQr = ({ rows, variant }) => rows.some((row) => (
   row?.variantId === variant.id
   && !row.assignedOrderId
   && !row.assignedOrderItemId
-  && typeof row.qrcode === 'string'
-  && row.qrcode.trim()
+  && ((typeof row.qrcode === 'string' && row.qrcode.trim()) || (typeof row.storageKey === 'string' && row.storageKey.trim()))
 ));
 
 const readinessError = (readiness) => {
@@ -237,15 +242,21 @@ export const createCheckoutReadinessService = ({
         if (item.variant) blockingReasons.push('CANONICAL_VARIANT_NOT_READY');
         continue;
       }
+      if (item.kind === CHECKOUT_FULFILLMENT_KINDS.TOPUP) {
+        blockingReasons.push('FULFILLMENT_RETIRED');
+        continue;
+      }
       if (item.product.operationResolution === 'UNRESOLVED' || item.variant.operationResolution === 'UNRESOLVED') {
         blockingReasons.push('CANONICAL_OPERATION_UNRESOLVED');
         continue;
       }
-      if (item.kind === CHECKOUT_FULFILLMENT_KINDS.PHYSICAL_SIM && !inventoryMatches({ rows: inventory, variant: item.variant })) {
-        blockingReasons.push('PHYSICAL_INVENTORY_NOT_CONFIGURED');
+      if (item.kind === CHECKOUT_FULFILLMENT_KINDS.PHYSICAL_SIM) {
+        if (!inventoryMatches({ rows: inventory, variant: item.variant })) blockingReasons.push('PHYSICAL_INVENTORY_NOT_CONFIGURED');
+        else if (!inventoryAvailable({ rows: inventory, variant: item.variant, quantity: Number(item.item.quantity) || 1 })) blockingReasons.push('PHYSICAL_INVENTORY_NOT_CONFIGURED');
       }
-      if (item.kind === CHECKOUT_FULFILLMENT_KINDS.DEVICE && !inventoryMatches({ rows: inventory, variant: item.variant })) {
-        blockingReasons.push('DEVICE_INVENTORY_NOT_CONFIGURED');
+      if (item.kind === CHECKOUT_FULFILLMENT_KINDS.DEVICE) {
+        if (!inventoryMatches({ rows: inventory, variant: item.variant })) blockingReasons.push('DEVICE_INVENTORY_NOT_CONFIGURED');
+        else if (!inventoryAvailable({ rows: inventory, variant: item.variant, quantity: Number(item.item.quantity) || 1 })) blockingReasons.push('DEVICE_INVENTORY_NOT_CONFIGURED');
       }
       if (item.kind === CHECKOUT_FULFILLMENT_KINDS.ESIM) {
         const activeBinding = bindingRows.find((binding) => binding.variantId === item.variant.id && binding.status === 'ACTIVE') ?? null;
@@ -256,10 +267,6 @@ export const createCheckoutReadinessService = ({
           const provider = providerReadyForVariant({ env, variant: item.variant, offers: offerRows, activeBinding, activeProfile });
           if (provider.ready === false) blockingReasons.push(provider.reason ?? 'ESIM_FULFILLMENT_NOT_READY');
         }
-      }
-      if (item.kind === CHECKOUT_FULFILLMENT_KINDS.TOPUP) {
-        const offer = providerOfferForVariant({ variant: item.variant, offers: offerRows });
-        if (!offer || offer.providerProductType !== 2) blockingReasons.push('TOPUP_PROVIDER_NOT_READY');
       }
     }
 

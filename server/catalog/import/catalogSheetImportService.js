@@ -19,9 +19,7 @@ const slugify = (value) => value.replace(/[Đđ]/g, 'd').normalize('NFD').replac
 const nowIso = () => new Date().toISOString();
 
 const providerFields = (category, offer) => {
-  if (category.kind === 'esim' && offer.providerProductType === 0) return { medium: 'esim', supplier: offer.leSIM === false ? 'local_carrier' : 'worldmove', fulfillmentMethod: offer.leSIM === false ? 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM' : 'WORLDMOVE_ESIM_REDEEM', providerProductType: 0, leSIM: offer.leSIM === false ? false : true, requiresExistingSim: false };
-  if ((category.kind === 'physical_sim' || category.kind === 'device' || category.kind === 'accessory') && offer.providerProductType === 1) return { medium: 'physical_sim', supplier: 'worldmove', fulfillmentMethod: 'WORLDMOVE_PHYSICAL_ORDER', providerProductType: 1, leSIM: null, requiresExistingSim: false };
-  if (category.kind === 'topup' && offer.providerProductType === 2) return { medium: null, supplier: 'worldmove', fulfillmentMethod: 'WORLDMOVE_TOPUP', providerProductType: 2, leSIM: null, requiresExistingSim: true };
+  if (category.kind === 'esim' && offer.providerProductType === 0 && typeof offer.leSIM === 'boolean') return { medium: 'esim', supplier: 'worldmove', fulfillmentMethod: offer.leSIM === false ? 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM' : 'WORLDMOVE_ESIM_REDEEM', providerProductType: 0, leSIM: offer.leSIM, requiresExistingSim: false };
   return null;
 };
 
@@ -102,7 +100,15 @@ export const createCatalogSheetImportService = ({
         const matches = (offersByWmid.get(row.sku) ?? []).filter((item) => item.active);
         if (matches.length === 0) rowErrors.push('PROVIDER_NOT_FOUND');
         else if (matches.length > 1) rowErrors.push('PROVIDER_AMBIGUOUS');
-        else { offer = matches[0]; fulfillment = providerFields(category, offer); if (!fulfillment) rowErrors.push('PROVIDER_TYPE_CONFLICT'); }
+        else {
+          offer = matches[0];
+          fulfillment = providerFields(category, offer);
+          if (!fulfillment) {
+            rowErrors.push([1, 2].includes(offer.providerProductType)
+              ? 'PROVIDER_PRODUCT_TYPE_UNSUPPORTED'
+              : 'PROVIDER_TYPE_CONFLICT');
+          }
+        }
       } else {
         fulfillment = hicoFields(category, sourceMode);
         if (!fulfillment) rowErrors.push('SOURCE_CATEGORY_MISMATCH');

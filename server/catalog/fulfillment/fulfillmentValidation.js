@@ -16,7 +16,24 @@ const salePlanDaysFrom = (event) => {
   return Number.isInteger(days) && days > 0 ? days : null;
 };
 
+const normalizedWmid = (value) => String(value ?? '').normalize('NFC').trim().toUpperCase();
+
+const callbackWmids = (event) => [
+  event?.wmproductId,
+  event?.payload?.wmproductId,
+  event?.item?.wmproductId,
+  ...(Array.isArray(event?.itemList) ? event.itemList.map((item) => item?.wmproductId) : []),
+].map(normalizedWmid).filter(Boolean);
+
 export const validateProvisioningEntitlement = ({ item, event }) => {
+  const expectedWmid = normalizedWmid(item?.providerWmproductId ?? item?.wmproductId);
+  const reportedWmids = callbackWmids(event);
+  if (expectedWmid && reportedWmids.some((wmid) => wmid !== expectedWmid)) {
+    throw new FulfillmentValidationError(
+      'Provider callback WMID does not match the sold catalog item.',
+      { code: 'PROVIDER_WMID_MISMATCH', status: 409 },
+    );
+  }
   const salePlanDays = salePlanDaysFrom(event);
   if (!salePlanDays) return { checked: false, salePlanDays: null };
 

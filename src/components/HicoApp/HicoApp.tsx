@@ -21,7 +21,7 @@ export const HicoApp: React.FC = () => {
             </li>
             <li>
               <div className="app-check-icon">✓</div>
-              <span>Nạp thêm gói cước</span>
+              <span>Quản lý và cài đặt eSIM</span>
             </li>
             <li>
               <div className="app-check-icon">✓</div>

@@ -35,9 +35,55 @@ test('fulfillment service creates one manual QR assignment and preserves snapsho
   const result = await service.createForOrder(order);
   assert.equal(result.orderStatus, 'PROVISIONED');
   assert.equal(result.records[0].state, 'PROVISIONED');
-  assert.equal(orderRepository.current.items[0].qrcode, 'qr-value');
+  assert.equal(orderRepository.current.items[0].qrcode, undefined);
+  assert.equal(orderRepository.current.items[0].manualQrId, 'qr-1');
   const retry = await service.createForOrder(orderRepository.current);
   assert.equal(retry.records[0].id, result.records[0].id);
+});
+
+test('admin manual QR assignment is exact, idempotent, and transitions pending fulfillment', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hico-fulfillment-assign-'));
+  try {
+    const qrFile = path.join(directory, 'manual_qrs.json');
+    await atomicWriteJson(qrFile, []);
+    const fulfillmentRepository = createFulfillmentRepository({ filePath: path.join(directory, 'fulfillments.json') });
+    const order = {
+      orderId: 'o-assign',
+      email: 'a@example.com',
+      status: 'PENDING_QR_ASSIGN',
+      items: [{ variantId: 'v-1', productName: 'Gói Nhật', medium: 'esim', supplier: 'hico', fulfillmentMethod: 'HICO_MANUAL_QR', quantity: 1 }],
+    };
+    const orderRepository = {
+      current: order,
+      async get() { return this.current; },
+      async update(_id, update) { this.current = typeof update === 'function' ? await update(this.current) : update; return this.current; },
+    };
+    const service = createFulfillmentService({
+      repository: fulfillmentRepository,
+      idempotencyRepository: createFulfillmentIdempotencyRepository({ filePath: path.join(directory, 'idempotency.json') }),
+      orderRepository,
+      qrRepository: createManualQrRepository({ filePath: qrFile, legacyFilePath: null }),
+      inventoryRepository: createInventoryRepository({ inventoryFile: path.join(directory, 'inventory.json'), movementsFile: path.join(directory, 'movements.json') }),
+      providerClient: {},
+    });
+    const created = await service.createForOrder(order);
+    assert.equal(created.orderStatus, 'PENDING_QR_ASSIGN');
+    await atomicWriteJson(qrFile, [
+      { id: 'qr-1', variantId: 'v-1', qrcode: 'qr-value', assignedOrderId: null },
+      { id: 'qr-other', variantId: 'v-other', qrcode: 'other', assignedOrderId: null },
+    ]);
+    const assigned = await service.assignManualQr({ orderId: order.orderId, orderItemId: created.records[0].orderItemId, qrId: 'qr-1' });
+    assert.equal(assigned.record.state, 'PROVISIONED');
+    assert.equal(assigned.order.items[0].manualQrId, 'qr-1');
+    const replay = await service.assignManualQr({ orderId: order.orderId, orderItemId: created.records[0].orderItemId, qrId: 'qr-1' });
+    assert.equal(replay.record.state, 'PROVISIONED');
+    await assert.rejects(
+      service.assignManualQr({ orderId: order.orderId, orderItemId: created.records[0].orderItemId, qrId: 'qr-other' }),
+      (error) => error.code === 'ORDER_STATE_CONFLICT',
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 const createWorldmoveFixture = async (fulfillmentMethod) => {

@@ -122,7 +122,6 @@ test('classification derives canonical kinds and unions capabilities in stable o
     CHECKOUT_CAPABILITIES.PHYSICAL_INVENTORY,
     CHECKOUT_CAPABILITIES.SHIPPING,
     CHECKOUT_CAPABILITIES.DEVICE_INVENTORY,
-    CHECKOUT_CAPABILITIES.TOPUP_PROVIDER,
   ]);
   assert.equal(classified.classifications.find((item) => item.variantId === 'v-esim').kind, CHECKOUT_FULFILLMENT_KINDS.ESIM);
   assert.equal(classified.classifications.find((item) => item.variantId === 'v-physical').kind, CHECKOUT_FULFILLMENT_KINDS.PHYSICAL_SIM);
@@ -194,7 +193,7 @@ test('physical checkout blocks only on physical inventory and mixed carts retain
   assert.deepEqual(mixed.blockingReasons, ['PHYSICAL_INVENTORY_NOT_CONFIGURED']);
 });
 
-test('device and top-up readiness do not inherit the physical inventory requirement', async () => {
+test('device readiness remains active while historical top-up checkout is retired', async () => {
   const catalog = {
     products: [product('p-device', 'device_sale'), product('p-topup', 'topup')],
     variants: [
@@ -207,7 +206,7 @@ test('device and top-up readiness do not inherit the physical inventory requirem
   const topup = await service.evaluate({ items: [{ variantId: 'v-topup', quantity: 1 }] });
 
   assert.deepEqual(device.blockingReasons, ['DEVICE_INVENTORY_NOT_CONFIGURED']);
-  assert.deepEqual(topup.blockingReasons, ['TOPUP_PROVIDER_NOT_READY']);
+  assert.deepEqual(topup.blockingReasons, ['FULFILLMENT_RETIRED']);
   assert.equal(device.blockingReasons.includes('PHYSICAL_INVENTORY_NOT_CONFIGURED'), false);
   assert.equal(topup.blockingReasons.includes('PHYSICAL_INVENTORY_NOT_CONFIGURED'), false);
 });

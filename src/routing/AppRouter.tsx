@@ -31,8 +31,6 @@ import { AccountEsimDetailPage } from '../pages/account/AccountEsimDetailPage';
 import { AccountPhysicalSimsPage } from '../pages/account/AccountPhysicalSimsPage';
 import { AccountPhysicalSimDetailPage } from '../pages/account/AccountPhysicalSimDetailPage';
 import { AccountDeviceDetailPage } from '../pages/account/AccountDeviceDetailPage';
-import { AccountTopupsPage } from '../pages/account/AccountTopupsPage';
-import { AccountTopupDetailPage } from '../pages/account/AccountTopupDetailPage';
 import { AccountLoyaltyPage } from '../pages/account/AccountLoyaltyPage';
 import { AccountReferralsPage } from '../pages/account/AccountReferralsPage';
 import { AccountNotificationsPage } from '../pages/account/AccountNotificationsPage';
@@ -66,8 +64,6 @@ export const AppRouter: React.FC = () => <RouteErrorBoundary><ScrollRestoration 
     <Route path="diem-den" element={<CoverageListPage />} />
     <Route path="diem-den/:slug" element={<CoveragePage expectedType="country" />} />
     <Route path="khu-vuc/:slug" element={<CoveragePage expectedType="region" />} />
-    <Route path="nap-them" element={<ProductListPage operation="topup" />} />
-    <Route path="nap-them/:slug" element={<ProductPage />} />
     <Route path="thiet-bi" element={<ProductListPage operation="device_sale" />} />
     <Route path="thiet-bi/:slug" element={<ProductPage />} />
     <Route path="bai-viet" element={<ArticleListPage />} />
@@ -90,8 +86,6 @@ export const AppRouter: React.FC = () => <RouteErrorBoundary><ScrollRestoration 
     <Route path="sim-thiet-bi" element={<AccountPhysicalSimsPage />} />
     <Route path="sim-thiet-bi/sim/:assetId" element={<AccountPhysicalSimDetailPage />} />
     <Route path="sim-thiet-bi/thiet-bi/:assetId" element={<AccountDeviceDetailPage />} />
-    <Route path="nap-them" element={<AccountTopupsPage />} />
-    <Route path="nap-them/:topupId" element={<AccountTopupDetailPage />} />
     <Route path="diem-thuong" element={<AccountLoyaltyPage />} />
     <Route path="gioi-thieu" element={<AccountReferralsPage />} />
     <Route path="thong-bao" element={<AccountNotificationsPage />} />

@@ -6,7 +6,7 @@ const REVEAL_FIELDS = ['couponIccid', 'cid', 'iccid', 'qrCode', 'lpa', 'pin1', '
 const reauthRequired = () => Object.assign(new Error('Recent customer re-authentication is required.'), { code: 'ESIM_REVEAL_REAUTH_REQUIRED' });
 const unavailable = () => Object.assign(new Error('eSIM secret data is unavailable.'), { code: 'ESIM_SECRET_UNAVAILABLE' });
 
-export const createCustomerAssetRevealService = ({ assetRepository, auditRepository, customerSessionRepository, customerRepository, securityAudit = () => {}, env = process.env, now = () => new Date() } = {}) => {
+export const createCustomerAssetRevealService = ({ assetRepository, auditRepository, customerSessionRepository, customerRepository, manualQrRepository = null, securityAudit = () => {}, env = process.env, now = () => new Date() } = {}) => {
   const windowMinutes = Math.max(1, Number.parseInt(env.CUSTOMER_REAUTH_WINDOW_MINUTES, 10) || 10);
   const fallbackAuditRepository = {
     async recordReveal({ customerId, assetId, orderId, requestId, fieldsRevealed }) {
@@ -28,7 +28,13 @@ export const createCustomerAssetRevealService = ({ assetRepository, auditReposit
       if (source.asset.assetType !== 'ESIM') throw unavailable();
       const authenticatedAt = Date.parse(session?.lastAuthenticatedAt ?? '');
       if (!Number.isFinite(authenticatedAt) || now().getTime() - authenticatedAt > windowMinutes * 60_000) throw reauthRequired();
-      const data = source.record.itemData && typeof source.record.itemData === 'object' ? source.record.itemData : {};
+      const data = source.record.itemData && typeof source.record.itemData === 'object' ? { ...source.record.itemData } : {};
+      if (data.manualQrId && (manualQrRepository?.getSecret || manualQrRepository?.get)) {
+        const manualQr = await (manualQrRepository.getSecret?.(data.manualQrId) ?? manualQrRepository.get(data.manualQrId));
+        if (manualQr?.assignedOrderId === source.asset.orderId && manualQr.assignedOrderItemId === `${source.asset.orderId}:item:${source.asset.itemIndex}`) {
+          Object.assign(data, manualQr);
+        }
+      }
       const couponIccid = stringValue(data.couponIccid) ?? stringValue(data.iccid);
       const cid = stringValue(data.cid);
       const pin1 = stringValue(data.pin1);

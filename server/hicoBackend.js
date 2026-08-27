@@ -22,6 +22,9 @@ import { createCatalogQueueRouter } from './catalog/queues/catalogQueueRouter.js
 import { createCatalogPublishRouter } from './catalog/publish/catalogPublishRouter.js';
 import { createCatalogSheetImportRouter } from './catalog/import/catalogSheetImportRouter.js';
 import { createSheetSyncRouter } from './catalog/sheetSync/sheetSyncRouter.js';
+import { createEsimSheetRouter } from './catalog/esimSheet/esimSheetRouter.js';
+import { createEsimSheetAuditService } from './catalog/esimSheet/esimSheetAuditService.js';
+import { createEsimSheetSyncService } from './catalog/esimSheet/esimSheetSyncService.js';
 import { createSheetSyncService } from './catalog/sheetSync/sheetSyncService.js';
 import { createSheetSyncRepository } from './catalog/sheetSync/sheetSyncRepository.js';
 import { createCatalogResyncService } from './catalog/sheetSync/catalogResyncService.js';
@@ -70,6 +73,7 @@ import { createFulfillmentService } from './fulfillment/fulfillmentService.js';
 import { createFulfillmentRepository } from './fulfillment/fulfillmentRepository.js';
 import { createFulfillmentIdempotencyRepository } from './fulfillment/fulfillmentIdempotencyRepository.js';
 import { createManualQrRepository } from './fulfillment/manualQrRepository.js';
+import { createManualQrRouter } from './fulfillment/manualQrRouter.js';
 import { createInventoryRepository } from './fulfillment/inventoryRepository.js';
 import { createOrderRepository } from './orders/orderRepository.js';
 import { createPostgresOrderRepository } from './orders/postgresOrderRepository.js';
@@ -204,6 +208,14 @@ const catalogWriteService = createCatalogWriteService({
   mediaAssetRepository,
   commandService: catalogCommandService,
   commitService: catalogCommitService,
+});
+const esimSheetSyncService = createEsimSheetSyncService({
+  env: process.env,
+  referenceClient: { readRows: () => googleSheetConnectionService.readRows() },
+  catalogRepository: canonicalCatalogRepository,
+  providerRepository: providerOfferRepository,
+  commitService: catalogCommitService,
+  commandService: catalogCommandService,
 });
 const catalogBulkService = createCatalogBulkService({
   env: process.env,
@@ -583,7 +595,7 @@ app.use('/api/admin', createFulfillmentBindingRouter({ service: fulfillmentBindi
 app.use('/api', createCatalogHealthRouter({ catalogHealthService }));
 app.use('/api', createCatalogMaintenanceRouter({ env: process.env, catalogHealthService, readinessService: readinessDelegate }));
 app.use('/api', createCatalogRouter({ catalogGuard, mediaAssetRepository, providerRepository: providerOfferRepository }));
-app.use('/api', createSheetSyncRouter({ sheetSyncService, resyncService: catalogResyncService, previewJobManager: catalogPreviewJobManager, catalogGuard }));
+app.use('/api', createSheetSyncRouter({ sheetSyncService, resyncService: catalogResyncService, previewJobManager: catalogPreviewJobManager, catalogGuard, legacySourceEnabled: false }));
 app.use('/api', createCatalogResetRouter({ catalogResetService, catalogGuard }));
 app.use('/api', createProviderRouter());
 app.use('/api', createReconciliationRouter());
@@ -780,6 +792,7 @@ const customerAssetAuditRepository = customerRepository ? createCustomerAssetAud
 const customerAssetRevealService = customerAssetRepository ? createCustomerAssetRevealService({
   assetRepository: customerAssetRepository,
   auditRepository: customerAssetAuditRepository,
+  manualQrRepository: canonicalQrRepository,
   env: process.env,
 }) : null;
 const supportService = supportRepository ? createSupportService({
@@ -936,6 +949,36 @@ app.use('/api', createCheckoutRouter({
   customerAuthService,
   env: process.env,
 }));
+// New manual QR inventory is private and served through an authenticated route.
+// The legacy handlers below remain in this file only for historical compatibility,
+// but are shadowed by the explicit retired-route guards further down.
+app.use('/api', createManualQrRouter({ qrRepository: canonicalQrRepository, fulfillmentService: canonicalFulfillmentService, env: process.env }));
+app.use('/api', createEsimSheetRouter({
+  env: process.env,
+  auditService: createEsimSheetAuditService({ env: process.env, referenceClient: { readRows: () => googleSheetConnectionService.readRows() }, providerRepository: providerOfferRepository }),
+  syncService: esimSheetSyncService,
+  connectionService: googleSheetConnectionService,
+}));
+const retiredLegacyFulfillmentRoute = (_req, res) => res.status(410).json({
+  error: 'Luồng fulfillment legacy đã ngừng cho đơn hàng mới.',
+  code: 'FULFILLMENT_RETIRED',
+});
+for (const route of [
+  '/api/payment/webhook',
+  '/api/esim-topup',
+  '/api/webhooks/worldmove/topup',
+  '/api/legacy-customer/topup',
+  '/api/admin/orders/trigger-activation',
+  '/api/wm/order-callback',
+  '/api/webhooks/worldmove/esim-order',
+  '/api/wm/redeem-callback',
+  '/api/esim-order-redeem',
+  '/api/webhooks/worldmove/redeem',
+  '/api/wm/redeem-code-callback',
+  '/api/wm/activation-notification',
+  '/api/esim-activation-notify',
+  '/api/webhooks/worldmove/esim-activation-notify',
+]) app.post(route, retiredLegacyFulfillmentRoute);
 if (customerAssetRepository && customerAssetRevealService && customerAuthService && customerSessionService) app.use('/api/customer', createCustomerAssetRouter({
   customerAuthService,
   sessionService: customerSessionService,
@@ -1396,6 +1439,7 @@ app.use('/api', createLegacyCatalogRouter({
   packagesStore: packagesDb,
   catalogGuard,
   mediaAssetRepository,
+  legacySourceEnabled: false,
 }));
 
 // 5. Articles

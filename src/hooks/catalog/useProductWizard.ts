@@ -14,11 +14,10 @@ const createTempId = () => `temp-${Date.now()}-${Math.random().toString(36).slic
 
 const sourceFromVariant = (variant: CatalogVariant): WizardSourceMode | undefined => {
   if (variant.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM') return 'worldmove_esim';
-  if (variant.fulfillmentMethod === 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM') return 'local_esim';
+  if (variant.fulfillmentMethod === 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM') return 'worldmove_esim';
   if (variant.fulfillmentMethod === 'HICO_MANUAL_QR') return 'hico_manual_qr';
   if (variant.fulfillmentMethod === 'HICO_PHYSICAL_STOCK') return 'hico_physical';
-  if (variant.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER') return 'worldmove_physical';
-  if (variant.fulfillmentMethod === 'WORLDMOVE_TOPUP') return 'worldmove_topup';
+  if (variant.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER' || variant.fulfillmentMethod === 'WORLDMOVE_TOPUP') return undefined;
   if (variant.fulfillmentMethod === 'MANUAL_PROCESSING') return 'manual_processing';
   return undefined;
 };
@@ -162,13 +161,13 @@ export const useProductWizard = (input: ProductWizardInput) => {
         price: '',
         compareAtPrice: '',
         currency: 'VND',
-        sourceMode: offer.providerProductType === 2 ? 'worldmove_topup' : offer.providerProductType === 1 ? 'worldmove_physical' : offer.leSIM === false ? 'local_esim' : 'worldmove_esim',
+        sourceMode: 'worldmove_esim',
         providerOfferId: offer.id,
         wmproductId: offer.wmproductId,
         providerProductId: offer.providerProductId,
         providerProductType: offer.providerProductType,
         leSIM: offer.leSIM,
-        requiresExistingSim: offer.providerProductType === 2,
+        requiresExistingSim: false,
         stock: '',
         active: false,
         needsReview: false,

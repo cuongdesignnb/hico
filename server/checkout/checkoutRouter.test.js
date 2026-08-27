@@ -74,23 +74,19 @@ test('request readiness returns typed blocker details without exposing global he
   });
 });
 
-test('owned-SIM top-up validation authenticates the customer before resolving the asset', async () => {
-  let authenticatedCustomer = null;
+test('owned-SIM top-up validation is retired before customer authentication', async () => {
+  let authenticated = false;
   const router = createCheckoutRouter({
     env: { CHECKOUT_ENGINE: 'canonical' },
     checkoutReadinessService: { assertReady: async () => ({ ready: true }) },
     customerAuthService: {
       authenticate: async (token) => {
+        authenticated = true;
         assert.equal(token, 'customer-session');
         return { status: 'active', customer: { id: 'customer-1', email: 'a@example.com' } };
       },
     },
-    checkoutService: {
-      validate: async (_request, customer) => {
-        authenticatedCustomer = customer;
-        return { valid: true };
-      },
-    },
+    checkoutService: { validate: async () => ({ valid: true }) },
     logger: { warn() {} },
   });
 
@@ -100,7 +96,8 @@ test('owned-SIM top-up validation authenticates the customer before resolving th
       headers: { 'content-type': 'application/json', cookie: 'hico_customer_session=customer-session' },
       body: JSON.stringify({ items: [{ variantId: 'v-topup', quantity: 1 }], topup: { simAssetId: 'asset-1', day: 7 } }),
     });
-    assert.equal(response.status, 200);
+    assert.equal(response.status, 410);
+    assert.equal((await response.json()).code, 'FULFILLMENT_RETIRED');
   });
-  assert.deepEqual(authenticatedCustomer, { id: 'customer-1', email: 'a@example.com' });
+  assert.equal(authenticated, false);
 });

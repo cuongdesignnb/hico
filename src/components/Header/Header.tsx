@@ -78,7 +78,6 @@ export const Header: React.FC = () => {
         <nav className="desktop-nav-row" aria-label="Main navigation">
           <Link to="/diem-den" className="nav-link-item">Diem den</Link>
           <Link to="/san-pham" className="nav-link-item">Sản phẩm</Link>
-          <Link to="/nap-them" className="nav-link-item">Nạp thêm</Link>
           <Link to="/thiet-bi" className="nav-link-item">Thiết bị 4G / 5G</Link>
           <Link to="/bai-viet" className="nav-link-item">Huong dan</Link>
           <button onClick={() => goToSection('reviews-and-articles')} className="nav-link-item">Tin tuc</button>
@@ -89,7 +88,6 @@ export const Header: React.FC = () => {
         <nav className="mobile-nav" aria-label="Mobile navigation">
           <Link to="/diem-den" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Diem den</Link>
           <Link to="/san-pham" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Sản phẩm</Link>
-          <Link to="/nap-them" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Nạp thêm</Link>
           <Link to="/thiet-bi" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Thiết bị</Link>
           <Link to="/bai-viet" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Huong dan</Link>
           <div className="mobile-drawer-footer"><button className="mobile-action-btn primary" onClick={openAccount}>Đăng nhập</button></div>

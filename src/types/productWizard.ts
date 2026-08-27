@@ -11,11 +11,8 @@ export type WizardMode = 'create' | 'edit';
 
 export type WizardSourceMode =
   | 'worldmove_esim'
-  | 'local_esim'
   | 'hico_manual_qr'
   | 'hico_physical'
-  | 'worldmove_physical'
-  | 'worldmove_topup'
   | 'manual_processing';
 
 export interface CoverageOption {

@@ -26,11 +26,12 @@ const reauth = async (req) => {
   }
 };
 
-export const createSheetSyncRouter = ({ sheetSyncService = createSheetSyncService(), resyncService = createCatalogResyncService(), previewJobManager, catalogGuard = (_req, _res, next) => next() } = {}) => {
+export const createSheetSyncRouter = ({ sheetSyncService = createSheetSyncService(), resyncService = createCatalogResyncService(), previewJobManager, catalogGuard = (_req, _res, next) => next(), legacySourceEnabled = true } = {}) => {
   const router = express.Router();
   router.use('/admin/catalog-sheet-sync', catalogGuard);
   const startPreview = (req, res, mode) => {
     try {
+      if (!legacySourceEnabled) throw new SheetSyncError('Nguồn HICO GỐC đã ngừng cho catalog mới.', { code: 'HICO_GOC_SOURCE_RETIRED', status: 410 });
       if (!previewJobManager) throw new CatalogPreviewJobError('Preview job manager chưa được cấu hình.', { code: 'CATALOG_PREVIEW_MANAGER_UNAVAILABLE', status: 503 });
       const job = previewJobManager.start({ mode, actor: actor(req) });
       return res.status(202).set('Cache-Control', 'no-store').set('Location', `/api/admin/catalog-sheet-sync/preview-jobs/${job.id}`).json({ job });

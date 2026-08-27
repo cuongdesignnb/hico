@@ -7,9 +7,7 @@ import {
 } from './strategies/worldmoveEsimRedeem.js';
 import { createWorldmoveEsimOrderThenRedeemStrategy } from './strategies/worldmoveEsimOrderThenRedeem.js';
 import { createHicoManualQrStrategy } from './strategies/hicoManualQr.js';
-import { createWorldmovePhysicalOrderStrategy } from './strategies/worldmovePhysicalOrder.js';
 import { createHicoPhysicalStockStrategy } from './strategies/hicoPhysicalStock.js';
-import { createWorldmoveTopupStrategy } from './strategies/worldmoveTopup.js';
 import { createManualProcessingStrategy } from './strategies/manualProcessing.js';
 import { stableItemId } from './strategyUtils.js';
 import { validateProvisioningEntitlement } from '../catalog/fulfillment/fulfillmentValidation.js';
@@ -29,9 +27,7 @@ export const createDefaultFulfillmentRegistry = ({ qrRepository, inventoryReposi
   WORLDMOVE_ESIM_REDEEM: createWorldmoveEsimRedeemStrategy(),
   WORLDMOVE_ESIM_ORDER_THEN_REDEEM: createWorldmoveEsimOrderThenRedeemStrategy(),
   HICO_MANUAL_QR: createHicoManualQrStrategy({ qrRepository }),
-  WORLDMOVE_PHYSICAL_ORDER: createWorldmovePhysicalOrderStrategy(),
   HICO_PHYSICAL_STOCK: createHicoPhysicalStockStrategy({ inventoryRepository }),
-  WORLDMOVE_TOPUP: createWorldmoveTopupStrategy(),
   MANUAL_PROCESSING: createManualProcessingStrategy(),
 });
 
@@ -181,6 +177,36 @@ export const createFulfillmentService = ({
     return { order: updated, records: retried };
   };
 
+  const assignManualQr = async ({ orderId, orderItemId, qrId }) => {
+    const order = await orderRepository.get(orderId);
+    if (!order) throw new CheckoutError('Không tìm thấy đơn hàng.', 'ORDER_NOT_FOUND', 404);
+    const records = await repository.findByOrderId(orderId);
+    const record = records.find((candidate) => candidate.orderItemId === orderItemId);
+    if (!record) throw new CheckoutError('Không tìm thấy fulfillment của đơn hàng.', 'FULFILLMENT_NOT_FOUND', 404);
+    const item = order.items[record.itemIndex];
+    if (item?.fulfillmentMethod !== 'HICO_MANUAL_QR') {
+      throw new CheckoutError('Fulfillment của đơn hàng không phải manual QR.', 'FULFILLMENT_METHOD_INVALID', 409);
+    }
+    if (!['PENDING_QR_ASSIGN', 'PROVISIONED'].includes(record.state)) {
+      throw new CheckoutError('Fulfillment không còn chờ gán QR.', 'ORDER_STATE_CONFLICT', 409);
+    }
+    if (record.state === 'PROVISIONED' && item.manualQrId !== qrId) {
+      throw new CheckoutError('Fulfillment đã được gán QR khác.', 'ORDER_STATE_CONFLICT', 409);
+    }
+    await qrRepository.assign({ id: qrId, variantId: item.variantId, orderId, orderItemId });
+    if (record.state === 'PROVISIONED') return { order, record };
+    const strategy = registry.resolve(item);
+    const assigned = await executeRecord(record, order, item, strategy);
+    const updatedOrder = await orderRepository.update(orderId, (current) => ({
+      ...current,
+      items: current.items.map((candidate, index) => index === record.itemIndex
+        ? { ...candidate, ...(assigned.itemData ?? {}) }
+        : candidate),
+      status: mapOrderStatus([...(records.filter((candidate) => candidate.id !== record.id)), assigned]),
+    }));
+    return { order: updatedOrder, record: assigned };
+  };
+
   const handleWebhookEvent = async (event) => {
     if (eventRepository) {
       const existing = await eventRepository.get(event.eventId);
@@ -215,6 +241,7 @@ export const createFulfillmentService = ({
     registry,
     createForOrder,
     retry,
+    assignManualQr,
     handleWebhookEvent,
     mapOrderStatus,
   };
