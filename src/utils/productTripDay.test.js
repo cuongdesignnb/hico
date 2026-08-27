@@ -25,3 +25,12 @@ test('does not switch to another data tier or physical variant for a trip day', 
   });
   assert.equal(result, null);
 });
+
+test('does not generate trip days that are absent from canonical options', () => {
+  const result = resolveVariantForTripDay({
+    variants,
+    day: 1,
+    selectedVariant: variants[0],
+  });
+  assert.equal(result, null);
+});

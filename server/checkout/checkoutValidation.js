@@ -1,6 +1,7 @@
 import { CheckoutError } from './checkoutError.js';
 import { assertFulfillmentSupported } from '../fulfillment/fulfillmentValidation.js';
 import { PROVIDER_RESOLUTION_CODES, resolveProviderOffer } from '../catalog/fulfillment/providerOfferResolver.js';
+import { durationDaysForOffer, durationDaysForVariant } from '../catalog/fulfillment/providerOfferFamily.js';
 import { isLegacyFulfillmentMethod, isWorldmoveEsimOffer } from '../catalog/fulfillment/fulfillmentContracts.js';
 
 export const CHECKOUT_ENGINES = new Set(['legacy', 'canonical']);
@@ -117,21 +118,19 @@ const validateItems = (items) => {
   });
 };
 
-const findOffer = (offers, variant) => {
-  if (!Array.isArray(offers)) return null;
-  return offers.find((offer) => (
-    offer?.id === variant.providerOfferId
-    || (variant.wmproductId && offer?.wmproductId === variant.wmproductId)
-  )) ?? null;
-};
-
 const validateProviderMapping = (variant, offers) => {
   const providerMethods = new Set([
     'WORLDMOVE_ESIM_REDEEM',
     'WORLDMOVE_ESIM_ORDER_THEN_REDEEM',
   ]);
   if (!providerMethods.has(variant.fulfillmentMethod)) return null;
-  const offer = findOffer(offers, variant);
+  if (!variant.providerOfferId || !variant.wmproductId) {
+    throw new CheckoutError('Gói Worldmove thiếu định danh Provider Offer chính xác.', 'FULFILLMENT_INVALID');
+  }
+  const offer = offers.find((candidate) => (
+    candidate?.id === variant.providerOfferId
+    && String(candidate?.wmproductId ?? '').trim().toUpperCase() === String(variant.wmproductId).trim().toUpperCase()
+  )) ?? null;
   const expectsLeSIM = variant.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM';
   if (!offer || !isWorldmoveEsimOffer(offer) || offer.leSIM !== expectsLeSIM) {
     throw new CheckoutError('Nguồn cung cấp của gói không còn hoạt động.', 'PROVIDER_OFFER_INACTIVE');
@@ -139,8 +138,11 @@ const validateProviderMapping = (variant, offers) => {
   if (variant.providerOfferId && offer.id !== variant.providerOfferId) {
     throw new CheckoutError('Provider Offer của gói không khớp.', 'FULFILLMENT_INVALID');
   }
-  if (variant.wmproductId && offer.wmproductId !== variant.wmproductId) {
+  if (variant.wmproductId && String(offer.wmproductId ?? '').trim().toUpperCase() !== String(variant.wmproductId).trim().toUpperCase()) {
     throw new CheckoutError('wmproductId của gói không khớp Provider Offer.', 'FULFILLMENT_INVALID');
+  }
+  if (!durationDaysForVariant(variant) || durationDaysForOffer(offer) !== durationDaysForVariant(variant)) {
+    throw new CheckoutError('Số ngày của Provider Offer không khớp gói canonical.', 'FULFILLMENT_INVALID');
   }
   return offer;
 };
@@ -199,7 +201,8 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
       && profile.provider === 'WORLDMOVE'
       && profile.status === 'ACTIVE'
     )) ?? null;
-    const usesProviderResolver = Boolean(activeProfile || variant.durationDays || variant.familyKey || activeBinding);
+    const isSimHicoSource = variant.source === 'HICO_ESIM_SHEET';
+    const usesProviderResolver = !isSimHicoSource && Boolean(activeProfile || variant.durationDays || variant.familyKey || activeBinding);
     let providerResolution = null;
     let providerOffer;
     if (usesProviderResolver) {

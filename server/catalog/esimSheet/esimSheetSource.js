@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { isWorldmoveEsimOffer } from '../fulfillment/fulfillmentContracts.js';
 
 export const ESIM_SHEET_SOURCE = 'HICO_ESIM_SHEET';
-export const ESIM_SHEET_PARSER_REVISION = 1;
+export const ESIM_SHEET_PARSER_REVISION = 2;
 export const SIM_HICO_SHEET_TAB = 'SimHICO';
 export const SIM_HICO_ESIM_COLUMN_CONTRACT = Object.freeze({
   medium: 0,
@@ -85,6 +85,7 @@ const normalizeDataPolicy = (value) => {
 const labelsFromProductName = (value, dataPolicy) => {
   const name = nonEmpty(value) ?? '';
   const matches = [...name.matchAll(/(\d+(?:[.,]\d+)?)\s*(KB|MB|GB|TB)\b/gi)];
+  const unlimitedMatches = [...name.matchAll(/\b(?:unlimited(?:\s+data)?|không\s+giới\s+hạn)\b/gi)];
   const formatted = (match) => `${match[1].replace(',', '.')} ${match[2].toUpperCase()}`;
   const dailyMatches = matches.filter((match) => {
     const suffix = name.slice((match.index ?? 0) + match[0].length);
@@ -96,26 +97,33 @@ const labelsFromProductName = (value, dataPolicy) => {
   });
   let dataLimit;
   const errors = [];
-  if (dataPolicy === 'daily') {
+  const warnings = [];
+  if (unlimitedMatches.length > 0 && matches.length === 0) {
+    dataLimit = 'Unlimited';
+  } else if (unlimitedMatches.length > 0) {
+    errors.push('DATA_LIMIT_AMBIGUOUS');
+  } else if (dataPolicy === 'daily') {
     if (dailyMatches.length === 1) dataLimit = formatted(dailyMatches[0]);
-    else errors.push('DATA_LIMIT_AMBIGUOUS');
+    else if (dailyMatches.length > 1) errors.push('DATA_LIMIT_AMBIGUOUS');
   } else if (dataPolicy === 'total') {
     if (totalMatches.length === 1) dataLimit = formatted(totalMatches[0]);
     else if (totalMatches.length > 1) errors.push('DATA_LIMIT_AMBIGUOUS');
     else {
       const nonDailyMatches = matches.filter((match) => !dailyMatches.includes(match));
       if (nonDailyMatches.length === 1) dataLimit = formatted(nonDailyMatches[0]);
-      else errors.push('DATA_LIMIT_AMBIGUOUS');
+      else if (nonDailyMatches.length > 1) errors.push('DATA_LIMIT_AMBIGUOUS');
     }
   } else if (matches.length) {
     dataLimit = formatted(matches[0]);
   }
+  if (!dataLimit && errors.length === 0) warnings.push('DATA_LIMIT_NOT_DECLARED');
   const speeds = [...name.matchAll(/(\d+)\s*kbps\b/gi)];
   const speed = speeds.length === 1 ? speeds[0][1] : undefined;
   return {
     ...(dataLimit ? { dataLimit } : {}),
     ...(speed ? { speedLabel: `${speed}kbps` } : {}),
     errors,
+    warnings,
   };
 };
 
@@ -208,7 +216,9 @@ export const parseEsimSheetRows = ({ values = [], mapping = {} } = {}) => {
       : sourceDays;
     if (normalizedPolicy === 'daily' && (!Number.isInteger(durationDays) || durationDays < 1)) rowErrors.push('DAILY_DURATION_INVALID');
     if (normalizedPolicy === 'total' && !durationDays) rowErrors.push('TOTAL_DURATION_AMBIGUOUS');
-    rowErrors.push(...inferredLabels.errors);
+    const explicitDataLimit = nonEmpty(valueAt('dataLimit'));
+    if (!explicitDataLimit) rowErrors.push(...inferredLabels.errors);
+    const warnings = explicitDataLimit ? [] : [...inferredLabels.warnings];
     const tripDayOptions = normalizedPolicy === 'total'
       ? listOfPositiveIntegers(sourceDays)
       : listOfPositiveIntegers(valueAt('tripDayOptions'));
@@ -238,6 +248,7 @@ export const parseEsimSheetRows = ({ values = [], mapping = {} } = {}) => {
       publicNote: nonEmpty(valueAt('publicNote')),
       ...Object.fromEntries(Object.entries(optional).filter(([, value]) => value != null)),
       errors: rowErrors,
+      warnings,
     };
   }).filter((row) => row.wmid || row.productName || row.sellingPrice !== null);
   return {
@@ -321,6 +332,22 @@ const sameWmidDiagnostics = (rows, providersByWmid) => {
 export const auditEsimSheetRows = ({ values = [], mapping = {}, providerOffers = [], existingVariants = [] } = {}) => {
   const parsed = parseEsimSheetRows({ values, mapping });
   const rows = parsed.rows.map((row) => {
+    if (row.medium !== 'esim') {
+      return {
+        sourceRowNumber: row.sourceRowNumber,
+        wmid: row.wmid,
+        sellingPrice: row.sellingPrice,
+        providerStatus: 'SKIPPED_NON_ESIM',
+        providerOfferId: null,
+        providerProductType: null,
+        leSIM: null,
+        dataLimit: row.dataLimit ?? null,
+        dataPolicy: row.dataPolicy ?? null,
+        warnings: [...(row.warnings ?? [])],
+        structuralErrors: [],
+        errors: [],
+      };
+    }
     const provider = matchEsimProviderOffer({ wmid: row.wmid, providerOffers });
     return {
       sourceRowNumber: row.sourceRowNumber,
@@ -330,35 +357,47 @@ export const auditEsimSheetRows = ({ values = [], mapping = {}, providerOffers =
       providerOfferId: provider.offer?.id ?? null,
       providerProductType: provider.offer?.providerProductType ?? null,
       leSIM: provider.offer?.leSIM ?? null,
+      dataLimit: row.dataLimit ?? null,
+      dataPolicy: row.dataPolicy ?? null,
+      warnings: [...(row.warnings ?? [])],
+      structuralErrors: [...row.errors],
       errors: [...row.errors, ...(provider.status === 'MATCHED' ? [] : [provider.status])],
     };
   });
   const providersByWmid = new Map(rows.map((row) => [row.wmid, matchEsimProviderOffer({ wmid: row.wmid, providerOffers })]));
   const statusCounts = Object.fromEntries([...new Set(rows.map((row) => row.providerStatus))].map((status) => [status, rows.filter((row) => row.providerStatus === status).length]));
   const legacyCollisionRows = rows
+    .filter((row) => row.providerStatus !== 'SKIPPED_NON_ESIM')
     .filter((row) => existingVariants.some((variant) => normalizeWmid(variant.wmproductId) === row.wmid && variant.source !== ESIM_SHEET_SOURCE));
   const legacyWmidCollisions = legacyCollisionRows
     .slice(0, 20)
     .map((row) => ({ wmid: row.wmid, sourceRowNumber: row.sourceRowNumber }));
+  const esimRows = parsed.rows.filter((row) => row.medium === 'esim');
+  const structuralBlockedRows = rows.filter((row) => row.providerStatus !== 'SKIPPED_NON_ESIM' && row.structuralErrors.length > 0);
   return {
     source: ESIM_SHEET_SOURCE,
     parserRevision: ESIM_SHEET_PARSER_REVISION,
     headerHash: parsed.headerHash,
     rowsRead: rows.length,
-    esimRows: parsed.rows.filter((row) => row.medium === 'esim').length,
+    esimRows: esimRows.length,
     nonEsimRows: parsed.rows.filter((row) => row.medium !== 'esim').length,
-    missingWmid: parsed.rows.filter((row) => row.errors.includes('WMID_REQUIRED')).length,
-    invalidPrice: parsed.rows.filter((row) => row.errors.includes('SELLING_PRICE_INVALID')).length,
-    invalidDataPolicy: parsed.rows.filter((row) => row.dataPolicy && !['daily', 'total'].includes(row.dataPolicy)).length,
-    dailyDurationInvalid: parsed.rows.filter((row) => row.dataPolicy === 'daily' && (!Number.isInteger(row.durationDays) || row.durationDays < 1)).length,
-    totalDurationAmbiguous: parsed.rows.filter((row) => row.errors.includes('TOTAL_DURATION_AMBIGUOUS')).length,
-    dataLimitAmbiguous: parsed.rows.filter((row) => row.errors.includes('DATA_LIMIT_AMBIGUOUS')).length,
+    skippedNonEsimRows: rows.filter((row) => row.providerStatus === 'SKIPPED_NON_ESIM').length,
+    missingWmid: esimRows.filter((row) => row.errors.includes('WMID_REQUIRED')).length,
+    invalidPrice: esimRows.filter((row) => row.errors.includes('SELLING_PRICE_INVALID')).length,
+    invalidDataPolicy: esimRows.filter((row) => row.dataPolicy && !['daily', 'total'].includes(row.dataPolicy)).length,
+    dailyDurationInvalid: esimRows.filter((row) => row.dataPolicy === 'daily' && (!Number.isInteger(row.durationDays) || row.durationDays < 1)).length,
+    totalDurationAmbiguous: esimRows.filter((row) => row.errors.includes('TOTAL_DURATION_AMBIGUOUS')).length,
+    dataLimitAmbiguous: esimRows.filter((row) => row.errors.includes('DATA_LIMIT_AMBIGUOUS')).length,
+    dataLimitNotDeclared: esimRows.filter((row) => row.warnings?.includes('DATA_LIMIT_NOT_DECLARED')).length,
+    unlimitedRows: esimRows.filter((row) => row.dataLimit === 'Unlimited').length,
+    eligibleBeforeProvider: esimRows.filter((row) => row.errors.length === 0).length,
+    structuralBlockedRows: structuralBlockedRows.length,
     providerStatusCounts: statusCounts,
     matchedRows: rows.filter((row) => row.providerStatus === 'MATCHED').length,
-    blockedRows: rows.filter((row) => row.providerStatus !== 'MATCHED' || row.errors.length > 0).length,
+    blockedRows: rows.filter((row) => (row.providerStatus !== 'MATCHED' && row.providerStatus !== 'SKIPPED_NON_ESIM') || row.errors.length > 0).length,
     leSIMTrue: rows.filter((row) => row.leSIM === true).length,
     leSIMFalse: rows.filter((row) => row.leSIM === false).length,
-    sameWmid: sameWmidDiagnostics(parsed.rows, providersByWmid),
+    sameWmid: sameWmidDiagnostics(esimRows, providersByWmid),
     legacyWmidCollisions,
     legacyWmidCollisionCount: legacyCollisionRows.length,
     rows: rows.slice(0, 20),

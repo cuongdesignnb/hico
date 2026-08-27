@@ -56,16 +56,22 @@ const safeRow = (row) => ({
   sourceKey: row.sourceKey ?? null,
   existingVariantId: row.existingVariantId ?? null,
   legacyCollision: row.legacyCollision === true,
+  medium: row.medium ?? null,
+  status: row.status ?? null,
+  skipReason: row.skipReason ?? null,
   wmid: row.wmid,
   productName: row.productName,
   sellingPrice: row.sellingPrice,
   durationDays: row.durationDays,
   tripDayOptions: row.tripDayOptions,
   familyKey: row.familyKey,
+  dataLimit: row.dataLimit ?? null,
+  dataPolicy: row.dataPolicy ?? null,
   providerStatus: row.providerStatus,
   providerOfferId: row.providerOfferId,
   providerProductType: row.providerProductType,
   leSIM: row.leSIM,
+  warnings: row.warnings ?? [],
   errors: row.errors,
 });
 
@@ -99,6 +105,7 @@ const collapseSameWmidRows = (rows) => {
       ...first,
       sourceRowNumbers: group.flatMap((row) => row.sourceRowNumbers ?? [row.sourceRowNumber]),
       tripDayOptions: [...new Set(group.flatMap((row) => row.tripDayOptions ?? []))].sort((left, right) => left - right),
+      warnings: [...new Set(group.flatMap((row) => row.warnings ?? []))],
       errors: [...new Set(group.flatMap((row) => row.errors))],
     });
   }
@@ -113,9 +120,24 @@ const evaluate = ({ request, context, values }) => {
   }
   const parsed = parseEsimSheetRows({ values, mapping: request.mapping ?? {} });
   const rawRows = parsed.rows.map((row) => {
+    const isEsim = row.medium === 'esim';
+    if (!isEsim) {
+      return {
+        ...row,
+        familyKey: familyKeyFor(row),
+        providerStatus: 'SKIPPED_NON_ESIM',
+        status: 'SKIPPED_NON_ESIM',
+        skipReason: 'SKIPPED_NON_ESIM',
+        providerOfferId: null,
+        providerProductType: null,
+        leSIM: null,
+        offer: null,
+        sourceKey: null,
+        errors: [],
+      };
+    }
     const provider = matchEsimProviderOffer({ wmid: row.wmid, providerOffers: context.providerOffers });
     const errors = [...row.errors];
-    if (row.medium !== 'esim') errors.push('MEDIUM_NOT_ESIM');
     if (!row.productName) errors.push('PRODUCT_NAME_REQUIRED');
     if (row.dataPolicy && !['daily', 'total'].includes(row.dataPolicy)) errors.push('DATA_POLICY_INVALID');
     if (row.cancellable !== null && row.cancellable !== undefined && boolFrom(row.cancellable) === undefined) errors.push('CANCELLABLE_INVALID');
@@ -132,8 +154,9 @@ const evaluate = ({ request, context, values }) => {
       errors: [...new Set(errors)],
     };
   });
-  const collapsedResult = collapseSameWmidRows(rawRows);
-  const rows = collapsedResult.rows;
+  const skippedRows = rawRows.filter((row) => row.status === 'SKIPPED_NON_ESIM');
+  const collapsedResult = collapseSameWmidRows(rawRows.filter((row) => row.status !== 'SKIPPED_NON_ESIM'));
+  const rows = [...skippedRows, ...collapsedResult.rows];
   const ownVariantsByWmid = new Map();
   for (const variant of context.variants) {
     const wmid = normalizeWmid(variant.wmproductId);
@@ -142,7 +165,7 @@ const evaluate = ({ request, context, values }) => {
     variants.push(variant);
     ownVariantsByWmid.set(wmid, variants);
   }
-  for (const row of rows) {
+  for (const row of rows.filter((candidate) => candidate.status !== 'SKIPPED_NON_ESIM')) {
     const ownVariants = (ownVariantsByWmid.get(row.wmid) ?? []).filter((variant) => variant.source === ESIM_SHEET_SOURCE);
     const legacyVariants = (ownVariantsByWmid.get(row.wmid) ?? []).filter((variant) => variant.source !== ESIM_SHEET_SOURCE);
     if (ownVariants.length > 1) row.errors.push('SOURCE_WMID_DUPLICATE');
@@ -153,18 +176,18 @@ const evaluate = ({ request, context, values }) => {
     row.existingVariantId = ownVariants[0]?.id ?? null;
   }
   const familyKeysByWmid = new Map();
-  for (const row of rows) {
+  for (const row of rows.filter((candidate) => candidate.status !== 'SKIPPED_NON_ESIM')) {
     if (!row.wmid) continue;
     const keys = familyKeysByWmid.get(row.wmid) ?? new Set();
     keys.add(familyKeyFor(row));
     familyKeysByWmid.set(row.wmid, keys);
   }
-  for (const row of rows) {
+  for (const row of rows.filter((candidate) => candidate.status !== 'SKIPPED_NON_ESIM')) {
     if ((familyKeysByWmid.get(row.wmid)?.size ?? 0) > 1) row.errors.push('SOURCE_WMID_FAMILY_CONFLICT');
     row.errors = [...new Set(row.errors)];
   }
   const families = new Map();
-  for (const row of rows) {
+  for (const row of rows.filter((candidate) => candidate.status !== 'SKIPPED_NON_ESIM')) {
     const family = families.get(row.familyKey) ?? {
       familyKey: row.familyKey,
       sourceKey: familySourceKeyFor(row.familyKey),
@@ -186,12 +209,26 @@ const evaluate = ({ request, context, values }) => {
     family.errors = [...new Set(family.errors)];
     if (family.errors.length) family.rows.forEach((row) => row.errors.push(...family.errors));
   }
+  rows.forEach((row) => {
+    if (row.status === 'SKIPPED_NON_ESIM') return;
+    row.errors = [...new Set(row.errors)];
+    row.status = row.errors.length ? 'BLOCKED' : 'ELIGIBLE';
+  });
+  const eligibleRows = rows.filter((row) => row.status === 'ELIGIBLE');
+  const blockedRows = rows.filter((row) => row.status === 'BLOCKED');
+  const warnings = rows
+    .filter((row) => row.warnings?.length)
+    .map((row) => ({ sourceRowNumbers: row.sourceRowNumbers ?? [row.sourceRowNumber], wmid: row.wmid, warnings: [...new Set(row.warnings)] }));
   return {
     category,
     parsed,
     rows,
     families: [...families.values()],
-    errors: rows.filter((row) => row.errors.length).map((row) => ({ sourceRowNumbers: row.sourceRowNumbers ?? [row.sourceRowNumber], wmid: row.wmid, errors: [...new Set(row.errors)] })),
+    eligibleRows,
+    blockedRows,
+    skippedRows,
+    warnings,
+    errors: blockedRows.map((row) => ({ sourceRowNumbers: row.sourceRowNumbers ?? [row.sourceRowNumber], wmid: row.wmid, errors: [...new Set(row.errors)] })),
   };
 };
 
@@ -327,6 +364,10 @@ export const createEsimSheetSyncService = ({
         families: previewFamilies,
         rows: previewRows,
         errors: evaluation.errors,
+        warnings: evaluation.warnings,
+        eligible: evaluation.eligibleRows.length,
+        blocked: evaluation.blockedRows.length,
+        skipped: evaluation.skippedRows.length,
         createdAt: now().toISOString(),
         expiresAt: new Date(Date.now() + PREVIEW_TTL).toISOString(),
       };
@@ -341,11 +382,14 @@ export const createEsimSheetSyncService = ({
         providerSnapshotHash: preview.providerSnapshotHash,
         familyCount: preview.families.length,
         rowCount: preview.rows.length,
-        eligible: preview.rows.filter((row) => row.errors.length === 0).length,
-        blocked: preview.errors.length,
+        eligible: preview.eligible,
+        blocked: preview.blocked,
+        skipped: preview.skipped,
+        partial: preview.eligible > 0 && preview.blocked > 0,
         families: preview.families.map((family) => ({ familyKey: family.familyKey, productName: family.productName, variants: family.rows.length, coverageType: family.coverageType, coverageIds: family.coverageIds })),
         rows: preview.rows.map(safeRow),
         errors: preview.errors,
+        warnings: preview.warnings,
         expiresAt: preview.expiresAt,
       };
     },
@@ -371,10 +415,27 @@ export const createEsimSheetSyncService = ({
             || preview.providerSnapshotHash !== sha256(context.providerOffers)
           ) throw new CatalogWriteError('eSIM Sheet, parser, provider snapshot hoặc catalog đã thay đổi. Hãy preview lại.', { status: 409, code: 'ESIM_SHEET_PREVIEW_STALE' });
           const evaluation = evaluate({ request: { ...request, categoryId: preview.categoryId, mapping: request.mapping ?? preview.mapping ?? {} }, context, values: reference.values });
-          if (
-            preview.errors.length
-            || evaluation.errors.length
-          ) throw new CatalogWriteError('eSIM Sheet còn dòng bị chặn.', { status: 409, code: 'ESIM_SHEET_APPLY_BLOCKED', details: { errors: (evaluation.errors.length ? evaluation.errors : preview.errors).slice(0, 100) } });
+          if (evaluation.eligibleRows.length === 0) {
+            if (evaluation.errors.length > 0) {
+              throw new CatalogWriteError('eSIM Sheet không có dòng eSIM đủ điều kiện áp dụng.', { status: 409, code: 'ESIM_SHEET_APPLY_BLOCKED', details: { errors: evaluation.errors.slice(0, 100) } });
+            }
+            return {
+              status: 200,
+              body: {
+                previewId,
+                productsCreated: 0,
+                productsUpdated: 0,
+                variantsCreated: 0,
+                variantsUpdated: 0,
+                status: 'SYNC_NO_ELIGIBLE_ROWS',
+                eligible: 0,
+                blocked: 0,
+                skipped: evaluation.skippedRows.length,
+                warnings: evaluation.warnings,
+                errors: [],
+              },
+            };
+          }
           const timestamp = now().toISOString();
           const products = [...context.products];
           const variants = [...context.variants];
@@ -383,10 +444,13 @@ export const createEsimSheetSyncService = ({
           let variantsCreated = 0;
           let variantsUpdated = 0;
           for (const family of evaluation.families) {
+            const eligibleFamilyRows = family.rows.filter((row) => row.status === 'ELIGIBLE');
+            if (eligibleFamilyRows.length === 0) continue;
+            const eligibleFamily = { ...family, rows: eligibleFamilyRows };
             const existingProduct = products.find((product) => (
-              product.source === ESIM_SHEET_SOURCE && product.sourceKey === family.sourceKey
+              product.source === ESIM_SHEET_SOURCE && product.sourceKey === eligibleFamily.sourceKey
             ));
-            const product = productFrom({ family, categoryId: preview.categoryId, timestamp, existing: existingProduct });
+            const product = productFrom({ family: eligibleFamily, categoryId: preview.categoryId, timestamp, existing: existingProduct });
             if (existingProduct) {
               products[products.findIndex((candidate) => candidate.id === existingProduct.id)] = product;
               productsUpdated += 1;
@@ -394,15 +458,15 @@ export const createEsimSheetSyncService = ({
               products.push(product);
               productsCreated += 1;
             }
-            for (const row of family.rows) {
+            for (const row of eligibleFamilyRows) {
               const existingVariant = sourceVariantFor(variants, row);
               const nextVariant = variantFrom({ row, productId: product.id, timestamp, existing: existingVariant });
               if (existingVariant) {
                 variants[variants.findIndex((candidate) => candidate.id === existingVariant.id)] = nextVariant;
-                variantsUpdated += 1;
+              variantsUpdated += 1;
               } else {
                 variants.push(nextVariant);
-                variantsCreated += 1;
+              variantsCreated += 1;
               }
             }
           }
@@ -442,8 +506,14 @@ export const createEsimSheetSyncService = ({
               productsUpdated,
               variantsCreated,
               variantsUpdated,
+              eligible: evaluation.eligibleRows.length,
+              blocked: evaluation.blockedRows.length,
+              skipped: evaluation.skippedRows.length,
+              partial: evaluation.blockedRows.length > 0,
               status: 'SYNC_APPLIED',
               catalogVersionId: committed.manifest.versionId,
+              errors: evaluation.errors,
+              syncWarnings: evaluation.warnings,
               warnings: committed.warnings,
             },
           };

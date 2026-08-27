@@ -10,6 +10,7 @@ import {
   classifyCartFulfillmentKinds,
   createCheckoutReadinessService,
   getRequiredCheckoutCapabilities,
+  providerResolutionIsReady,
 } from './checkoutReadiness.js';
 
 const env = {
@@ -156,7 +157,7 @@ test('checkout blocks a provider-unresolved draft variant before fulfillment loo
   assert.deepEqual(readiness.blockingReasons, ['CANONICAL_VARIANT_NOT_READY']);
 });
 
-test('pure 2D eSIM is ready with the shortest compatible 3D provider offer', async () => {
+test('pure 2D eSIM is blocked when only a longer provider offer exists', async () => {
   const service = await createService({
     catalog: { products: [product('p-esim')], variants: [variant('v-esim-2d', 'p-esim', { durationDays: 2 })] },
     offers: [offerFor('offer-1d', 'WM-e-CN-500MB-1D', 1), offerFor('offer-3d', 'WM-e-CN-500MB-3D', 3)],
@@ -164,8 +165,8 @@ test('pure 2D eSIM is ready with the shortest compatible 3D provider offer', asy
   });
   const readiness = await service.evaluate({ items: [{ variantId: 'v-esim-2d', quantity: 1 }] });
 
-  assert.equal(readiness.ready, true);
-  assert.deepEqual(readiness.blockingReasons, []);
+  assert.equal(readiness.ready, false);
+  assert.deepEqual(readiness.blockingReasons, ['ESIM_FULFILLMENT_NOT_READY']);
 });
 
 test('physical checkout blocks only on physical inventory and mixed carts retain that blocker', async () => {
@@ -240,6 +241,37 @@ test('manual QR eSIM readiness does not require a preloaded QR pool', async () =
   const readiness = await service.evaluate({ items: [{ variantId: 'v-manual', quantity: 1 }] });
   assert.equal(readiness.ready, true);
   assert.deepEqual(readiness.blockingReasons, []);
+});
+
+test('SimHICO readiness requires the exact WMID and exact provider day', async () => {
+  const exactVariant = variant('v-sim-hico', 'p-esim', {
+    source: 'HICO_ESIM_SHEET',
+    providerOfferId: 'offer-sim-hico',
+    wmproductId: 'WM-E-CN-500MB-1D',
+    durationDays: 1,
+  });
+  const exactService = await createService({
+    catalog: { products: [product('p-esim')], variants: [exactVariant] },
+    offers: [offerFor('offer-sim-hico', 'WM-E-CN-500MB-1D', 1)],
+    profiles: [profileFor('v-sim-hico', 1)],
+    bindings: [{ variantId: 'v-sim-hico', provider: 'WORLDMOVE', strategy: 'MAPPED_FALLBACK', status: 'ACTIVE', providerOfferId: 'offer-sim-hico' }],
+  });
+  const exact = await exactService.evaluate({ items: [{ variantId: 'v-sim-hico', quantity: 1 }] });
+  assert.equal(exact.ready, true);
+
+  const wrongDayService = await createService({
+    catalog: { products: [product('p-esim')], variants: [exactVariant] },
+    offers: [offerFor('offer-sim-hico', 'WM-E-CN-500MB-1D', 2)],
+  });
+  const wrongDay = await wrongDayService.evaluate({ items: [{ variantId: 'v-sim-hico', quantity: 1 }] });
+  assert.equal(wrongDay.ready, false);
+  assert.deepEqual(wrongDay.blockingReasons, ['ESIM_FULFILLMENT_NOT_READY']);
+});
+
+test('readiness accepts only an exact provider resolution code', () => {
+  assert.equal(providerResolutionIsReady({ ok: true, code: 'PROVIDER_EXACT_MATCH' }), true);
+  assert.equal(providerResolutionIsReady({ ok: true, code: 'PROVIDER_NEXT_LONGER' }), false);
+  assert.equal(providerResolutionIsReady({ ok: true, code: 'PROVIDER_MAPPED_FALLBACK' }), false);
 });
 
 test('readiness errors expose typed safe details and client medium cannot change classification', async () => {

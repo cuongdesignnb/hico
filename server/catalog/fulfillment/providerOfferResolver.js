@@ -26,6 +26,7 @@ export const PROVIDER_RESOLUTION_CODES = Object.freeze({
 });
 
 const stableJson = (value) => JSON.stringify(value, Object.keys(value).sort());
+const normalizeWmid = (value) => String(value ?? '').trim().toUpperCase();
 
 export const providerSnapshotHashFor = (offer) => createHash('sha256')
   .update(stableJson({
@@ -51,9 +52,7 @@ export const providerSnapshotHashFor = (offer) => createHash('sha256')
   .digest('hex');
 
 const result = ({ code, strategy = null, requestedDays, offer = null, binding = null, reason }) => ({
-  ok: code === PROVIDER_RESOLUTION_CODES.EXACT
-    || code === PROVIDER_RESOLUTION_CODES.MAPPED_FALLBACK
-    || code === PROVIDER_RESOLUTION_CODES.NEXT_LONGER,
+  ok: code === PROVIDER_RESOLUTION_CODES.EXACT,
   code,
   strategy,
   requestedDays,
@@ -109,6 +108,7 @@ export const resolveProviderOffer = ({
   const familySource = fulfillmentProfile ?? variant;
   const variantMedium = mediumForSource(familySource);
   const variantFamilyKey = familyKeyFor(familySource);
+  const variantWmid = normalizeWmid(variant.wmproductId);
   if (!variantMedium) {
     return result({
       code: fulfillmentProfile ? PROVIDER_RESOLUTION_CODES.PROFILE_INCOMPLETE : PROVIDER_RESOLUTION_CODES.MEDIUM_MISMATCH,
@@ -116,7 +116,7 @@ export const resolveProviderOffer = ({
       reason: 'Catalog variant is missing an explicit fulfillment medium.',
     });
   }
-  if (!variantFamilyKey) {
+  if (!variantFamilyKey && !variantWmid) {
     return result({
       code: fulfillmentProfile ? PROVIDER_RESOLUTION_CODES.PROFILE_INCOMPLETE : PROVIDER_RESOLUTION_CODES.FAMILY_MISMATCH,
       requestedDays,
@@ -131,6 +131,55 @@ export const resolveProviderOffer = ({
       code: PROVIDER_RESOLUTION_CODES.MEDIUM_MISMATCH,
       requestedDays,
       reason: 'No active Worldmove offer has the requested medium.',
+    });
+  }
+
+  // A canonical Worldmove WMID is an identity constraint. It may not be
+  // replaced by a family match, an approved longer mapping, or a nearby day.
+  if (variantWmid) {
+    if (!variant.providerOfferId) {
+      return result({
+        code: activeBinding ? PROVIDER_RESOLUTION_CODES.MAPPING_INVALID : PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE,
+        requestedDays,
+        binding: activeBinding,
+        reason: 'Canonical Worldmove identity is missing the exact providerOfferId.',
+      });
+    }
+    const expectedLeSIM = typeof variant.leSIM === 'boolean'
+      ? variant.leSIM
+      : variant.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM'
+        ? true
+        : variant.fulfillmentMethod === 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM'
+          ? false
+          : null;
+    const identityMatches = mediumOffers.filter((offer) => (
+      normalizeWmid(offer.wmproductId) === variantWmid
+      && offer.id === variant.providerOfferId
+      && (expectedLeSIM === null || offer.leSIM === expectedLeSIM)
+    ));
+    if (identityMatches.length > 1) {
+      return result({
+        code: PROVIDER_RESOLUTION_CODES.AMBIGUOUS,
+        requestedDays,
+        reason: 'Multiple active provider offers match the exact Worldmove WMID.',
+      });
+    }
+    if (identityMatches.length === 1 && durationDaysForOffer(identityMatches[0]) === requestedDays) {
+      return result({
+        code: PROVIDER_RESOLUTION_CODES.EXACT,
+        strategy: 'EXACT',
+        requestedDays,
+        offer: identityMatches[0],
+        reason: 'One active provider offer exactly matches WMID and duration.',
+      });
+    }
+    return result({
+      code: activeBinding ? PROVIDER_RESOLUTION_CODES.MAPPING_INVALID : PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE,
+      requestedDays,
+      binding: activeBinding,
+      reason: activeBinding
+        ? 'Historical provider mapping cannot replace an exact WMID and duration match.'
+        : 'No active provider offer exactly matches the canonical WMID and duration.',
     });
   }
 
@@ -161,54 +210,12 @@ export const resolveProviderOffer = ({
     });
   }
 
-  if (activeBinding) {
-    const mapped = compatibleOffers.find((offer) => offer.id === activeBinding.providerOfferId);
-    const mappedDays = mapped ? durationDaysForOffer(mapped) : null;
-    if (!mapped || activeBinding.strategy !== 'MAPPED_FALLBACK' || mappedDays < requestedDays) {
-      return result({
-        code: PROVIDER_RESOLUTION_CODES.MAPPING_INVALID,
-        requestedDays,
-        binding: activeBinding,
-        reason: 'The approved provider mapping no longer points to a compatible active offer.',
-      });
-    }
-    return result({
-      code: PROVIDER_RESOLUTION_CODES.MAPPED_FALLBACK,
-      strategy: 'MAPPED_FALLBACK',
-      requestedDays,
-      offer: mapped,
-      binding: activeBinding,
-      reason: 'An approved active mapping selects a compatible longer provider offer.',
-    });
-  }
-
-  const longer = compatibleOffers
-    .filter((offer) => durationDaysForOffer(offer) > requestedDays)
-    .sort((left, right) => durationDaysForOffer(left) - durationDaysForOffer(right));
-  if (longer.length > 0) {
-    const shortestDays = durationDaysForOffer(longer[0]);
-    const shortest = longer.filter((offer) => durationDaysForOffer(offer) === shortestDays);
-    if (shortest.length > 1) {
-      return result({
-        code: PROVIDER_RESOLUTION_CODES.AMBIGUOUS,
-        requestedDays,
-        reason: 'Multiple compatible provider offers share the shortest longer duration.',
-      });
-    }
-    return result({
-      code: PROVIDER_RESOLUTION_CODES.NEXT_LONGER,
-      strategy: 'NEXT_LONGER',
-      requestedDays,
-      offer: shortest[0],
-      reason: 'The shortest compatible provider duration longer than requested was selected.',
-    });
-  }
-
   return result({
-    code: compatibleOffers.length ? PROVIDER_RESOLUTION_CODES.TOO_SHORT : PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE,
+    code: activeBinding ? PROVIDER_RESOLUTION_CODES.MAPPING_INVALID : PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE,
     requestedDays,
-    reason: compatibleOffers.length
-      ? 'Compatible provider offers exist only at durations shorter than requested.'
-      : 'No compatible provider offer is available.',
+    binding: activeBinding,
+    reason: activeBinding
+      ? 'Historical provider mapping cannot replace an exact provider duration match.'
+      : 'No compatible provider offer exactly matches the requested duration.',
   });
 };

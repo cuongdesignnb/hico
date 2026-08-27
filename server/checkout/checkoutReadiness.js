@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { readJson, defaultUploadsDirectory } from '../catalog/write/catalogWritePersistence.js';
 import { resolveProviderOffer, PROVIDER_RESOLUTION_CODES } from '../catalog/fulfillment/providerOfferResolver.js';
-import { durationDaysForVariant, mediumForSource, providerForOffer } from '../catalog/fulfillment/providerOfferFamily.js';
+import { durationDaysForOffer, durationDaysForVariant, mediumForSource, providerForOffer } from '../catalog/fulfillment/providerOfferFamily.js';
+import { isWorldmoveEsimOffer } from '../catalog/fulfillment/fulfillmentContracts.js';
 import { readWorldmoveConfig } from '../providers/worldmove/worldmoveClient.js';
 import { CheckoutError } from './checkoutError.js';
 
@@ -58,6 +59,7 @@ const canonicalVariantReady = ({ product, variant }) => (
 const asList = (value) => (Array.isArray(value) ? value : Object.values(value ?? {}));
 const normalizeOperation = (value) => String(value ?? '').trim().toLowerCase();
 const normalizeMedium = (value) => String(value ?? '').trim().toLowerCase();
+const normalizeWmid = (value) => String(value ?? '').trim().toUpperCase();
 
 const variantForRequest = ({ catalog, item }) => {
   const variant = asList(catalog?.variants).find((candidate) => candidate.id === item?.variantId);
@@ -110,10 +112,22 @@ export const getRequiredCheckoutCapabilities = (cartKinds = []) => {
   return CAPABILITY_ORDER.filter((capability) => required.has(capability));
 };
 
-const providerOfferForVariant = ({ variant, offers }) => offers.find((offer) => (
-  offer?.active === true
-  && (offer.id === variant.providerOfferId || (variant.wmproductId && offer.wmproductId === variant.wmproductId))
-)) ?? null;
+const providerOfferForVariant = ({ variant, offers }) => {
+  const requestedDays = durationDaysForVariant(variant);
+  const expectsLeSIM = variant.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM'
+    ? true
+    : variant.fulfillmentMethod === 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM'
+      ? false
+      : null;
+  if (!variant.providerOfferId || !variant.wmproductId || !requestedDays || expectsLeSIM === null) return null;
+  return offers.find((offer) => (
+    isWorldmoveEsimOffer(offer)
+    && offer.id === variant.providerOfferId
+    && normalizeWmid(offer.wmproductId) === normalizeWmid(variant.wmproductId)
+    && offer.leSIM === expectsLeSIM
+    && durationDaysForOffer(offer) === requestedDays
+  )) ?? null;
+};
 
 const expectedProviderTypeFor = (variant) => {
   if (variant?.operation === 'topup') return 2;
@@ -126,12 +140,49 @@ const usesProviderResolver = ({ variant, activeBinding, activeProfile }) => Bool
   activeProfile || variant.durationDays || variant.familyKey || activeBinding,
 );
 
+const exactSimHicoOfferForVariant = ({ variant, offers }) => {
+  const requestedDays = durationDaysForVariant(variant);
+  if (variant?.source !== 'HICO_ESIM_SHEET' || !variant.providerOfferId || !variant.wmproductId || !requestedDays) return null;
+  const expectsLeSIM = variant.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM';
+  return offers.find((offer) => (
+    isWorldmoveEsimOffer(offer)
+    && offer.id === variant.providerOfferId
+    && normalizeWmid(offer.wmproductId) === normalizeWmid(variant.wmproductId)
+    && offer.leSIM === expectsLeSIM
+    && durationDaysForOffer(offer) === requestedDays
+  )) ?? null;
+};
+
 const providerReadyForVariant = ({ env, variant, offers, activeBinding, activeProfile }) => {
   const method = variant.fulfillmentMethod;
   if (method === 'HICO_MANUAL_QR') return { ready: null, reason: null };
   const resolverEnabled = usesProviderResolver({ variant, activeBinding, activeProfile });
   if (!resolverEnabled && !String(method ?? '').startsWith('WORLDMOVE_')) return { ready: false, reason: 'ESIM_FULFILLMENT_NOT_READY' };
   try { readWorldmoveConfig(env); } catch { return { ready: false, reason: 'ESIM_FULFILLMENT_NOT_READY' }; }
+
+  if (variant.source === 'HICO_ESIM_SHEET') {
+    const offer = exactSimHicoOfferForVariant({ variant, offers });
+    const resolution = offer ? {
+      ok: true,
+      code: PROVIDER_RESOLUTION_CODES.EXACT,
+      strategy: 'EXACT',
+      providerOfferId: offer.id,
+      providerWmproductId: offer.wmproductId,
+      providerDurationDays: durationDaysForOffer(offer),
+      upgradeDays: 0,
+    } : {
+      ok: false,
+      code: PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE,
+      providerOfferId: null,
+      providerWmproductId: null,
+    };
+    return {
+      ready: Boolean(offer),
+      reason: offer ? null : 'ESIM_FULFILLMENT_NOT_READY',
+      resolution,
+      offer,
+    };
+  }
 
   if (resolverEnabled) {
     const resolution = resolveProviderOffer({
@@ -286,7 +337,7 @@ export const createCheckoutReadinessService = ({
 export const checkoutReadinessMessage = (reason) => MESSAGE_BY_REASON[reason] ?? null;
 export const providerResolutionIsReady = (resolution) => Boolean(
   resolution?.ok
-  && [PROVIDER_RESOLUTION_CODES.EXACT, PROVIDER_RESOLUTION_CODES.MAPPED_FALLBACK, PROVIDER_RESOLUTION_CODES.NEXT_LONGER].includes(resolution.code),
+  && resolution.code === PROVIDER_RESOLUTION_CODES.EXACT,
 );
 export const requestedDurationForReadiness = (variant) => durationDaysForVariant(variant);
 export const canonicalMediumForReadiness = (value) => mediumForSource(value);

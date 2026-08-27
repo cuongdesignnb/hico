@@ -40,20 +40,22 @@ test('resolver chooses one exact offer and records the real provider WMID', () =
   assert.equal(result.upgradeDays, 0);
 });
 
-test('resolver chooses the shortest compatible longer duration and never a shorter offer', () => {
+test('resolver requires the exact requested duration and never upgrades or downgrades', () => {
   const nextLonger = resolveProviderOffer({ variant: variant(3), offers: [offer(2), offer(5), offer(4)] });
-  assert.equal(nextLonger.code, PROVIDER_RESOLUTION_CODES.NEXT_LONGER);
-  assert.equal(nextLonger.providerDurationDays, 4);
-  assert.equal(nextLonger.upgradeDays, 1);
+  assert.equal(nextLonger.code, PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE);
+  assert.equal(nextLonger.ok, false);
+  assert.equal(nextLonger.providerOfferId, null);
+  assert.equal(nextLonger.providerDurationDays, null);
+  assert.equal(nextLonger.upgradeDays, null);
 
   const tooShort = resolveProviderOffer({ variant: variant(3), offers: [offer(1), offer(2)] });
-  assert.equal(tooShort.code, PROVIDER_RESOLUTION_CODES.TOO_SHORT);
+  assert.equal(tooShort.code, PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE);
   assert.equal(tooShort.providerOfferId, null);
 });
 
 test('resolver blocks conflicting candidates and family or medium mismatch', () => {
   assert.equal(
-    resolveProviderOffer({ variant: variant(3), offers: [offer(4), offer(4, 'offer-4b')] }).code,
+    resolveProviderOffer({ variant: variant(3), offers: [offer(3), offer(3, 'offer-3b')] }).code,
     PROVIDER_RESOLUTION_CODES.AMBIGUOUS,
   );
   assert.equal(
@@ -78,7 +80,7 @@ test('resolver ignores Worldmove physical and top-up quotation types for new eSI
   assert.equal(result.providerOfferId, null);
 });
 
-test('approved mapping is used only after exact resolution is absent and is revalidated', () => {
+test('historical mapped fallback is retained as a blocking resolution', () => {
   const mapping = {
     id: 'binding-1',
     variantId: 'variant-3',
@@ -88,8 +90,9 @@ test('approved mapping is used only after exact resolution is absent and is reva
     version: 7,
   };
   const result = resolveProviderOffer({ variant: variant(3), offers: [offer(5)], activeBinding: mapping });
-  assert.equal(result.code, PROVIDER_RESOLUTION_CODES.MAPPED_FALLBACK);
-  assert.equal(result.strategy, 'MAPPED_FALLBACK');
+  assert.equal(result.code, PROVIDER_RESOLUTION_CODES.MAPPING_INVALID);
+  assert.equal(result.ok, false);
+  assert.equal(result.providerOfferId, null);
   assert.equal(result.bindingVersion, 7);
 
   const invalid = resolveProviderOffer({ variant: variant(3), offers: [offer(4)], activeBinding: mapping });
@@ -118,17 +121,33 @@ const structuredOffer = (durationDays) => offer(durationDays, `wm-${durationDays
   operationType: 'DATA_ONLY',
 });
 
-test('approved canonical profile resolves exact 1D and next-longer 3D without a fake 2D offer', () => {
+test('approved canonical profile resolves exact 1D but not a longer 3D for a missing 2D offer', () => {
   const exact = resolveProviderOffer({ variant: { id: 'var-1', duration: '1 Ngày' }, fulfillmentProfile: approvedProfile(1), offers: [structuredOffer(1), structuredOffer(3)] });
   assert.equal(exact.code, PROVIDER_RESOLUTION_CODES.EXACT);
   assert.equal(exact.providerWmproductId, 'WM-CN-500MB-1D');
   assert.equal(exact.upgradeDays, 0);
 
   const fallback = resolveProviderOffer({ variant: { id: 'var-2', duration: '2 Ngày' }, fulfillmentProfile: approvedProfile(2), offers: [structuredOffer(1), structuredOffer(3)] });
-  assert.equal(fallback.code, PROVIDER_RESOLUTION_CODES.NEXT_LONGER);
-  assert.equal(fallback.providerWmproductId, 'WM-CN-500MB-3D');
-  assert.equal(fallback.providerDurationDays, 3);
-  assert.equal(fallback.upgradeDays, 1);
+  assert.equal(fallback.code, PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE);
+  assert.equal(fallback.providerOfferId, null);
+  assert.equal(fallback.providerDurationDays, null);
+  assert.equal(fallback.upgradeDays, null);
+});
+
+test('canonical WMID constrains the exact provider offer and duration', () => {
+  const result = resolveProviderOffer({
+    variant: { ...variant(1), wmproductId: ' wm-cn-500mb-1d ', providerOfferId: 'offer-1' },
+    offers: [offer(1, 'offer-1'), offer(2, 'offer-2')],
+  });
+  assert.equal(result.code, PROVIDER_RESOLUTION_CODES.EXACT);
+  assert.equal(result.providerOfferId, 'offer-1');
+
+  const noUpgrade = resolveProviderOffer({
+    variant: { ...variant(1), wmproductId: 'WM-CN-500MB-1D', providerOfferId: 'offer-1' },
+    offers: [offer(2, 'offer-1')],
+  });
+  assert.equal(noUpgrade.code, PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE);
+  assert.equal(noUpgrade.providerOfferId, null);
 });
 
 test('resolver blocks a missing or conflicting canonical profile', () => {

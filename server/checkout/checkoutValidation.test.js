@@ -202,3 +202,44 @@ test('canonical validation keeps physical quantity above one supported', () => {
   });
   assert.equal(result.items[0].requested.quantity, 2);
 });
+
+test('canonical SimHICO checkout requires exact WMID and exact provider day', () => {
+  const simHicoVariant = {
+    ...baseVariant,
+    id: 'v-sim-hico',
+    source: 'HICO_ESIM_SHEET',
+    supplier: 'worldmove',
+    fulfillmentMethod: 'WORLDMOVE_ESIM_REDEEM',
+    providerProductType: 0,
+    leSIM: true,
+    providerOfferId: 'offer-sim-hico',
+    wmproductId: 'WM-E-JP-500MB-3D',
+    durationDays: 3,
+    tripDayOptions: [3, 5],
+  };
+  const exactOffer = {
+    id: 'offer-sim-hico',
+    provider: 'worldmove',
+    wmproductId: 'WM-E-JP-500MB-3D',
+    providerProductType: 0,
+    leSIM: true,
+    active: true,
+    durationDays: 3,
+  };
+  const simHicoCatalog = { products: [product], variants: [simHicoVariant] };
+  const exactRequest = { ...request, items: [{ variantId: simHicoVariant.id, quantity: 1, requestedTripDays: 3 }] };
+  const validated = validateCanonicalCart({ catalog: simHicoCatalog, providerOffers: [exactOffer], request: exactRequest });
+  assert.equal(validated.items[0].providerOffer.id, exactOffer.id);
+  assert.equal(validated.items[0].providerResolution, null);
+
+  assert.throws(() => validateCanonicalCart({
+    catalog: simHicoCatalog,
+    providerOffers: [{ ...exactOffer, durationDays: 5 }],
+    request: exactRequest,
+  }), (error) => error.code === 'FULFILLMENT_INVALID');
+  assert.throws(() => validateCanonicalCart({
+    catalog: simHicoCatalog,
+    providerOffers: [exactOffer],
+    request: { ...request, items: [{ variantId: simHicoVariant.id, quantity: 1, requestedTripDays: 4 }] },
+  }), (error) => error.code === 'TRIP_DAY_MISMATCH');
+});

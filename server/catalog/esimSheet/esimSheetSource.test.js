@@ -2,22 +2,24 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { assertSimHicoReference, auditEsimSheetRows, matchEsimProviderOffer, parseEsimSheetRows } from './esimSheetSource.js';
 
-const headers = ['WMID', 'Tên gói', 'Giá bán', 'Số ngày', 'Ngày chuyến đi', 'Ghi chú'];
+const headers = ['Loại SIM', 'WMID', 'Tên gói', 'Giá bán', 'Số ngày', 'Ngày chuyến đi', 'Ghi chú'];
 
 test('eSIM Sheet parser is independent and keeps WMID and selling price semantics', () => {
   const parsed = parseEsimSheetRows({
-    values: [headers, [' WM-e-CN-500MB-1D ', 'China 1D', '180,000', '1', '1,3', 'Hỗ trợ eSIM']],
+    values: [headers, ['eSIM', ' WM-e-CN-500MB-1D ', 'China 1D', '180,000', '1', '1,3', 'Hỗ trợ eSIM']],
   });
   assert.equal(parsed.source, 'HICO_ESIM_SHEET');
-  assert.equal(parsed.parserRevision, 1);
+  assert.equal(parsed.parserRevision, 2);
   assert.deepEqual(parsed.rows[0], {
     sourceRowNumber: 2,
+    medium: 'esim',
     wmid: 'WM-E-CN-500MB-1D',
     productName: 'China 1D',
     sellingPrice: 180000,
     durationDays: 1,
     tripDayOptions: [1, 3],
     publicNote: 'Hỗ trợ eSIM',
+    warnings: ['DATA_LIMIT_NOT_DECLARED'],
     errors: [],
   });
 });
@@ -34,7 +36,7 @@ test('provider matching is exact, supports only Worldmove product type 0, and ne
 
 test('audit is read-only, aggregate-safe, and blocks unsupported provider types', () => {
   const result = auditEsimSheetRows({
-    values: [headers, ['WM-E-CN-500MB-1D', 'China 1D', 180000, 1, '', ''], ['WM-E-CN-500MB-2D', 'China 2D', 250000, 2, '', '']],
+    values: [headers, ['eSIM', 'WM-E-CN-500MB-1D', 'China 1D', 180000, 1, '', ''], ['eSIM', 'WM-E-CN-500MB-2D', 'China 2D', 250000, 2, '', '']],
     providerOffers: [
       { id: 'offer-1', provider: 'worldmove', wmproductId: 'WM-E-CN-500MB-1D', providerProductType: 0, leSIM: false, active: true },
       { id: 'offer-2', provider: 'worldmove', wmproductId: 'WM-E-CN-500MB-2D', providerProductType: 1, active: true },
@@ -43,6 +45,10 @@ test('audit is read-only, aggregate-safe, and blocks unsupported provider types'
   assert.equal(result.rowsRead, 2);
   assert.equal(result.matchedRows, 1);
   assert.equal(result.blockedRows, 1);
+  assert.equal(result.eligibleBeforeProvider, 2);
+  assert.equal(result.structuralBlockedRows, 0);
+  assert.equal(result.skippedNonEsimRows, 0);
+  assert.equal(result.dataLimitNotDeclared, 2);
   assert.equal(result.rows[1].providerStatus, 'PROVIDER_PRODUCT_TYPE_UNSUPPORTED');
 });
 
@@ -96,6 +102,7 @@ test('SimHICO maps the live eSIM columns instead of treating the title row as a 
     cancellable: 'Có thể',
     speedLabel: '128kbps',
     errors: [],
+    warnings: [],
   });
 });
 
@@ -137,4 +144,35 @@ test('provider matching rejects another provider and inactive Worldmove offers',
   ];
   assert.equal(matchEsimProviderOffer({ wmid: 'WM-E-CN-500MB-1D', providerOffers: offers }).status, 'PROVIDER_NOT_FOUND');
   assert.equal(matchEsimProviderOffer({ wmid: 'WM-E-CN-500MB-2D', providerOffers: offers }).status, 'PROVIDER_INACTIVE');
+});
+
+test('SimHICO treats unlimited labels as an explicit data limit and missing quota as a warning', () => {
+  const sourceHeaders = ['WMID', 'Tên gói', 'Giá bán', 'Số ngày', 'Loại data'];
+  const parsed = parseEsimSheetRows({
+    values: [
+      sourceHeaders,
+      ['WM-UNLIMITED-DAY', 'China 1 Day, Unlimited data /day', 100000, 1, 'Chia ngày'],
+      ['WM-UNLIMITED', 'Japan 5 Days, Unlimited', 100000, 5, 'Gói tổng'],
+      ['WM-UNLIMITED-VI', 'Vietnam 3 ngày, Không giới hạn', 100000, 3, 'Gói tổng'],
+      ['WM-MISSING', 'Korea 1 Day', 100000, 1, 'Chia ngày'],
+    ],
+  });
+  assert.deepEqual(parsed.rows.slice(0, 3).map((row) => ({ dataLimit: row.dataLimit, errors: row.errors, warnings: row.warnings })), [
+    { dataLimit: 'Unlimited', errors: [], warnings: [] },
+    { dataLimit: 'Unlimited', errors: [], warnings: [] },
+    { dataLimit: 'Unlimited', errors: [], warnings: [] },
+  ]);
+  assert.equal(parsed.rows[3].dataLimit, undefined);
+  assert.deepEqual(parsed.rows[3].warnings, ['DATA_LIMIT_NOT_DECLARED']);
+});
+
+test('multiple explicit daily quotas remain a blocking data ambiguity', () => {
+  const parsed = parseEsimSheetRows({
+    values: [
+      ['WMID', 'Tên gói', 'Giá bán', 'Số ngày', 'Loại data'],
+      ['WM-AMBIGUOUS', 'China 1 Day, 500MB /day, 1GB /day', 100000, 1, 'Chia ngày'],
+    ],
+  });
+  assert.ok(parsed.rows[0].errors.includes('DATA_LIMIT_AMBIGUOUS'));
+  assert.deepEqual(parsed.rows[0].warnings, []);
 });

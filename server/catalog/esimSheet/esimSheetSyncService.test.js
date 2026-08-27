@@ -104,7 +104,7 @@ test('eSIM Sheet preview/apply uses SimHICO eSIM columns and only creates drafts
   }
 });
 
-test('eSIM Sheet sync blocks non-eSIM rows and never substitutes the SIM price column', async () => {
+test('eSIM Sheet sync skips non-eSIM rows and never substitutes the SIM price column', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'hico-esim-sheet-'));
   try {
     const physicalRow = [...row];
@@ -120,8 +120,52 @@ test('eSIM Sheet sync blocks non-eSIM rows and never substitutes the SIM price c
     });
     const preview = await service.preview({ catalogVersionId: 'catalog-v1', categoryId: 'cat-esim-du-lich' });
     assert.equal(preview.eligible, 0);
-    assert.ok(preview.errors[0].errors.includes('MEDIUM_NOT_ESIM'));
-    assert.ok(preview.errors[0].errors.includes('SELLING_PRICE_INVALID'));
+    assert.equal(preview.blocked, 0);
+    assert.equal(preview.skipped, 1);
+    assert.deepEqual(preview.errors, []);
+    assert.equal(preview.rows[0].status, 'SKIPPED_NON_ESIM');
+    assert.equal(preview.rows[0].skipReason, 'SKIPPED_NON_ESIM');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('eSIM Sheet apply commits eligible rows while reporting blocked rows', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'hico-esim-sheet-partial-'));
+  let commitInput;
+  try {
+    const invalid = [...row];
+    invalid[1] = 'Mainland China, 2 Day, 500MB /day, 128kbps';
+    invalid[2] = '2';
+    invalid[5] = '';
+    invalid[24] = 'WM-e-CN-500MB-2D';
+    const offers = [
+      { id: 'offer-cn-1d', provider: 'worldmove', wmproductId: 'WM-e-CN-500MB-1D', providerProductId: 'provider-cn-1d', providerProductType: 0, leSIM: true, active: true },
+      { id: 'offer-cn-2d', provider: 'worldmove', wmproductId: 'WM-e-CN-500MB-2D', providerProductId: 'provider-cn-2d', providerProductType: 0, leSIM: true, active: true },
+    ];
+    const service = createEsimSheetSyncService({
+      env: { CATALOG_READ_SOURCE: 'canonical' },
+      uploadsDirectory: directory,
+      referenceClient: { async readRows() { return { sheetTab: 'SimHICO', values: [headers, row, invalid] }; } },
+      catalogRepository: { async readCatalog() { return { manifest: { versionId: 'catalog-v1' }, products: [], variants: [], categories: cloneSeedCategories() }; } },
+      providerRepository: { async listOffers() { return offers; } },
+      commandService: { async execute({ handler }) { return { ...(await handler({ commandId: 'partial-command', requestHash: 'partial-hash' })), replayed: false }; } },
+      commitService: { async commit(input) { commitInput = input; return { manifest: { versionId: 'catalog-v2' }, warnings: [] }; } },
+      auditRepository: { async append() {}, async remove() {} },
+    });
+    const preview = await service.preview({ catalogVersionId: 'catalog-v1', categoryId: 'cat-esim-du-lich' });
+    assert.equal(preview.eligible, 1);
+    assert.equal(preview.blocked, 1);
+    assert.equal(preview.skipped, 0);
+    assert.equal(preview.partial, true);
+    const applied = await service.apply({ previewId: preview.previewId, catalogVersionId: 'catalog-v1', idempotencyKey: 'partial-apply', confirm: true });
+    assert.equal(applied.body.status, 'SYNC_APPLIED');
+    assert.equal(applied.body.eligible, 1);
+    assert.equal(applied.body.blocked, 1);
+    assert.equal(applied.body.partial, true);
+    assert.equal(commitInput.variants.length, 1);
+    assert.equal(commitInput.variants[0].wmproductId, 'WM-e-CN-500MB-1D');
+    assert.equal(applied.body.errors.length, 1);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
