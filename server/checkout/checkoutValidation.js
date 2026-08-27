@@ -2,7 +2,7 @@ import { CheckoutError } from './checkoutError.js';
 import { assertFulfillmentSupported } from '../fulfillment/fulfillmentValidation.js';
 import { PROVIDER_RESOLUTION_CODES, resolveProviderOffer } from '../catalog/fulfillment/providerOfferResolver.js';
 import { durationDaysForOffer, durationDaysForVariant } from '../catalog/fulfillment/providerOfferFamily.js';
-import { isLegacyFulfillmentMethod, isWorldmoveEsimOffer } from '../catalog/fulfillment/fulfillmentContracts.js';
+import { isLegacyFulfillmentMethod, isWorldmoveEsimOffer, matchesExactSimHicoOffer } from '../catalog/fulfillment/fulfillmentContracts.js';
 
 export const CHECKOUT_ENGINES = new Set(['legacy', 'canonical']);
 export const CURRENCIES = new Set(['VND', 'USD']);
@@ -131,6 +131,15 @@ const validateProviderMapping = (variant, offers) => {
     candidate?.id === variant.providerOfferId
     && String(candidate?.wmproductId ?? '').trim().toUpperCase() === String(variant.wmproductId).trim().toUpperCase()
   )) ?? null;
+  if (variant.source === 'HICO_ESIM_SHEET') {
+    if (!durationDaysForVariant(variant)) {
+      throw new CheckoutError('Gói canonical thiếu số ngày hợp lệ.', 'FULFILLMENT_INVALID');
+    }
+    if (!matchesExactSimHicoOffer({ variant, offer })) {
+      throw new CheckoutError('Nguồn cung cấp của gói không còn hoạt động.', 'PROVIDER_OFFER_INACTIVE');
+    }
+    return offer;
+  }
   const expectsLeSIM = variant.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM';
   if (!offer || !isWorldmoveEsimOffer(offer) || offer.leSIM !== expectsLeSIM) {
     throw new CheckoutError('Nguồn cung cấp của gói không còn hoạt động.', 'PROVIDER_OFFER_INACTIVE');

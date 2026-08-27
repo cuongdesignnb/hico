@@ -203,7 +203,7 @@ test('canonical validation keeps physical quantity above one supported', () => {
   assert.equal(result.items[0].requested.quantity, 2);
 });
 
-test('canonical SimHICO checkout requires exact WMID and exact provider day', () => {
+test('canonical SimHICO checkout requires exact provider identity but not provider duration', () => {
   const simHicoVariant = {
     ...baseVariant,
     id: 'v-sim-hico',
@@ -224,7 +224,6 @@ test('canonical SimHICO checkout requires exact WMID and exact provider day', ()
     providerProductType: 0,
     leSIM: true,
     active: true,
-    durationDays: 3,
   };
   const simHicoCatalog = { products: [product], variants: [simHicoVariant] };
   const exactRequest = { ...request, items: [{ variantId: simHicoVariant.id, quantity: 1, requestedTripDays: 3 }] };
@@ -232,11 +231,21 @@ test('canonical SimHICO checkout requires exact WMID and exact provider day', ()
   assert.equal(validated.items[0].providerOffer.id, exactOffer.id);
   assert.equal(validated.items[0].providerResolution, null);
 
-  assert.throws(() => validateCanonicalCart({
-    catalog: simHicoCatalog,
-    providerOffers: [{ ...exactOffer, durationDays: 5 }],
-    request: exactRequest,
-  }), (error) => error.code === 'FULFILLMENT_INVALID');
+  const invalidOffers = [
+    { ...exactOffer, wmproductId: 'WM-E-JP-500MB-5D' },
+    { ...exactOffer, id: 'offer-other' },
+    { ...exactOffer, leSIM: false },
+    { ...exactOffer, providerProductType: 1 },
+    { ...exactOffer, providerProductType: 2 },
+    { ...exactOffer, active: false },
+  ];
+  for (const invalidOffer of invalidOffers) {
+    assert.throws(() => validateCanonicalCart({
+      catalog: simHicoCatalog,
+      providerOffers: [invalidOffer],
+      request: exactRequest,
+    }), (error) => error.code === 'PROVIDER_OFFER_INACTIVE');
+  }
   assert.throws(() => validateCanonicalCart({
     catalog: simHicoCatalog,
     providerOffers: [exactOffer],

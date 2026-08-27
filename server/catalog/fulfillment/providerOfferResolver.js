@@ -8,7 +8,7 @@ import {
   mediumForSource,
   providerForOffer,
 } from './providerOfferFamily.js';
-import { isWorldmoveEsimOffer } from './fulfillmentContracts.js';
+import { isWorldmoveEsimOffer, matchesExactSimHicoOffer } from './fulfillmentContracts.js';
 
 export const PROVIDER_RESOLUTION_CODES = Object.freeze({
   EXACT: 'PROVIDER_EXACT_MATCH',
@@ -60,7 +60,7 @@ const result = ({ code, strategy = null, requestedDays, offer = null, binding = 
   providerOfferId: offer?.id ?? null,
   providerWmproductId: offer?.wmproductId ?? null,
   providerDurationDays: offer ? durationDaysForOffer(offer) : null,
-  upgradeDays: offer ? durationDaysForOffer(offer) - requestedDays : null,
+  upgradeDays: offer && durationDaysForOffer(offer) ? durationDaysForOffer(offer) - requestedDays : null,
   bindingVersion: binding?.version ?? null,
   providerSnapshotHash: offer ? providerSnapshotHashFor(offer) : null,
   fulfillmentMethod: offer ? resolutionForProviderOffer(offer) : null,
@@ -124,7 +124,16 @@ export const resolveProviderOffer = ({
     });
   }
 
-  const activeWorldmoveOffers = offers.filter((offer) => isWorldmoveEsimOffer(offer) && durationDaysForOffer(offer));
+  const isSimHicoSource = variant.source === 'HICO_ESIM_SHEET';
+  if (isSimHicoSource && (!variantWmid || !variant.providerOfferId)) {
+    return result({
+      code: activeBinding ? PROVIDER_RESOLUTION_CODES.MAPPING_INVALID : PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE,
+      requestedDays,
+      binding: activeBinding,
+      reason: 'SimHICO requires an exact canonical providerOfferId and WMID.',
+    });
+  }
+  const activeWorldmoveOffers = offers.filter((offer) => isWorldmoveEsimOffer(offer) && (isSimHicoSource || durationDaysForOffer(offer)));
   const mediumOffers = activeWorldmoveOffers.filter((offer) => mediumForSource(offer) === variantMedium);
   if (mediumOffers.length === 0) {
     return result({
@@ -145,18 +154,20 @@ export const resolveProviderOffer = ({
         reason: 'Canonical Worldmove identity is missing the exact providerOfferId.',
       });
     }
-    const expectedLeSIM = typeof variant.leSIM === 'boolean'
-      ? variant.leSIM
-      : variant.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM'
-        ? true
-        : variant.fulfillmentMethod === 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM'
-          ? false
-          : null;
-    const identityMatches = mediumOffers.filter((offer) => (
-      normalizeWmid(offer.wmproductId) === variantWmid
-      && offer.id === variant.providerOfferId
-      && (expectedLeSIM === null || offer.leSIM === expectedLeSIM)
-    ));
+    const identityMatches = isSimHicoSource
+      ? mediumOffers.filter((offer) => matchesExactSimHicoOffer({ variant, offer }))
+      : mediumOffers.filter((offer) => {
+        const expectedLeSIM = typeof variant.leSIM === 'boolean'
+          ? variant.leSIM
+          : variant.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM'
+            ? true
+            : variant.fulfillmentMethod === 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM'
+              ? false
+              : null;
+        return normalizeWmid(offer.wmproductId) === variantWmid
+          && offer.id === variant.providerOfferId
+          && (expectedLeSIM === null || offer.leSIM === expectedLeSIM);
+      });
     if (identityMatches.length > 1) {
       return result({
         code: PROVIDER_RESOLUTION_CODES.AMBIGUOUS,
@@ -164,13 +175,15 @@ export const resolveProviderOffer = ({
         reason: 'Multiple active provider offers match the exact Worldmove WMID.',
       });
     }
-    if (identityMatches.length === 1 && durationDaysForOffer(identityMatches[0]) === requestedDays) {
+    if (identityMatches.length === 1 && (isSimHicoSource || durationDaysForOffer(identityMatches[0]) === requestedDays)) {
       return result({
         code: PROVIDER_RESOLUTION_CODES.EXACT,
         strategy: 'EXACT',
         requestedDays,
         offer: identityMatches[0],
-        reason: 'One active provider offer exactly matches WMID and duration.',
+        reason: isSimHicoSource
+          ? 'One active provider offer exactly matches the canonical SimHICO identity.'
+          : 'One active provider offer exactly matches WMID and duration.',
       });
     }
     return result({

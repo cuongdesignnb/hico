@@ -53,6 +53,12 @@ const offerFor = (id, wmproductId, durationDays) => ({
   active: true,
 });
 
+const offerWithoutDuration = (offer) => {
+  const copy = { ...offer };
+  delete copy.durationDays;
+  return copy;
+};
+
 const product = (id, operation = 'new_subscription') => ({
   id,
   name: `Product ${id}`,
@@ -243,29 +249,40 @@ test('manual QR eSIM readiness does not require a preloaded QR pool', async () =
   assert.deepEqual(readiness.blockingReasons, []);
 });
 
-test('SimHICO readiness requires the exact WMID and exact provider day', async () => {
+test('SimHICO readiness requires exact provider identity but not provider duration', async () => {
   const exactVariant = variant('v-sim-hico', 'p-esim', {
     source: 'HICO_ESIM_SHEET',
     providerOfferId: 'offer-sim-hico',
     wmproductId: 'WM-E-CN-500MB-1D',
     durationDays: 1,
   });
+  const exactOffer = offerWithoutDuration(offerFor('offer-sim-hico', 'WM-E-CN-500MB-1D', 1));
   const exactService = await createService({
     catalog: { products: [product('p-esim')], variants: [exactVariant] },
-    offers: [offerFor('offer-sim-hico', 'WM-E-CN-500MB-1D', 1)],
+    offers: [exactOffer],
     profiles: [profileFor('v-sim-hico', 1)],
     bindings: [{ variantId: 'v-sim-hico', provider: 'WORLDMOVE', strategy: 'MAPPED_FALLBACK', status: 'ACTIVE', providerOfferId: 'offer-sim-hico' }],
   });
   const exact = await exactService.evaluate({ items: [{ variantId: 'v-sim-hico', quantity: 1 }] });
   assert.equal(exact.ready, true);
 
-  const wrongDayService = await createService({
-    catalog: { products: [product('p-esim')], variants: [exactVariant] },
-    offers: [offerFor('offer-sim-hico', 'WM-E-CN-500MB-1D', 2)],
-  });
-  const wrongDay = await wrongDayService.evaluate({ items: [{ variantId: 'v-sim-hico', quantity: 1 }] });
-  assert.equal(wrongDay.ready, false);
-  assert.deepEqual(wrongDay.blockingReasons, ['ESIM_FULFILLMENT_NOT_READY']);
+  const invalidOffers = [
+    { ...exactOffer, wmproductId: 'WM-E-CN-500MB-2D' },
+    { ...exactOffer, id: 'offer-other' },
+    { ...exactOffer, leSIM: false },
+    { ...exactOffer, providerProductType: 1 },
+    { ...exactOffer, providerProductType: 2 },
+    { ...exactOffer, active: false },
+  ];
+  for (const invalidOffer of invalidOffers) {
+    const service = await createService({
+      catalog: { products: [product('p-esim')], variants: [exactVariant] },
+      offers: [invalidOffer],
+    });
+    const readiness = await service.evaluate({ items: [{ variantId: 'v-sim-hico', quantity: 1 }] });
+    assert.equal(readiness.ready, false);
+    assert.deepEqual(readiness.blockingReasons, ['ESIM_FULFILLMENT_NOT_READY']);
+  }
 });
 
 test('readiness accepts only an exact provider resolution code', () => {

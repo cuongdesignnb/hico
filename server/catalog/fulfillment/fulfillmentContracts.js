@@ -27,3 +27,23 @@ export const isWorldmoveEsimOffer = (offer) => (
   && offer?.providerProductType === WORLD_MOVE_ESIM_PRODUCT_TYPE
   && typeof offer?.leSIM === 'boolean'
 );
+
+const normalizeWmid = (value) => String(value ?? '').normalize('NFC').trim().toUpperCase();
+
+export const matchesExactSimHicoOffer = ({ variant, offer } = {}) => {
+  const expectedLeSIM = variant?.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM'
+    ? true
+    : variant?.fulfillmentMethod === 'WORLDMOVE_ESIM_ORDER_THEN_REDEEM'
+      ? false
+      : null;
+  if (
+    variant?.source !== 'HICO_ESIM_SHEET'
+    || !variant.providerOfferId
+    || !variant.wmproductId
+    || expectedLeSIM === null
+  ) return false;
+  return isWorldmoveEsimOffer(offer)
+    && offer.id === variant.providerOfferId
+    && normalizeWmid(offer.wmproductId) === normalizeWmid(variant.wmproductId)
+    && offer.leSIM === expectedLeSIM;
+};

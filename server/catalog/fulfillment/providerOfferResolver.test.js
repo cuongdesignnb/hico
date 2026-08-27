@@ -150,6 +150,37 @@ test('canonical WMID constrains the exact provider offer and duration', () => {
   assert.equal(noUpgrade.providerOfferId, null);
 });
 
+test('SimHICO resolves exact WMID without provider duration and never falls back to another WMID', () => {
+  const simHicoVariant = {
+    ...variant(5),
+    source: 'HICO_ESIM_SHEET',
+    fulfillmentMethod: 'WORLDMOVE_ESIM_REDEEM',
+    providerOfferId: 'offer-sim-hico',
+    wmproductId: 'WM-E-X-5D',
+  };
+  const exactOffer = {
+    id: 'offer-sim-hico',
+    provider: 'worldmove',
+    wmproductId: 'WM-E-X-5D',
+    providerProductType: 0,
+    leSIM: true,
+    active: true,
+  };
+  const exact = resolveProviderOffer({ variant: simHicoVariant, offers: [exactOffer] });
+  assert.equal(exact.code, PROVIDER_RESOLUTION_CODES.EXACT);
+  assert.equal(exact.providerOfferId, 'offer-sim-hico');
+  assert.equal(exact.providerDurationDays, null);
+  assert.equal(exact.upgradeDays, null);
+
+  const noFallback = resolveProviderOffer({
+    variant: simHicoVariant,
+    offers: [{ ...exactOffer, wmproductId: 'WM-E-X-7D' }],
+  });
+  assert.equal(noFallback.code, PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE);
+  assert.equal(noFallback.ok, false);
+  assert.equal(noFallback.providerOfferId, null);
+});
+
 test('resolver blocks a missing or conflicting canonical profile', () => {
   const missing = resolveProviderOffer({ variant: { id: 'var-1', duration: '1 Ngày' }, offers: [structuredOffer(1)], requireFulfillmentProfile: true });
   assert.equal(missing.code, PROVIDER_RESOLUTION_CODES.PROFILE_NOT_FOUND);

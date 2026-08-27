@@ -2,7 +2,7 @@ import path from 'node:path';
 import { readJson, defaultUploadsDirectory } from '../catalog/write/catalogWritePersistence.js';
 import { resolveProviderOffer, PROVIDER_RESOLUTION_CODES } from '../catalog/fulfillment/providerOfferResolver.js';
 import { durationDaysForOffer, durationDaysForVariant, mediumForSource, providerForOffer } from '../catalog/fulfillment/providerOfferFamily.js';
-import { isWorldmoveEsimOffer } from '../catalog/fulfillment/fulfillmentContracts.js';
+import { isWorldmoveEsimOffer, matchesExactSimHicoOffer } from '../catalog/fulfillment/fulfillmentContracts.js';
 import { readWorldmoveConfig } from '../providers/worldmove/worldmoveClient.js';
 import { CheckoutError } from './checkoutError.js';
 
@@ -143,14 +143,7 @@ const usesProviderResolver = ({ variant, activeBinding, activeProfile }) => Bool
 const exactSimHicoOfferForVariant = ({ variant, offers }) => {
   const requestedDays = durationDaysForVariant(variant);
   if (variant?.source !== 'HICO_ESIM_SHEET' || !variant.providerOfferId || !variant.wmproductId || !requestedDays) return null;
-  const expectsLeSIM = variant.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM';
-  return offers.find((offer) => (
-    isWorldmoveEsimOffer(offer)
-    && offer.id === variant.providerOfferId
-    && normalizeWmid(offer.wmproductId) === normalizeWmid(variant.wmproductId)
-    && offer.leSIM === expectsLeSIM
-    && durationDaysForOffer(offer) === requestedDays
-  )) ?? null;
+  return offers.find((offer) => matchesExactSimHicoOffer({ variant, offer })) ?? null;
 };
 
 const providerReadyForVariant = ({ env, variant, offers, activeBinding, activeProfile }) => {
@@ -168,8 +161,8 @@ const providerReadyForVariant = ({ env, variant, offers, activeBinding, activePr
       strategy: 'EXACT',
       providerOfferId: offer.id,
       providerWmproductId: offer.wmproductId,
-      providerDurationDays: durationDaysForOffer(offer),
-      upgradeDays: 0,
+      providerDurationDays: null,
+      upgradeDays: null,
     } : {
       ok: false,
       code: PROVIDER_RESOLUTION_CODES.NOT_AVAILABLE,
