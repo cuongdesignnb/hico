@@ -1,0 +1,93 @@
+.manual-qr-assignment {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid #c7d9d7;
+  border-radius: 6px;
+  background: #f5fbfa;
+}
+
+.manual-qr-assignment-heading,
+.manual-qr-assignment-row,
+.manual-qr-actions,
+.manual-qr-assignment-note {
+  display: flex;
+  align-items: center;
+}
+
+.manual-qr-assignment-heading,
+.manual-qr-assignment-row {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.manual-qr-assignment-heading strong,
+.manual-qr-assignment-heading span,
+.manual-qr-item-meta span,
+.manual-qr-item-meta small {
+  display: block;
+}
+
+.manual-qr-assignment-heading span,
+.manual-qr-item-meta small,
+.manual-qr-assignment-note {
+  color: #58706e;
+  font-size: 11px;
+}
+
+.manual-qr-assignment-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #dbe9e7;
+}
+
+.manual-qr-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.manual-qr-actions select,
+.manual-qr-upload-button,
+.manual-qr-assign-button,
+.manual-qr-icon-button {
+  min-height: 30px;
+  border: 1px solid #c5d6d4;
+  border-radius: 5px;
+  background: #fff;
+  color: #164e4a;
+  font-size: 11px;
+}
+
+.manual-qr-actions select {
+  min-width: 150px;
+  padding: 0 6px;
+}
+
+.manual-qr-upload-button,
+.manual-qr-assign-button,
+.manual-qr-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px;
+  cursor: pointer;
+}
+
+.manual-qr-upload-button input { display: none; }
+.manual-qr-assign-button { border-color: #126b68; background: #126b68; color: #fff; }
+.manual-qr-actions button:disabled,
+.manual-qr-actions label:has(input:disabled),
+.manual-qr-actions select:disabled { cursor: not-allowed; opacity: .55; }
+.manual-qr-icon-button { width: 30px; padding: 0; }
+.manual-qr-error { margin: 8px 0 0; color: #b42318; font-size: 11px; }
+.manual-qr-empty { margin: 8px 0 0; color: #8a4b08; font-size: 11px; }
+.manual-qr-assignment-note { gap: 5px; margin-top: 8px; }
+.manual-qr-spin { animation: manual-qr-spin .8s linear infinite; }
+@keyframes manual-qr-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 760px) {
+  .manual-qr-assignment-row { align-items: flex-start; flex-direction: column; }
+  .manual-qr-actions { width: 100%; justify-content: flex-start; }
+  .manual-qr-actions select { flex: 1 1 100%; }
+}

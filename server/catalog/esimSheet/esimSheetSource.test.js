@@ -24,8 +24,8 @@ test('eSIM Sheet parser is independent and keeps WMID and selling price semantic
 
 test('provider matching is exact, supports only Worldmove product type 0, and never guesses', () => {
   const offers = [
-    { id: 'offer-1', wmproductId: 'wm-e-cn-500mb-1d', providerProductType: 0, leSIM: true, active: true },
-    { id: 'offer-physical', wmproductId: 'WM-E-CN-500MB-2D', providerProductType: 1, active: true },
+    { id: 'offer-1', provider: 'worldmove', wmproductId: 'wm-e-cn-500mb-1d', providerProductType: 0, leSIM: true, active: true },
+    { id: 'offer-physical', provider: 'worldmove', wmproductId: 'WM-E-CN-500MB-2D', providerProductType: 1, active: true },
   ];
   assert.equal(matchEsimProviderOffer({ wmid: 'WM-E-CN-500MB-1D', providerOffers: offers }).status, 'MATCHED');
   assert.equal(matchEsimProviderOffer({ wmid: 'WM-E-CN-500MB-1', providerOffers: offers }).status, 'PROVIDER_NOT_FOUND');
@@ -36,8 +36,8 @@ test('audit is read-only, aggregate-safe, and blocks unsupported provider types'
   const result = auditEsimSheetRows({
     values: [headers, ['WM-E-CN-500MB-1D', 'China 1D', 180000, 1, '', ''], ['WM-E-CN-500MB-2D', 'China 2D', 250000, 2, '', '']],
     providerOffers: [
-      { id: 'offer-1', wmproductId: 'WM-E-CN-500MB-1D', providerProductType: 0, leSIM: false, active: true },
-      { id: 'offer-2', wmproductId: 'WM-E-CN-500MB-2D', providerProductType: 1, active: true },
+      { id: 'offer-1', provider: 'worldmove', wmproductId: 'WM-E-CN-500MB-1D', providerProductType: 0, leSIM: false, active: true },
+      { id: 'offer-2', provider: 'worldmove', wmproductId: 'WM-E-CN-500MB-2D', providerProductType: 1, active: true },
     ],
   });
   assert.equal(result.rowsRead, 2);
@@ -92,7 +92,7 @@ test('SimHICO maps the live eSIM columns instead of treating the title row as a 
     coverageLabel: 'Trung Quốc',
     networkLabel: 'China Unicom, China Telecom',
     apn: 'mobile',
-    activationPolicy: 'Reset dung lượng: 23:00 hàng ngày',
+    resetPolicy: 'Reset dung lượng: 23:00 hàng ngày',
     cancellable: 'Có thể',
     speedLabel: '128kbps',
     errors: [],
@@ -114,4 +114,27 @@ test('SimHICO keeps total-package duration separate from trip-day selection', ()
 test('eSIM source accepts only the SimHICO tab when a tab is declared', () => {
   assert.equal(assertSimHicoReference({ sheetTab: 'SimHICO' }).sheetTab, 'SimHICO');
   assert.throws(() => assertSimHicoReference({ sheetTab: 'HICO GỐC' }), (error) => error.code === 'ESIM_SHEET_TAB_INVALID' && error.status === 422);
+});
+
+test('SimHICO keeps total duration in the product name and blocks ambiguous data limits', () => {
+  const liveHeaders = Array.from({ length: 25 }, () => '');
+  Object.assign(liveHeaders, { 0: 'Loại SIM', 1: 'Tên gói', 2: 'Ngày', 3: 'Loại data', 5: 'Giá eSim', 23: 'wmid_sim', 24: 'wmid_esim' });
+  const ambiguousData = Array.from({ length: 25 }, () => '');
+  Object.assign(ambiguousData, { 0: 'eSIM', 1: 'China, 5 Days, 1GB, 2GB', 2: '5', 3: 'Gói tổng', 5: '80000', 24: 'WM-e-CN-AMBIGUOUS' });
+  const ambiguousDuration = Array.from({ length: 25 }, () => '');
+  Object.assign(ambiguousDuration, { 0: 'eSIM', 1: 'China, data 3GB', 2: '5', 3: 'Gói tổng', 5: '80000', 24: 'WM-e-CN-NO-DURATION' });
+  const parsed = parseEsimSheetRows({ values: [liveHeaders, ambiguousData, ambiguousDuration] });
+  assert.equal(parsed.rows[0].durationDays, 5);
+  assert.ok(parsed.rows[0].errors.includes('DATA_LIMIT_AMBIGUOUS'));
+  assert.equal(parsed.rows[1].durationDays, null);
+  assert.ok(parsed.rows[1].errors.includes('TOTAL_DURATION_AMBIGUOUS'));
+});
+
+test('provider matching rejects another provider and inactive Worldmove offers', () => {
+  const offers = [
+    { id: 'offer-other', provider: 'other', wmproductId: 'WM-E-CN-500MB-1D', providerProductType: 0, leSIM: true, active: true },
+    { id: 'offer-inactive', provider: 'worldmove', wmproductId: 'WM-E-CN-500MB-2D', providerProductType: 0, leSIM: true, active: false },
+  ];
+  assert.equal(matchEsimProviderOffer({ wmid: 'WM-E-CN-500MB-1D', providerOffers: offers }).status, 'PROVIDER_NOT_FOUND');
+  assert.equal(matchEsimProviderOffer({ wmid: 'WM-E-CN-500MB-2D', providerOffers: offers }).status, 'PROVIDER_INACTIVE');
 });

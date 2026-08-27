@@ -1,4 +1,5 @@
 import { isPublicVariant } from '../../seo/seoVisibility.js';
+import { isLegacyFulfillmentMethod } from '../fulfillment/fulfillmentContracts.js';
 import { publicSkuForVariant } from './publicSku.js';
 
 const PUBLIC_DEVICE_FIELDS = [
@@ -25,6 +26,7 @@ const PUBLIC_CONTENT_FIELDS = [
   'speedLabel',
   'hotspotSupport',
   'activationPolicy',
+  'resetPolicy',
   'installationGuide',
   'compatibilityContent',
   'apnGuidance',
@@ -124,8 +126,11 @@ const purchaseOptionFor = ({ product, variants, providerOffers }) => {
   };
 };
 
+export const isPublicSellableVariant = (variant) => isPublicVariant(variant)
+  && !isLegacyFulfillmentMethod(variant.fulfillmentMethod);
+
 export const toPublicVariant = (variant, { providerOffers = [], productOperation } = {}) => {
-  if (!isPublicVariant(variant)) return null;
+  if (!isPublicSellableVariant(variant)) return null;
   const stock = Number.isInteger(variant.stock) && variant.stock >= 0 ? variant.stock : null;
   const content = optionalPublicFields(variant);
   const shippingRequired = productOperation === 'topup'
@@ -194,7 +199,8 @@ const summarizeVariants = (variants, options) => {
 };
 
 export const toPublicProduct = (product, variants = [], { includeVariants = true, mediaAssets = [], providerOffers = [] } = {}) => {
-  const publicVariantRows = summarizeVariants(variants, { providerOffers, productOperation: product.operation });
+  const sellableVariants = variants.filter(isPublicSellableVariant);
+  const publicVariantRows = summarizeVariants(sellableVariants, { providerOffers, productOperation: product.operation });
   const media = normalizeMedia(product, mediaAssets);
   const content = optionalPublicFields(product);
   const deviceSpecifications = pickDeviceSpecifications(product.deviceSpecifications ?? product.deviceSpecs);
@@ -211,7 +217,9 @@ export const toPublicProduct = (product, variants = [], { includeVariants = true
     ...(product.packageClass ? { packageClass: product.packageClass } : {}),
     operation: product.operation,
     ...(product.medium ? { medium: product.medium } : {}),
-    ...(Array.isArray(product.familyProducts) ? { familyProducts: product.familyProducts.map(({ id, slug, name, medium, operation }) => ({ id, slug, name, medium: medium ?? null, operation })) } : {}),
+    ...(Array.isArray(product.familyProducts) ? { familyProducts: product.familyProducts
+      .filter((sibling) => sibling?.operation !== 'topup' && (sibling.variants ?? []).some(isPublicSellableVariant))
+      .map(({ id, slug, name, medium, operation }) => ({ id, slug, name, medium: medium ?? null, operation })) } : {}),
     categoryId: product.categoryId ?? null,
     categoryPath: Array.isArray(product.categoryPath) ? product.categoryPath.map(({ id, slug, name }) => ({ id, slug, name })) : [],
     status: product.status,
@@ -229,9 +237,11 @@ export const toPublicProduct = (product, variants = [], { includeVariants = true
     guide: product.guide,
     ...(content ?? {}),
     purchaseOptions: [
-      purchaseOptionFor({ product, variants, providerOffers }),
-      ...(Array.isArray(product.familyProducts) ? product.familyProducts.map((sibling) => purchaseOptionFor({ product: sibling, variants: sibling.variants ?? [], providerOffers })) : []),
-    ].filter((option, index, options) => options.findIndex((candidate) => candidate.action === option.action) === index),
+      purchaseOptionFor({ product, variants: sellableVariants, providerOffers }),
+      ...(Array.isArray(product.familyProducts) ? product.familyProducts
+        .filter((sibling) => sibling?.operation !== 'topup' && (sibling.variants ?? []).some(isPublicSellableVariant))
+        .map((sibling) => purchaseOptionFor({ product: sibling, variants: sibling.variants.filter(isPublicSellableVariant), providerOffers })) : []),
+    ].filter((option, index, options) => option.variants.length > 0 && options.findIndex((candidate) => candidate.action === option.action) === index),
     ...(deviceSpecifications ? { deviceSpecifications, deviceSpecs: deviceSpecifications } : {}),
     faqItems,
     seo: {
@@ -249,13 +259,14 @@ export const toPublicProduct = (product, variants = [], { includeVariants = true
     priceSummary: publicVariantRows.priceSummary,
     availability: publicVariantRows.availability,
     deviceGeneration: publicVariantRows.deviceGeneration,
-    variants: includeVariants ? variants.map((variant) => toPublicVariant(variant, { providerOffers, productOperation: product.operation })).filter(Boolean) : publicVariantRows.rows,
+    variants: includeVariants ? sellableVariants.map((variant) => toPublicVariant(variant, { providerOffers, productOperation: product.operation })).filter(Boolean) : publicVariantRows.rows,
   };
 };
 
 export const publicVariantsForProduct = (product, variants, { providerOffers = [] } = {}) => (
   variants
     .filter((variant) => variant.productId === product.id)
+    .filter(isPublicSellableVariant)
     .map((variant) => toPublicVariant(variant, { providerOffers, productOperation: product.operation }))
     .filter(Boolean)
 );

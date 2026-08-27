@@ -15,7 +15,6 @@ const safeStorageKey = (value) => path.basename(String(value ?? ''));
 const extensionForMime = Object.freeze({
   'image/jpeg': '.jpg',
   'image/png': '.png',
-  'image/gif': '.gif',
   'image/webp': '.webp',
 });
 

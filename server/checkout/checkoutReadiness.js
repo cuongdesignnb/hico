@@ -176,13 +176,6 @@ const inventoryAvailable = ({ rows, variant, quantity }) => rows.some((row) => {
   return Number.isFinite(available) && available >= quantity;
 });
 
-const hasAvailableManualQr = ({ rows, variant }) => rows.some((row) => (
-  row?.variantId === variant.id
-  && !row.assignedOrderId
-  && !row.assignedOrderItemId
-  && ((typeof row.qrcode === 'string' && row.qrcode.trim()) || (typeof row.storageKey === 'string' && row.storageKey.trim()))
-));
-
 const readinessError = (readiness) => {
   const firstReason = readiness.blockingReasons[0] ?? 'CHECKOUT_NOT_READY';
   return new CheckoutError(
@@ -224,18 +217,16 @@ export const createCheckoutReadinessService = ({
     const unresolved = classifications.some((item) => item.variant && !item.kind);
     if (unresolved) blockingReasons.push('CANONICAL_MEDIUM_UNRESOLVED');
 
-    const [offers, bindings, profiles, inventoryRows, qrRows] = await Promise.all([
+    const [offers, bindings, profiles, inventoryRows] = await Promise.all([
       readJson(providerOffersFile, []),
       fulfillmentBindingRepository?.listActive?.('WORLDMOVE') ?? [],
       fulfillmentProfileRepository?.listActive?.('WORLDMOVE') ?? [],
       inventoryRepository?.list?.() ?? [],
-      manualQrRepository?.list?.() ?? [],
     ]);
     const offerRows = asList(offers);
     const bindingRows = asList(bindings);
     const profileRows = asList(profiles);
     const inventory = asList(inventoryRows);
-    const qr = asList(qrRows);
 
     for (const item of classifications) {
       if (!item.variant || !canonicalVariantReady(item)) {
@@ -262,7 +253,8 @@ export const createCheckoutReadinessService = ({
         const activeBinding = bindingRows.find((binding) => binding.variantId === item.variant.id && binding.status === 'ACTIVE') ?? null;
         const activeProfile = profileRows.find((profile) => profile.variantId === item.variant.id && profile.status === 'ACTIVE') ?? null;
         if (item.variant.fulfillmentMethod === 'HICO_MANUAL_QR') {
-          if (!hasAvailableManualQr({ rows: qr, variant: item.variant })) blockingReasons.push('ESIM_FULFILLMENT_NOT_READY');
+          // Manual QR is assigned after checkout. An empty pool intentionally
+          // produces PENDING_QR_ASSIGN instead of blocking the purchase.
         } else {
           const provider = providerReadyForVariant({ env, variant: item.variant, offers: offerRows, activeBinding, activeProfile });
           if (provider.ready === false) blockingReasons.push(provider.reason ?? 'ESIM_FULFILLMENT_NOT_READY');

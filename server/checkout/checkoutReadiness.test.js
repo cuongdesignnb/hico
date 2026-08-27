@@ -20,7 +20,7 @@ const env = {
 };
 
 const family = {
-  provider: 'WORLDMOVE',
+  provider: 'worldmove',
   regionCode: 'CN',
   medium: 'ESIM',
   dataPolicy: 'DAILY_QUOTA:500:MB:DAY',
@@ -228,7 +228,18 @@ test('eSIM provider readiness and canonical readiness remain explicit', async ()
 
   assert.deepEqual(missingProvider.blockingReasons, ['ESIM_FULFILLMENT_NOT_READY']);
   assert.deepEqual(inactive.blockingReasons, ['CANONICAL_VARIANT_NOT_READY']);
-  assert.deepEqual(missingQr.blockingReasons, ['ESIM_FULFILLMENT_NOT_READY']);
+  assert.equal(missingQr.ready, true);
+  assert.deepEqual(missingQr.blockingReasons, []);
+});
+
+test('manual QR eSIM readiness does not require a preloaded QR pool', async () => {
+  const service = await createService({
+    catalog: { products: [product('p-esim')], variants: [variant('v-manual', 'p-esim', { fulfillmentMethod: 'HICO_MANUAL_QR' })] },
+    qr: [],
+  });
+  const readiness = await service.evaluate({ items: [{ variantId: 'v-manual', quantity: 1 }] });
+  assert.equal(readiness.ready, true);
+  assert.deepEqual(readiness.blockingReasons, []);
 });
 
 test('readiness errors expose typed safe details and client medium cannot change classification', async () => {

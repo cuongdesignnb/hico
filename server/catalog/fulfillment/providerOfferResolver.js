@@ -8,6 +8,7 @@ import {
   mediumForSource,
   providerForOffer,
 } from './providerOfferFamily.js';
+import { isWorldmoveEsimOffer } from './fulfillmentContracts.js';
 
 export const PROVIDER_RESOLUTION_CODES = Object.freeze({
   EXACT: 'PROVIDER_EXACT_MATCH',
@@ -123,13 +124,7 @@ export const resolveProviderOffer = ({
     });
   }
 
-  const activeWorldmoveOffers = offers.filter((offer) => (
-    offer?.active === true
-    && providerForOffer(offer) === 'WORLDMOVE'
-    && offer.providerProductType === 0
-    && typeof offer.leSIM === 'boolean'
-    && durationDaysForOffer(offer)
-  ));
+  const activeWorldmoveOffers = offers.filter((offer) => isWorldmoveEsimOffer(offer) && durationDaysForOffer(offer));
   const mediumOffers = activeWorldmoveOffers.filter((offer) => mediumForSource(offer) === variantMedium);
   if (mediumOffers.length === 0) {
     return result({

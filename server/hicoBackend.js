@@ -955,7 +955,7 @@ app.use('/api', createCheckoutRouter({
 app.use('/api', createManualQrRouter({ qrRepository: canonicalQrRepository, fulfillmentService: canonicalFulfillmentService, env: process.env }));
 app.use('/api', createEsimSheetRouter({
   env: process.env,
-  auditService: createEsimSheetAuditService({ env: process.env, referenceClient: { readRows: () => googleSheetConnectionService.readRows() }, providerRepository: providerOfferRepository }),
+  auditService: createEsimSheetAuditService({ env: process.env, referenceClient: { readRows: () => googleSheetConnectionService.readRows() }, providerRepository: providerOfferRepository, catalogRepository: canonicalCatalogReader }),
   syncService: esimSheetSyncService,
   connectionService: googleSheetConnectionService,
 }));

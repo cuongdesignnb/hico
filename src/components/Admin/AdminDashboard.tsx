@@ -13,6 +13,7 @@ import { MediaAssetField } from './media/MediaAssetField';
 import CatalogTab from './Catalog/CatalogTab';
 import ProviderCatalogTab from './Providers/ProviderCatalogTab';
 import { CatalogSheetSync } from './CatalogSheetSync/CatalogSheetSync';
+import ManualQrAssignment from './Orders/ManualQrAssignment';
 import { SheetVariantReconciliation } from './Catalog/SheetVariantReconciliation';
 import { GoogleSheetSettings } from './Settings/Integrations/GoogleSheetSettings';
 import SePaySettingsPanel from './Payments/SePaySettingsPanel';
@@ -2063,23 +2064,7 @@ export const AdminDashboard: React.FC = () => {
                             )}
                             
                             {o.status === 'PENDING_QR_ASSIGN' && (
-                              <button 
-                                className="admin-action-btn-mini primary"
-                                onClick={async () => {
-                                  const res = await fetch(`/api/admin/orders/${encodeURIComponent(o.orderId)}/assign-qr`, {
-                                    method: 'POST'
-                                  });
-                                  if (res.ok) {
-                                    toast.success('Cấp phát mã QR thành công!');
-                                    fetchData('orders');
-                                  } else {
-                                    const data = await res.json();
-                                    toast.error(data.error || 'Cấp phát mã QR thất bại! Vui lòng nạp ảnh QR vào kho trước.');
-                                  }
-                                }}
-                              >
-                                Cấp phát QR
-                              </button>
+                              <ManualQrAssignment order={o} onRefresh={() => { void fetchData('orders'); }} />
                             )}
 
                             {o.simType === 'physical' && o.status === 'PENDING_SHIP' && (

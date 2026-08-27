@@ -84,6 +84,12 @@ export interface AdminShippingAddress {
 }
 
 export interface AdminOrderItem {
+  orderItemId?: string;
+  variantId?: string;
+  quantity?: number;
+  medium?: string;
+  simType?: string;
+  fulfillmentMethod?: string;
   iccid?: string;
   redemptionCode?: string;
   qrcode?: string;
@@ -187,6 +193,10 @@ export interface ManualQr {
   id?: string;
   variantId?: string;
   assignedOrderId?: string;
+  assignedOrderItemId?: string;
+  assignedAt?: string | null;
+  hasImage?: boolean;
+  mimeType?: string;
   filename?: string;
   url?: string;
 }

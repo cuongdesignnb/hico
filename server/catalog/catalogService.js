@@ -3,7 +3,7 @@ import {
   createCanonicalCatalogReader,
 } from './canonical/canonicalCatalogReader.js';
 import { getSeoVisibility } from '../seo/seoVisibility.js';
-import { publicVariantsForProduct, toPublicProduct } from './publicCatalogProjection.js';
+import { isPublicSellableVariant, publicVariantsForProduct, toPublicProduct } from './publicCatalogProjection.js';
 import { createProviderOfferRepository } from '../providers/providerOfferRepository.js';
 import {
   categoryFilterIds,
@@ -32,7 +32,8 @@ const attachVariants = ({ products, variants, categories = cloneSeedCategories()
 
 const versionIdFor = (manifest) => manifest?.versionId ?? manifest?.migrationId ?? null;
 const PUBLIC_CATEGORY_KINDS = new Set(['esim', 'physical_sim', 'device', 'accessory']);
-const isNewSellableProduct = (product) => product?.operation !== 'topup';
+const isNewSellableProduct = (product) => product?.operation !== 'topup'
+  && (product?.variants ?? []).some(isPublicSellableVariant);
 
 const toAdminVariantSummary = (variant) => ({
   id: variant.id,
@@ -179,7 +180,7 @@ export const createCatalogService = (
       const [mediaAssets, providerOffers] = await Promise.all([publicMediaAssets(), publicProviderOffers()]);
       const publicProducts = products
         .filter(isNewSellableProduct)
-        .filter((product) => getSeoVisibility(product, product.variants).public)
+        .filter((product) => getSeoVisibility(product, product.variants.filter(isPublicSellableVariant)).public)
         .map((product) => toPublicProduct(product, product.variants, { includeVariants: false, mediaAssets, providerOffers }));
       const normalizedSearch = typeof filters.search === 'string' ? filters.search.trim().toLocaleLowerCase('vi-VN') : '';
       const filtered = publicProducts.filter((product) => {
@@ -259,7 +260,7 @@ export const createCatalogService = (
       const product = products.find(
         (product) => product.id === productId
           && isNewSellableProduct(product)
-          && getSeoVisibility(product, product.variants).public,
+          && getSeoVisibility(product, product.variants.filter(isPublicSellableVariant)).public,
       );
       if (!product) return null;
       const [mediaAssets, providerOffers] = await Promise.all([publicMediaAssets(), publicProviderOffers()]);
@@ -271,7 +272,7 @@ export const createCatalogService = (
       const product = products.find(
         (candidate) => candidate.slug === slug
           && isNewSellableProduct(candidate)
-          && getSeoVisibility(candidate, candidate.variants).public,
+          && getSeoVisibility(candidate, candidate.variants.filter(isPublicSellableVariant)).public,
       );
       if (!product) return null;
       const [mediaAssets, providerOffers] = await Promise.all([publicMediaAssets(), publicProviderOffers()]);
@@ -281,7 +282,7 @@ export const createCatalogService = (
     async getPublicVariants(productId) {
       const { products } = await readModel();
       const product = products.find((candidate) => candidate.id === productId);
-      if (!product || !isNewSellableProduct(product) || !getSeoVisibility(product, product.variants).public) return null;
+      if (!product || !isNewSellableProduct(product) || !getSeoVisibility(product, product.variants.filter(isPublicSellableVariant)).public) return null;
       return publicVariantsForProduct(product, product.variants, { providerOffers: await publicProviderOffers() });
     },
   };

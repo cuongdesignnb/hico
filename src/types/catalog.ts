@@ -117,6 +117,7 @@ export interface CatalogProduct {
   speedLabel?: string;
   hotspotSupport?: string;
   activationPolicy?: string;
+  resetPolicy?: string;
   installationGuide?: string;
   compatibilityContent?: string;
   apnGuidance?: string;
@@ -167,6 +168,7 @@ export interface CatalogVariant {
   speedLabel?: string;
   hotspotSupport?: string;
   activationPolicy?: string;
+  resetPolicy?: string;
   installationGuide?: string;
   compatibilityContent?: string;
   apnGuidance?: string;

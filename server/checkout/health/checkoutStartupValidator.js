@@ -227,7 +227,7 @@ export const validateCanonicalCheckoutStorage = async ({
   if (activePhysicalStock.length > 0 && inventoryRows.length === 0) addBlocker(blockers, 'PHYSICAL_INVENTORY_NOT_CONFIGURED');
   const activeManualQr = activeVariants.filter((variant) => variant.fulfillmentMethod === 'HICO_MANUAL_QR');
   const manualQrConfigured = qrRows.some((row) => !row.assignedOrderId && (hasText(row.qrcode) || hasText(row.storageKey)));
-  if (activeManualQr.length > 0 && !manualQrConfigured) addBlocker(blockers, 'MANUAL_QR_INVENTORY_NOT_CONFIGURED');
+  if (activeManualQr.length > 0 && !manualQrConfigured) addWarning(warnings, 'MANUAL_QR_POOL_EMPTY', 'Manual QR orders will remain pending until Admin assigns a private QR.');
 
   return {
     ready: blockers.length === 0,

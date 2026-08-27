@@ -1,7 +1,7 @@
 import { CheckoutError } from './checkoutError.js';
 import { assertFulfillmentSupported } from '../fulfillment/fulfillmentValidation.js';
 import { PROVIDER_RESOLUTION_CODES, resolveProviderOffer } from '../catalog/fulfillment/providerOfferResolver.js';
-import { isLegacyFulfillmentMethod } from '../catalog/fulfillment/fulfillmentContracts.js';
+import { isLegacyFulfillmentMethod, isWorldmoveEsimOffer } from '../catalog/fulfillment/fulfillmentContracts.js';
 
 export const CHECKOUT_ENGINES = new Set(['legacy', 'canonical']);
 export const CURRENCIES = new Set(['VND', 'USD']);
@@ -132,7 +132,8 @@ const validateProviderMapping = (variant, offers) => {
   ]);
   if (!providerMethods.has(variant.fulfillmentMethod)) return null;
   const offer = findOffer(offers, variant);
-  if (!offer || offer.active === false) {
+  const expectsLeSIM = variant.fulfillmentMethod === 'WORLDMOVE_ESIM_REDEEM';
+  if (!offer || !isWorldmoveEsimOffer(offer) || offer.leSIM !== expectsLeSIM) {
     throw new CheckoutError('Nguồn cung cấp của gói không còn hoạt động.', 'PROVIDER_OFFER_INACTIVE');
   }
   if (variant.providerOfferId && offer.id !== variant.providerOfferId) {
@@ -155,6 +156,13 @@ export const validateCanonicalCart = ({ catalog, providerOffers = [], providerBi
     if (!variant) throw new CheckoutError('Không tìm thấy biến thể sản phẩm.', 'VARIANT_NOT_FOUND');
     const product = productsById.get(variant.productId);
     if (!product) throw new CheckoutError('Không tìm thấy sản phẩm.', 'PRODUCT_NOT_FOUND');
+    if (variant.medium === 'esim' && requested.quantity !== 1) {
+      throw new CheckoutError(
+        'Mỗi checkout eSIM chỉ hỗ trợ số lượng 1.',
+        'ESIM_QUANTITY_UNSUPPORTED',
+        422,
+      );
+    }
     if (product.status === 'archived') throw new CheckoutError('Sản phẩm đã được lưu trữ.', 'VARIANT_NOT_AVAILABLE');
     if (product.operationResolution === 'UNRESOLVED' || variant.operationResolution === 'UNRESOLVED') {
       throw new CheckoutError('Nghiệp vụ của sản phẩm chưa được xác nhận.', 'CANONICAL_OPERATION_UNRESOLVED');

@@ -20,7 +20,7 @@ const normalizeCartItem = (value: unknown): CartItem | null => {
     ? record.medium
     : record.type === 'physical' ? 'physical_sim' : record.type === 'esim' ? 'esim' : undefined;
   const type = operation === 'device_sale' ? 'device' : medium === 'physical_sim' ? 'physical' : 'esim';
-  const quantity = Math.max(1, Math.floor(record.quantity));
+  const quantity = medium === 'esim' ? 1 : Math.max(1, Math.floor(record.quantity));
   const requestedTripDays = Number(record.requestedTripDays);
   return {
     ...record,
@@ -93,7 +93,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const existingItemIndex = prevCart.findIndex((item) => item.id === newItem.id);
       if (existingItemIndex > -1) {
         const updatedCart = [...prevCart];
-        updatedCart[existingItemIndex].quantity += 1;
+        updatedCart[existingItemIndex].quantity = newItem.medium === 'esim'
+          ? 1
+          : updatedCart[existingItemIndex].quantity + 1;
         triggerNotification(`Đã cập nhật số lượng ${newItem.name} trong giỏ hàng!`);
         return updatedCart;
       }
@@ -118,7 +120,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setCart((prevCart) => prevCart.map((item) => (item.id === id
-      ? { ...item, quantity: Math.floor(quantity) }
+      ? { ...item, quantity: item.medium === 'esim' ? 1 : Math.floor(quantity) }
       : item)));
   };
 

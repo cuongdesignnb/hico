@@ -49,3 +49,33 @@ test('manual QR admin API stores images outside public uploads and never lists s
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('manual QR assignment API forwards orderItemId and qrId explicitly', async () => {
+  let assignment;
+  const app = express();
+  app.use(express.json());
+  app.use('/api', createManualQrRouter({
+    qrRepository: { async list() { return []; } },
+    fulfillmentService: {
+      async assignManualQr(input) {
+        assignment = input;
+        return { order: { orderId: input.orderId }, record: { state: 'PROVISIONED', itemData: { manualQrId: input.qrId } } };
+      },
+    },
+  }));
+  const server = app.listen(0);
+  await once(server, 'listening');
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const response = await fetch(`${baseUrl}/api/admin/orders/order-1/assign-qr`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ orderItemId: 'item-1', qrId: 'qr-1' }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(assignment, { orderId: 'order-1', orderItemId: 'item-1', qrId: 'qr-1' });
+    assert.deepEqual(await response.json(), { orderId: 'order-1', state: 'PROVISIONED', manualQrId: 'qr-1' });
+  } finally {
+    server.close();
+    await once(server, 'close');
+  }
+});

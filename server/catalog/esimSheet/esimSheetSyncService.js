@@ -21,15 +21,18 @@ import {
   ESIM_SHEET_PARSER_REVISION,
   ESIM_SHEET_SOURCE,
   assertSimHicoReference,
+  commercialPayloadFor,
   matchEsimProviderOffer,
   normalizeWmid,
   parseEsimSheetRows,
+  sourceKeyForWmid,
 } from './esimSheetSource.js';
 
 const PREVIEW_TTL = 30 * 60 * 1000;
 const currentVersion = (manifest) => manifest?.versionId ?? manifest?.migrationId;
 const normalizedText = (value) => String(value ?? '').normalize('NFC').trim();
 const familyKeyFor = (row) => normalizedText(row.familyKey || row.productName).replace(/\s+/g, ' ').toLocaleUpperCase('vi-VN');
+const familySourceKeyFor = (familyKey) => `${ESIM_SHEET_SOURCE}:FAMILY:${sha256(familyKey).slice(0, 24)}`;
 const slugify = (value) => normalizedText(value)
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
@@ -49,6 +52,10 @@ const coverageFor = (row) => ({
 });
 const safeRow = (row) => ({
   sourceRowNumber: row.sourceRowNumber,
+  sourceRowNumbers: row.sourceRowNumbers ?? [row.sourceRowNumber],
+  sourceKey: row.sourceKey ?? null,
+  existingVariantId: row.existingVariantId ?? null,
+  legacyCollision: row.legacyCollision === true,
   wmid: row.wmid,
   productName: row.productName,
   sellingPrice: row.sellingPrice,
@@ -67,19 +74,49 @@ const readContext = async ({ catalogRepository, providerRepository }) => ({
   providerOffers: await providerRepository.listOffers(),
 });
 
+const stablePayload = (row) => JSON.stringify(commercialPayloadFor(row, row.offer));
+
+const collapseSameWmidRows = (rows) => {
+  const groups = new Map();
+  rows.forEach((row) => {
+    if (!row.wmid) return;
+    const group = groups.get(row.wmid) ?? [];
+    group.push(row);
+    groups.set(row.wmid, group);
+  });
+  const collapsed = [];
+  const conflictWmids = new Set();
+  for (const [wmid, group] of groups) {
+    const payloads = new Set(group.map(stablePayload));
+    if (payloads.size > 1) {
+      conflictWmids.add(wmid);
+      group.forEach((row) => row.errors.push('SAME_WMID_COMMERCIAL_CONFLICT'));
+      collapsed.push(...group);
+      continue;
+    }
+    const first = group[0];
+    collapsed.push({
+      ...first,
+      sourceRowNumbers: group.flatMap((row) => row.sourceRowNumbers ?? [row.sourceRowNumber]),
+      tripDayOptions: [...new Set(group.flatMap((row) => row.tripDayOptions ?? []))].sort((left, right) => left - right),
+      errors: [...new Set(group.flatMap((row) => row.errors))],
+    });
+  }
+  const withoutWmid = rows.filter((row) => !row.wmid);
+  return { rows: [...withoutWmid, ...collapsed], conflictWmids };
+};
+
 const evaluate = ({ request, context, values }) => {
   const category = categoryById(context.categories, request.categoryId);
   if (!category || category.status !== 'active' || category.kind !== 'esim' || !isLeafCategory(category, context.categories)) {
     throw new CatalogWriteError('Hãy chọn một danh mục eSIM con đang hoạt động.', { code: 'CATEGORY_INVALID' });
   }
   const parsed = parseEsimSheetRows({ values, mapping: request.mapping ?? {} });
-  const existingWmids = new Set(context.variants.map((variant) => normalizeWmid(variant.wmproductId)).filter(Boolean));
-  const rows = parsed.rows.map((row) => {
+  const rawRows = parsed.rows.map((row) => {
     const provider = matchEsimProviderOffer({ wmid: row.wmid, providerOffers: context.providerOffers });
     const errors = [...row.errors];
     if (row.medium !== 'esim') errors.push('MEDIUM_NOT_ESIM');
     if (!row.productName) errors.push('PRODUCT_NAME_REQUIRED');
-    if (existingWmids.has(row.wmid)) errors.push('CANONICAL_WMID_CONFLICT');
     if (row.dataPolicy && !['daily', 'total'].includes(row.dataPolicy)) errors.push('DATA_POLICY_INVALID');
     if (row.cancellable !== null && row.cancellable !== undefined && boolFrom(row.cancellable) === undefined) errors.push('CANCELLABLE_INVALID');
     if (provider.status !== 'MATCHED') errors.push(provider.status);
@@ -91,13 +128,46 @@ const evaluate = ({ request, context, values }) => {
       providerProductType: provider.offer?.providerProductType ?? null,
       leSIM: provider.offer?.leSIM ?? null,
       offer: provider.offer,
+      sourceKey: sourceKeyForWmid(row.wmid),
       errors: [...new Set(errors)],
     };
   });
+  const collapsedResult = collapseSameWmidRows(rawRows);
+  const rows = collapsedResult.rows;
+  const ownVariantsByWmid = new Map();
+  for (const variant of context.variants) {
+    const wmid = normalizeWmid(variant.wmproductId);
+    if (!wmid) continue;
+    const variants = ownVariantsByWmid.get(wmid) ?? [];
+    variants.push(variant);
+    ownVariantsByWmid.set(wmid, variants);
+  }
+  for (const row of rows) {
+    const ownVariants = (ownVariantsByWmid.get(row.wmid) ?? []).filter((variant) => variant.source === ESIM_SHEET_SOURCE);
+    const legacyVariants = (ownVariantsByWmid.get(row.wmid) ?? []).filter((variant) => variant.source !== ESIM_SHEET_SOURCE);
+    if (ownVariants.length > 1) row.errors.push('SOURCE_WMID_DUPLICATE');
+    if (legacyVariants.length) {
+      row.errors.push('LEGACY_WMID_COLLISION');
+      row.legacyCollision = true;
+    }
+    row.existingVariantId = ownVariants[0]?.id ?? null;
+  }
+  const familyKeysByWmid = new Map();
+  for (const row of rows) {
+    if (!row.wmid) continue;
+    const keys = familyKeysByWmid.get(row.wmid) ?? new Set();
+    keys.add(familyKeyFor(row));
+    familyKeysByWmid.set(row.wmid, keys);
+  }
+  for (const row of rows) {
+    if ((familyKeysByWmid.get(row.wmid)?.size ?? 0) > 1) row.errors.push('SOURCE_WMID_FAMILY_CONFLICT');
+    row.errors = [...new Set(row.errors)];
+  }
   const families = new Map();
   for (const row of rows) {
     const family = families.get(row.familyKey) ?? {
       familyKey: row.familyKey,
+      sourceKey: familySourceKeyFor(row.familyKey),
       productName: row.productName,
       ...coverageFor(row),
       ...(row.coverageLabel ? { coverageLabel: row.coverageLabel } : {}),
@@ -121,15 +191,16 @@ const evaluate = ({ request, context, values }) => {
     parsed,
     rows,
     families: [...families.values()],
-    errors: rows.filter((row) => row.errors.length).map((row) => ({ sourceRowNumber: row.sourceRowNumber, wmid: row.wmid, errors: [...new Set(row.errors)] })),
+    errors: rows.filter((row) => row.errors.length).map((row) => ({ sourceRowNumbers: row.sourceRowNumbers ?? [row.sourceRowNumber], wmid: row.wmid, errors: [...new Set(row.errors)] })),
   };
 };
 
-const variantFrom = ({ row, productId, timestamp }) => {
-  const variantId = `variant-${randomUUID()}`;
+const variantFrom = ({ row, productId, timestamp, existing = null }) => {
+  const variantId = existing?.id ?? `variant-${randomUUID()}`;
   const offer = row.offer;
   const duration = Number.isInteger(row.durationDays) && row.durationDays > 0 ? `${row.durationDays} ngày` : undefined;
   return {
+    ...(existing ?? {}),
     id: variantId,
     productId,
     sku: `ESIM-SHEET-${sha256(row.wmid).slice(0, 12).toUpperCase()}`,
@@ -137,9 +208,9 @@ const variantFrom = ({ row, productId, timestamp }) => {
     ...(row.dataLimit ? { dataLimit: row.dataLimit } : {}),
     ...(row.dataPolicy ? { dataPolicy: row.dataPolicy } : {}),
     ...(duration ? { duration, durationValue: row.durationDays, durationUnit: 'day' } : {}),
-    ...(row.tripDayOptions.length ? { tripDayOptions: row.tripDayOptions } : {}),
+    tripDayOptions: [...(row.tripDayOptions ?? [])],
     price: row.sellingPrice,
-    compareAtPrice: null,
+    compareAtPrice: existing?.compareAtPrice ?? null,
     currency: 'VND',
     medium: 'esim',
     supplier: 'worldmove',
@@ -155,17 +226,53 @@ const variantFrom = ({ row, productId, timestamp }) => {
     ...(row.speedLabel ? { speedLabel: row.speedLabel } : {}),
     ...(row.apn ? { apn: row.apn } : {}),
     ...(row.activationPolicy ? { activationPolicy: row.activationPolicy } : {}),
+    ...(row.resetPolicy ? { resetPolicy: row.resetPolicy } : {}),
     ...(row.cancellable !== null && row.cancellable !== undefined ? { cancellable: boolFrom(row.cancellable) } : {}),
     ...(row.publicNote ? { publicNote: row.publicNote } : {}),
-    stock: null,
-    active: false,
-    archived: false,
-    needsReview: false,
-    version: 1,
-    createdAt: timestamp,
+    stock: existing?.stock ?? null,
+    active: existing?.active ?? false,
+    archived: existing?.archived ?? false,
+    needsReview: existing?.needsReview ?? false,
+    source: ESIM_SHEET_SOURCE,
+    sourceKey: row.sourceKey,
+    sourceRowNumbers: row.sourceRowNumbers ?? [row.sourceRowNumber],
+    sourceWmid: row.wmid,
+    sourceRevision: ESIM_SHEET_PARSER_REVISION,
+    version: (existing?.version ?? 0) + 1,
+    createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp,
   };
 };
+
+const productFrom = ({ family, categoryId, timestamp, existing = null }) => ({
+  ...(existing ?? {}),
+  id: existing?.id ?? `product-${randomUUID()}`,
+  slug: existing?.slug ?? `${slugify(family.productName)}-${sha256(family.familyKey).slice(0, 8)}`,
+  name: family.productName,
+  operation: existing?.operation ?? 'new_subscription',
+  categoryId: existing?.categoryId ?? categoryId,
+  categoryNeedsReview: false,
+  coverageType: family.coverageType,
+  coverageIds: family.coverageIds,
+  ...(family.coverageLabel ? { coverageLabel: family.coverageLabel } : {}),
+  ...(family.dataPolicy ? { dataPolicy: family.dataPolicy } : {}),
+  source: ESIM_SHEET_SOURCE,
+  sourceKey: family.sourceKey,
+  sourceRowNumbers: [...new Set(family.rows.flatMap((row) => row.sourceRowNumbers ?? [row.sourceRowNumber]))],
+  sourceRevision: ESIM_SHEET_PARSER_REVISION,
+  featured: existing?.featured ?? false,
+  status: existing?.status ?? 'draft',
+  version: (existing?.version ?? 0) + 1,
+  createdAt: existing?.createdAt ?? timestamp,
+  updatedAt: timestamp,
+});
+
+const sourceVariantFor = (variants, row) => variants.find((variant) => (
+  variant.source === ESIM_SHEET_SOURCE && variant.sourceKey === row.sourceKey
+)) ?? variants.find((variant) => (
+  variant.source === ESIM_SHEET_SOURCE
+  && normalizeWmid(variant.sourceWmid ?? variant.wmproductId) === row.wmid
+));
 
 export const createEsimSheetSyncService = ({
   env = process.env,
@@ -198,12 +305,18 @@ export const createEsimSheetSyncService = ({
       const [reference, context] = await Promise.all([readSource(), readContext({ catalogRepository, providerRepository })]);
       assertCatalogBaseVersion(catalogVersionId, currentVersion(context.manifest));
       const evaluation = evaluate({ request, context, values: reference.values });
+      const previewRows = evaluation.rows.map(({ offer: _offer, ...row }) => row);
+      const previewFamilies = evaluation.families.map(({ rows, ...family }) => ({
+        ...family,
+        rows: rows.map(({ offer: _offer, ...row }) => row),
+      }));
       const preview = {
         previewId: `esim-sheet-${randomUUID()}`,
         source: ESIM_SHEET_SOURCE,
         parserRevision: ESIM_SHEET_PARSER_REVISION,
         actorId: actor.id ?? null,
         categoryId: evaluation.category.id,
+        mapping: request.mapping ?? {},
         catalogVersionId,
         spreadsheetId: reference.spreadsheetId,
         sheetTab: reference.sheetTab,
@@ -211,8 +324,8 @@ export const createEsimSheetSyncService = ({
         sourceHash: sha256(reference.values),
         headerHash: evaluation.parsed.headerHash,
         providerSnapshotHash: sha256(context.providerOffers),
-        families: evaluation.families,
-        rows: evaluation.rows,
+        families: previewFamilies,
+        rows: previewRows,
         errors: evaluation.errors,
         createdAt: now().toISOString(),
         expiresAt: new Date(Date.now() + PREVIEW_TTL).toISOString(),
@@ -251,36 +364,47 @@ export const createEsimSheetSyncService = ({
           const context = await readContext({ catalogRepository, providerRepository });
           assertCatalogBaseVersion(request.catalogVersionId, currentVersion(context.manifest));
           if (
-            preview.catalogVersionId !== request.catalogVersionId
+            preview.parserRevision !== ESIM_SHEET_PARSER_REVISION
+            || preview.catalogVersionId !== request.catalogVersionId
             || preview.sourceHash !== sha256(reference.values)
             || preview.headerHash !== parseEsimSheetRows({ values: reference.values, mapping: request.mapping ?? {} }).headerHash
             || preview.providerSnapshotHash !== sha256(context.providerOffers)
-          ) throw new CatalogWriteError('eSIM Sheet, provider snapshot hoặc catalog đã thay đổi. Hãy preview lại.', { status: 409, code: 'ESIM_SHEET_PREVIEW_STALE' });
-          if (preview.errors.length) throw new CatalogWriteError('eSIM Sheet còn dòng bị chặn.', { status: 409, code: 'ESIM_SHEET_APPLY_BLOCKED', details: { errors: preview.errors.slice(0, 100) } });
+          ) throw new CatalogWriteError('eSIM Sheet, parser, provider snapshot hoặc catalog đã thay đổi. Hãy preview lại.', { status: 409, code: 'ESIM_SHEET_PREVIEW_STALE' });
+          const evaluation = evaluate({ request: { ...request, categoryId: preview.categoryId, mapping: request.mapping ?? preview.mapping ?? {} }, context, values: reference.values });
+          if (
+            preview.errors.length
+            || evaluation.errors.length
+          ) throw new CatalogWriteError('eSIM Sheet còn dòng bị chặn.', { status: 409, code: 'ESIM_SHEET_APPLY_BLOCKED', details: { errors: (evaluation.errors.length ? evaluation.errors : preview.errors).slice(0, 100) } });
           const timestamp = now().toISOString();
           const products = [...context.products];
           const variants = [...context.variants];
-          for (const family of preview.families) {
-            const productId = `product-${randomUUID()}`;
-            const product = {
-              id: productId,
-              slug: `${slugify(family.productName)}-${sha256(family.familyKey).slice(0, 8)}`,
-              name: family.productName,
-              operation: 'new_subscription',
-              categoryId: preview.categoryId,
-              categoryNeedsReview: false,
-              coverageType: family.coverageType,
-              coverageIds: family.coverageIds,
-              ...(family.coverageLabel ? { coverageLabel: family.coverageLabel } : {}),
-              ...(family.dataPolicy ? { dataPolicy: family.dataPolicy } : {}),
-              featured: false,
-              status: 'draft',
-              version: 1,
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            };
-            products.push(product);
-            family.rows.forEach((row) => variants.push(variantFrom({ row, productId, timestamp })));
+          let productsCreated = 0;
+          let productsUpdated = 0;
+          let variantsCreated = 0;
+          let variantsUpdated = 0;
+          for (const family of evaluation.families) {
+            const existingProduct = products.find((product) => (
+              product.source === ESIM_SHEET_SOURCE && product.sourceKey === family.sourceKey
+            ));
+            const product = productFrom({ family, categoryId: preview.categoryId, timestamp, existing: existingProduct });
+            if (existingProduct) {
+              products[products.findIndex((candidate) => candidate.id === existingProduct.id)] = product;
+              productsUpdated += 1;
+            } else {
+              products.push(product);
+              productsCreated += 1;
+            }
+            for (const row of family.rows) {
+              const existingVariant = sourceVariantFor(variants, row);
+              const nextVariant = variantFrom({ row, productId: product.id, timestamp, existing: existingVariant });
+              if (existingVariant) {
+                variants[variants.findIndex((candidate) => candidate.id === existingVariant.id)] = nextVariant;
+                variantsUpdated += 1;
+              } else {
+                variants.push(nextVariant);
+                variantsCreated += 1;
+              }
+            }
           }
           assertCanonicalCatalog({ products, variants, categories: context.categories, providerOffers: context.providerOffers });
           const versionId = `catalog-esim-sheet-${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -314,9 +438,11 @@ export const createEsimSheetSyncService = ({
             catalogVersionId: committed.manifest.versionId,
             body: {
               previewId,
-              productsCreated: preview.families.length,
-              variantsCreated: preview.rows.length,
-              status: 'DRAFTS_CREATED',
+              productsCreated,
+              productsUpdated,
+              variantsCreated,
+              variantsUpdated,
+              status: 'SYNC_APPLIED',
               catalogVersionId: committed.manifest.versionId,
               warnings: committed.warnings,
             },

@@ -105,3 +105,31 @@ test('public variants take APN and network from the matched provider offer only'
   assert.equal(product.variants[0].publicNote, 'Đọc trước khi kích hoạt.');
   assert.equal('wmproductId' in product.variants[0], false);
 });
+
+test('public catalog excludes retired Worldmove variants from families and purchase options', async () => {
+  const sellableProduct = {
+    ...products[0],
+    id: 'p-family-sellable',
+    slug: 'family-sellable',
+    packageFamilyKey: 'family-1',
+  };
+  const retiredProduct = {
+    ...products[0],
+    id: 'p-family-retired',
+    slug: 'family-retired',
+    name: 'Retired family member',
+    packageFamilyKey: 'family-1',
+  };
+  const sellableVariant = { ...variants[0], id: 'v-family-sellable', productId: sellableProduct.id, providerOfferId: undefined, wmproductId: undefined };
+  const retiredVariant = {
+    ...variants[0], id: 'v-family-retired', productId: retiredProduct.id, fulfillmentMethod: 'WORLDMOVE_TOPUP',
+    operation: 'topup', supplier: 'worldmove', providerOfferId: 'retired-offer', wmproductId: 'WM-RETIRED',
+  };
+  const service = createCatalogService({ readCatalog: async () => ({ products: [sellableProduct, retiredProduct], variants: [sellableVariant, retiredVariant] }) });
+  const response = await service.listPublicProducts({ paginate: true, filters: {} });
+  assert.equal(response.pagination.total, 1);
+  assert.equal(response.items[0].slug, sellableProduct.slug);
+  assert.deepEqual(response.items[0].familyProducts, []);
+  assert.equal(response.items[0].purchaseOptions.length, 1);
+  assert.equal(response.items[0].purchaseOptions[0].variants.some((variant) => variant.id === 'v-family-retired'), false);
+});

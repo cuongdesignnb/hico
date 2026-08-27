@@ -23,6 +23,7 @@ export const isActiveSellableFulfillmentMethod = (method) => ACTIVE_SELLABLE_FUL
 
 export const isWorldmoveEsimOffer = (offer) => (
   offer?.provider === 'worldmove'
+  && offer?.active === true
   && offer?.providerProductType === WORLD_MOVE_ESIM_PRODUCT_TYPE
   && typeof offer?.leSIM === 'boolean'
 );

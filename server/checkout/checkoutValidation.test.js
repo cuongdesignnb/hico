@@ -169,3 +169,36 @@ test('canonical checkout blocks Worldmove physical order before resolving or cal
   }), (error) => error.code === 'FULFILLMENT_RETIRED' && error.status === 410);
   assert.equal(providerCalls, 0);
 });
+
+test('canonical validation rejects eSIM quantity above one before provider resolution', () => {
+  let providerCalls = 0;
+  assert.throws(() => validateCanonicalCart({
+    catalog,
+    providerResolver: () => {
+      providerCalls += 1;
+      throw new Error('provider resolver must not run');
+    },
+    request: { ...request, items: [{ variantId: 'v-1', quantity: 2 }] },
+  }), (error) => error.code === 'ESIM_QUANTITY_UNSUPPORTED' && error.status === 422);
+  assert.equal(providerCalls, 0);
+});
+
+test('canonical validation keeps physical quantity above one supported', () => {
+  const physical = {
+    ...baseVariant,
+    id: 'v-physical-stock',
+    medium: 'physical_sim',
+    supplier: 'hico',
+    fulfillmentMethod: 'HICO_PHYSICAL_STOCK',
+    shippingRequired: true,
+  };
+  const result = validateCanonicalCart({
+    catalog: { products: [product], variants: [physical] },
+    request: {
+      ...request,
+      items: [{ variantId: physical.id, quantity: 2 }],
+      shipping: { name: 'A', phone: '0900000000', address: '1 Test Street', ward: 'Ward 1', district: 'District 1', city: 'HCMC' },
+    },
+  });
+  assert.equal(result.items[0].requested.quantity, 2);
+});

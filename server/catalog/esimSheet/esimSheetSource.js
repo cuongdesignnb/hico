@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isWorldmoveEsimOffer } from '../fulfillment/fulfillmentContracts.js';
 
 export const ESIM_SHEET_SOURCE = 'HICO_ESIM_SHEET';
 export const ESIM_SHEET_PARSER_REVISION = 1;
@@ -12,7 +13,7 @@ export const SIM_HICO_ESIM_COLUMN_CONTRACT = Object.freeze({
   apn: 10,
   coverageLabel: 11,
   publicNote: 12,
-  activationPolicy: 13,
+  resetPolicy: 13,
   cancellable: 15,
   sku: 17,
   wmid: 24,
@@ -36,6 +37,7 @@ const HEADER_ALIASES = Object.freeze({
   networkLabel: ['network', 'nhà mạng', 'nha mang', 'carrier'],
   apn: ['apn'],
   activationPolicy: ['activation policy', 'kích hoạt', 'kich hoat'],
+  resetPolicy: ['reset policy', 'mốc reset', 'moc reset', 'thời gian reset', 'thoi gian reset', 'reset'],
   cancellable: ['cancellable', 'được huỷ', 'duoc huy', 'cancelable'],
 });
 
@@ -47,6 +49,11 @@ const normalizeHeader = (value) => String(value ?? '')
   .replace(/\s+/g, ' ');
 
 const normalizeWmid = (value) => String(value ?? '').normalize('NFC').trim().toUpperCase();
+
+export const sourceKeyForWmid = (wmid) => {
+  const normalized = normalizeWmid(wmid);
+  return normalized ? `${ESIM_SHEET_SOURCE}:WMID:${normalized}` : null;
+};
 
 export const assertSimHicoReference = (reference) => {
   const sheetTab = String(reference?.sheetTab ?? '').normalize('NFC').trim();
@@ -77,15 +84,38 @@ const normalizeDataPolicy = (value) => {
 
 const labelsFromProductName = (value, dataPolicy) => {
   const name = nonEmpty(value) ?? '';
-  const matches = [...name.matchAll(/(\d+(?:[.,]\d+)?)\s*(KB|MB|GB|TB)\b/gi)]
-    .map((match) => `${match[1].replace(',', '.')} ${match[2].toUpperCase()}`);
-  const dataLimit = dataPolicy === 'total'
-    ? (name.match(/(?:tổng|total)[^\d]*(\d+(?:[.,]\d+)?)\s*(KB|MB|GB|TB)\b/i)?.slice(1).join(' ') ?? matches.at(-1))
-    : matches[0];
-  const speed = name.match(/(\d+)\s*kbps\b/i)?.[1];
+  const matches = [...name.matchAll(/(\d+(?:[.,]\d+)?)\s*(KB|MB|GB|TB)\b/gi)];
+  const formatted = (match) => `${match[1].replace(',', '.')} ${match[2].toUpperCase()}`;
+  const dailyMatches = matches.filter((match) => {
+    const suffix = name.slice((match.index ?? 0) + match[0].length);
+    return /^\s*(?:\/\s*|per\s+)(?:day|ngày)\b/i.test(suffix);
+  });
+  const totalMatches = matches.filter((match) => {
+    const prefix = name.slice(0, match.index ?? 0);
+    return /(?:tổng|total)\s*(?:dữ\s*liệu|data)?\s*[:,-]?\s*$/i.test(prefix);
+  });
+  let dataLimit;
+  const errors = [];
+  if (dataPolicy === 'daily') {
+    if (dailyMatches.length === 1) dataLimit = formatted(dailyMatches[0]);
+    else errors.push('DATA_LIMIT_AMBIGUOUS');
+  } else if (dataPolicy === 'total') {
+    if (totalMatches.length === 1) dataLimit = formatted(totalMatches[0]);
+    else if (totalMatches.length > 1) errors.push('DATA_LIMIT_AMBIGUOUS');
+    else {
+      const nonDailyMatches = matches.filter((match) => !dailyMatches.includes(match));
+      if (nonDailyMatches.length === 1) dataLimit = formatted(nonDailyMatches[0]);
+      else errors.push('DATA_LIMIT_AMBIGUOUS');
+    }
+  } else if (matches.length) {
+    dataLimit = formatted(matches[0]);
+  }
+  const speeds = [...name.matchAll(/(\d+)\s*kbps\b/gi)];
+  const speed = speeds.length === 1 ? speeds[0][1] : undefined;
   return {
     ...(dataLimit ? { dataLimit } : {}),
     ...(speed ? { speedLabel: `${speed}kbps` } : {}),
+    errors,
   };
 };
 
@@ -135,7 +165,7 @@ const simHicoIndexes = (headers) => {
     apn: 10,
     networkLabel: 11,
     publicNote: 12,
-    activationPolicy: 13,
+    resetPolicy: 13,
     cancellable: 15,
     wmid: 24,
   } : {};
@@ -174,8 +204,11 @@ export const parseEsimSheetRows = ({ values = [], mapping = {} } = {}) => {
     const coverage = splitCoverageLabel(valueAt('coverageLabel') ?? valueAt('networkLabel'));
     const sourceDays = numberFrom(valueAt('durationDays'));
     const durationDays = normalizedPolicy === 'total'
-      ? (durationFromProductName(valueAt('productName')) ?? sourceDays)
+      ? durationFromProductName(valueAt('productName'))
       : sourceDays;
+    if (normalizedPolicy === 'daily' && (!Number.isInteger(durationDays) || durationDays < 1)) rowErrors.push('DAILY_DURATION_INVALID');
+    if (normalizedPolicy === 'total' && !durationDays) rowErrors.push('TOTAL_DURATION_AMBIGUOUS');
+    rowErrors.push(...inferredLabels.errors);
     const tripDayOptions = normalizedPolicy === 'total'
       ? listOfPositiveIntegers(sourceDays)
       : listOfPositiveIntegers(valueAt('tripDayOptions'));
@@ -190,6 +223,7 @@ export const parseEsimSheetRows = ({ values = [], mapping = {} } = {}) => {
       networkLabel: coverage.networkLabel,
       apn: nonEmpty(valueAt('apn')),
       activationPolicy: nonEmpty(valueAt('activationPolicy')),
+      resetPolicy: nonEmpty(valueAt('resetPolicy')),
       cancellable: nonEmpty(valueAt('cancellable')),
     };
     const medium = normalizeMedium(valueAt('medium'));
@@ -220,17 +254,71 @@ export const matchEsimProviderOffer = ({ wmid, providerOffers = [] } = {}) => {
   const normalized = normalizeWmid(wmid);
   if (!normalized) return { status: 'PROVIDER_NOT_FOUND', offer: null, candidates: [] };
   const candidates = providerOffers.filter((offer) => (
-    offer?.active !== false
+    offer?.provider === 'worldmove'
     && normalizeWmid(offer.wmproductId) === normalized
   ));
-  const supported = candidates.filter((offer) => offer.providerProductType === 0 && typeof offer.leSIM === 'boolean');
+  const supported = candidates.filter(isWorldmoveEsimOffer);
   if (supported.length === 1) return { status: 'MATCHED', offer: supported[0], candidates: supported };
   if (supported.length > 1) return { status: 'PROVIDER_AMBIGUOUS', offer: null, candidates: supported };
+  if (candidates.some((offer) => offer.providerProductType === 0 && typeof offer.leSIM === 'boolean' && offer.active !== true)) {
+    return { status: 'PROVIDER_INACTIVE', offer: null, candidates };
+  }
   if (candidates.length > 0) return { status: 'PROVIDER_PRODUCT_TYPE_UNSUPPORTED', offer: null, candidates };
   return { status: 'PROVIDER_NOT_FOUND', offer: null, candidates: [] };
 };
 
-export const auditEsimSheetRows = ({ values = [], mapping = {}, providerOffers = [] } = {}) => {
+const sameWmidPayload = (row, provider) => ({
+  price: row.sellingPrice,
+  dataPolicy: row.dataPolicy ?? null,
+  dataLimit: row.dataLimit ?? null,
+  coverageLabel: row.coverageLabel ?? null,
+  coverageId: row.coverageId ?? null,
+  coverageType: row.coverageType ?? null,
+  apn: row.apn ?? null,
+  networkLabel: row.networkLabel ?? null,
+  speedLabel: row.speedLabel ?? null,
+  resetPolicy: row.resetPolicy ?? null,
+  cancellable: row.cancellable ?? null,
+  durationDays: row.dataPolicy === 'daily' ? row.durationDays ?? null : null,
+  providerOfferId: provider.offer?.id ?? null,
+  leSIM: provider.offer?.leSIM ?? null,
+  providerProductType: provider.offer?.providerProductType ?? null,
+});
+
+export const commercialPayloadFor = (row, provider = null) => sameWmidPayload(row, { offer: provider });
+
+const stableJson = (value) => JSON.stringify(value, Object.keys(value).sort());
+
+const sameWmidDiagnostics = (rows, providersByWmid) => {
+  const groups = new Map();
+  rows.filter((row) => row.wmid).forEach((row) => {
+    const group = groups.get(row.wmid) ?? [];
+    group.push(row);
+    groups.set(row.wmid, group);
+  });
+  const duplicateGroups = [...groups.entries()].filter(([, group]) => group.length > 1);
+  const metric = (selector) => duplicateGroups.filter(([, group]) => new Set(group.map((row) => selector(row, providersByWmid.get(row.wmid)))).size > 1).length;
+  return {
+    uniqueWmids: groups.size,
+    duplicateWmidGroups: duplicateGroups.length,
+    sameWmidSameCommercialPayload: duplicateGroups.filter(([, group]) => {
+      const signatures = new Set(group.map((row) => stableJson(sameWmidPayload(row, providersByWmid.get(row.wmid)))));
+      return signatures.size === 1;
+    }).length,
+    sameWmidDifferentPrice: metric((row) => row.sellingPrice),
+    sameWmidDifferentData: metric((row) => `${row.dataPolicy ?? ''}|${row.dataLimit ?? ''}`),
+    sameWmidDifferentDuration: metric((row) => row.durationDays),
+    sameWmidDifferentCoverageNetwork: metric((row) => `${row.coverageLabel ?? ''}|${row.coverageId ?? ''}|${row.networkLabel ?? ''}|${row.apn ?? ''}`),
+    sameWmidDifferentLeSIMProviderMetadata: metric((_row, provider) => `${provider?.offer?.id ?? ''}|${provider?.offer?.leSIM ?? ''}|${provider?.offer?.providerProductType ?? ''}`),
+    samples: duplicateGroups.slice(0, 20).map(([wmid, group]) => ({
+      wmid,
+      sourceRowNumbers: group.map((row) => row.sourceRowNumber),
+      payloads: [...new Set(group.map((row) => stableJson(sameWmidPayload(row, providersByWmid.get(wmid)))))].length,
+    })),
+  };
+};
+
+export const auditEsimSheetRows = ({ values = [], mapping = {}, providerOffers = [], existingVariants = [] } = {}) => {
   const parsed = parseEsimSheetRows({ values, mapping });
   const rows = parsed.rows.map((row) => {
     const provider = matchEsimProviderOffer({ wmid: row.wmid, providerOffers });
@@ -245,14 +333,36 @@ export const auditEsimSheetRows = ({ values = [], mapping = {}, providerOffers =
       errors: [...row.errors, ...(provider.status === 'MATCHED' ? [] : [provider.status])],
     };
   });
+  const providersByWmid = new Map(rows.map((row) => [row.wmid, matchEsimProviderOffer({ wmid: row.wmid, providerOffers })]));
+  const statusCounts = Object.fromEntries([...new Set(rows.map((row) => row.providerStatus))].map((status) => [status, rows.filter((row) => row.providerStatus === status).length]));
+  const legacyCollisionRows = rows
+    .filter((row) => existingVariants.some((variant) => normalizeWmid(variant.wmproductId) === row.wmid && variant.source !== ESIM_SHEET_SOURCE));
+  const legacyWmidCollisions = legacyCollisionRows
+    .slice(0, 20)
+    .map((row) => ({ wmid: row.wmid, sourceRowNumber: row.sourceRowNumber }));
   return {
     source: ESIM_SHEET_SOURCE,
     parserRevision: ESIM_SHEET_PARSER_REVISION,
     headerHash: parsed.headerHash,
     rowsRead: rows.length,
+    esimRows: parsed.rows.filter((row) => row.medium === 'esim').length,
+    nonEsimRows: parsed.rows.filter((row) => row.medium !== 'esim').length,
+    missingWmid: parsed.rows.filter((row) => row.errors.includes('WMID_REQUIRED')).length,
+    invalidPrice: parsed.rows.filter((row) => row.errors.includes('SELLING_PRICE_INVALID')).length,
+    invalidDataPolicy: parsed.rows.filter((row) => row.dataPolicy && !['daily', 'total'].includes(row.dataPolicy)).length,
+    dailyDurationInvalid: parsed.rows.filter((row) => row.dataPolicy === 'daily' && (!Number.isInteger(row.durationDays) || row.durationDays < 1)).length,
+    totalDurationAmbiguous: parsed.rows.filter((row) => row.errors.includes('TOTAL_DURATION_AMBIGUOUS')).length,
+    dataLimitAmbiguous: parsed.rows.filter((row) => row.errors.includes('DATA_LIMIT_AMBIGUOUS')).length,
+    providerStatusCounts: statusCounts,
     matchedRows: rows.filter((row) => row.providerStatus === 'MATCHED').length,
     blockedRows: rows.filter((row) => row.providerStatus !== 'MATCHED' || row.errors.length > 0).length,
-    rows,
+    leSIMTrue: rows.filter((row) => row.leSIM === true).length,
+    leSIMFalse: rows.filter((row) => row.leSIM === false).length,
+    sameWmid: sameWmidDiagnostics(parsed.rows, providersByWmid),
+    legacyWmidCollisions,
+    legacyWmidCollisionCount: legacyCollisionRows.length,
+    rows: rows.slice(0, 20),
+    samplesTruncated: rows.length > 20,
   };
 };
 

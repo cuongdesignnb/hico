@@ -2,6 +2,7 @@ import { createCanonicalCatalogReader } from '../catalog/canonical/canonicalCata
 import { createCatalogSlugHistoryRepository } from '../catalog/write/catalogSlugHistoryRepository.js';
 import { getSeoVisibility, isPublicArticle } from './seoVisibility.js';
 import { cloneSeedCategories, projectProductCategory } from '../catalog/categories/catalogCategories.js';
+import { isPublicSellableVariant } from '../catalog/public/publicProductSerializer.js';
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -90,7 +91,10 @@ export const createPublicRouteResolver = ({
 } = {}) => {
   const readProducts = async () => {
     const catalog = await catalogReader.readCatalog();
-    return attachVariants(catalog).filter((product) => product.operation !== 'topup' && getSeoVisibility(product, product.variants).public);
+    return attachVariants(catalog).filter((product) => (
+      product.operation !== 'topup'
+      && getSeoVisibility(product, product.variants.filter(isPublicSellableVariant)).public
+    ));
   };
   const readCoverage = async () => coverageEntries(await readProducts());
   const readArticles = async () => (await articleProvider())

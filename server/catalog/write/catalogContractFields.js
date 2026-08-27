@@ -6,6 +6,7 @@ export const PUBLIC_CONTENT_FIELDS = [
   'speedLabel',
   'hotspotSupport',
   'activationPolicy',
+  'resetPolicy',
   'installationGuide',
   'compatibilityContent',
   'apnGuidance',

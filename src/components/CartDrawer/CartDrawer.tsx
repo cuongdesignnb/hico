@@ -195,7 +195,7 @@ export const CartDrawer: React.FC = () => {
                   </div>
                   
                   <div className="cart-item-actions">
-                    <div className="quantity-controller">
+                    {item.type === 'esim' ? <div className="quantity-controller quantity-controller-static"><span className="quantity-val">1</span></div> : <div className="quantity-controller">
                       <button
                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
                         className="quantity-btn"
@@ -209,7 +209,7 @@ export const CartDrawer: React.FC = () => {
                       >
                         <Plus size={14} />
                       </button>
-                    </div>
+                    </div>}
                     <button
                       onClick={() => removeFromCart(item.id)}
                       className="delete-item-btn"

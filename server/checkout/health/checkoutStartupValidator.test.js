@@ -58,3 +58,12 @@ test('canonical startup validation blocks missing webhook, inventory, and snapsh
     ['CANONICAL_ORDER_SNAPSHOT_INVALID', 'PHYSICAL_INVENTORY_NOT_CONFIGURED', 'WEBHOOK_SECURITY_NOT_CONFIGURED'],
   );
 });
+
+test('canonical startup validation allows an empty manual QR pool', async () => {
+  const result = await validateCanonicalCheckoutStorage({
+    ...dependencies({ catalogVariants: [{ id: 'v1', active: true, fulfillmentMethod: 'HICO_MANUAL_QR' }] }),
+  });
+  assert.equal(result.ready, true);
+  assert.equal(result.metadata.manualQrConfigured, false);
+  assert.equal(result.warnings.some((item) => item.code === 'MANUAL_QR_POOL_EMPTY'), true);
+});

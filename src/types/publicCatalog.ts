@@ -71,6 +71,7 @@ export interface PublicVariant {
   speedLabel?: string;
   hotspotSupport?: string;
   activationPolicy?: string;
+  resetPolicy?: string;
   installationGuide?: string;
   compatibilityContent?: string;
   apnGuidance?: string;
@@ -139,6 +140,7 @@ export interface PublicProduct {
   speedLabel?: string;
   hotspotSupport?: string;
   activationPolicy?: string;
+  resetPolicy?: string;
   installationGuide?: string;
   compatibilityContent?: string;
   apnGuidance?: string;
