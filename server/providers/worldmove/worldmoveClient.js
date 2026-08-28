@@ -123,21 +123,51 @@ export const createWorldmoveClient = ({
         throw wrapped;
       }
     },
-    async createEsimOrder({ email, wmproductId, quantity, redeem = false, idempotencyKey }) {
-      const targetEmail = redeem ? '0' : email;
+    async createEsimOrder({
+      email,
+      wmproductId,
+      quantity,
+      redeem = false,
+      qrcodeType = 2,
+      idempotencyKey,
+    }) {
+      if (redeem) {
+        return this.createEsimOrderAndRedeem({
+          wmproductId,
+          quantity,
+          qrcodeType,
+          idempotencyKey,
+        });
+      }
+
       const prodSum = `${wmproductId}${quantity}`;
-      return this.request(
-        redeem ? ESIM_REDEEM_ORDER_PATH : ESIM_ORDER_PATH,
-        {
-          merchantId,
-          deptId,
-          ...(redeem ? {} : { email: targetEmail }),
-          prodList: [{ wmproductId, qty: quantity }],
-          systemMail: false,
-          encStr: sha1(`${merchantId}${deptId}${targetEmail}${prodSum}${token}`),
-        },
-        idempotencyKey,
-      );
+      return this.request(ESIM_ORDER_PATH, {
+        merchantId,
+        deptId,
+        email,
+        prodList: [{ wmproductId, qty: quantity }],
+        systemMail: false,
+        encStr: sha1(`${merchantId}${deptId}${email}${prodSum}${token}`),
+      }, idempotencyKey);
+    },
+
+    async createEsimOrderAndRedeem({
+      wmproductId,
+      quantity,
+      qrcodeType = 2,
+      idempotencyKey,
+    }) {
+      const prodSum = `${wmproductId}${quantity}`;
+
+      return this.request(ESIM_REDEEM_ORDER_PATH, {
+        merchantId,
+        deptId,
+        qrcodeType,
+        prodList: [{ wmproductId, qty: quantity }],
+        encStr: sha1(
+          `${merchantId}${deptId}${qrcodeType}${prodSum}${token}`,
+        ),
+      }, idempotencyKey);
     },
     async createPhysicalOrder({ email, wmproductId, quantity, shipping, idempotencyKey }) {
       const response = await this.request(PHYSICAL_ORDER_PATH, {
