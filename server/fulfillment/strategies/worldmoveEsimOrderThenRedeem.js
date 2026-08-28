@@ -32,7 +32,13 @@ export const createWorldmoveEsimOrderThenRedeemStrategy = () => ({
     });
   },
 
-  async callback({ item, event, providerClient }) {
+  async callback({ item, event, providerClient, record }) {
+    if (event.providerSucceeded === false) {
+      return result('FAILED', {
+        providerReference: event.providerOrderId ?? event.orderId ?? record?.providerReference,
+        internalNote: 'Worldmove callback reported failure.',
+      });
+    }
     const callbackItem = event.itemList?.[0] ?? event.item ?? event;
     const data = extractProvisioningData(callbackItem);
 
@@ -45,13 +51,13 @@ export const createWorldmoveEsimOrderThenRedeemStrategy = () => ({
       });
 
       return result('PENDING_CALLBACK', {
-        providerReference: event.providerOrderId ?? event.orderId,
+        providerReference: event.providerOrderId ?? event.orderId ?? record?.providerReference,
         itemData: data,
       });
     }
 
     return result('PROVISIONED', {
-      providerReference: event.providerOrderId ?? event.orderId,
+      providerReference: event.providerOrderId ?? event.orderId ?? record?.providerReference,
       itemData: data,
     });
   },

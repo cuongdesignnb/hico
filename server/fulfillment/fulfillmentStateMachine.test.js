@@ -10,3 +10,7 @@ test('fulfillment and order state machines allow forward idempotent transitions 
   assert.equal(transitionOrder({ status: 'PENDING_SHIP' }, 'SHIPPED', 'shipping').status, 'SHIPPED');
   assert.throws(() => transitionOrder({ status: 'CANCELLED' }, 'PROVISIONED', 'callback'), (error) => error.code === 'ORDER_STATE_CONFLICT');
 });
+
+test('allows a provider callback to fail a pending fulfillment', () => {
+  assert.equal(transitionFulfillment({ state: 'PENDING_CALLBACK' }, 'FAILED', 'provider_callback').state, 'FAILED');
+});

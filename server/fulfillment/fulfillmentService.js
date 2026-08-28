@@ -184,7 +184,18 @@ export const createFulfillmentService = ({
       const existing = await eventRepository.get(event.eventId);
       if (existing) return { duplicate: true, orderId: existing.orderId, status: existing.status };
     }
-    const records = await repository.findByProviderReference(event.providerOrderId ?? event.orderId);
+    const providerReference = event.providerOrderId ?? event.orderId;
+    const redemptionCode = event.redemptionCode
+      ?? event.itemData?.redemptionCode
+      ?? event.item?.redemptionCode
+      ?? event.item?.rcode
+      ?? event.itemList?.[0]?.redemptionCode
+      ?? event.itemList?.[0]?.rcode;
+    const records = providerReference
+      ? await repository.findByProviderReference(providerReference)
+      : redemptionCode && repository.findByRedemptionCode
+        ? await repository.findByRedemptionCode(redemptionCode)
+        : [];
     if (!records.length) return null;
     const order = await orderRepository.get(records[0].orderId);
     if (!order || order.status === 'CANCELLED') {
