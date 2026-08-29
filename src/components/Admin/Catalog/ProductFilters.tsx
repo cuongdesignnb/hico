@@ -99,7 +99,12 @@ const ProductFilters = ({ searchQuery, onSearchChange, filters, onFiltersChange 
             <span>Nghiệp vụ</span>
             <select
               value={filters.operation}
-              onChange={(event) => update({ operation: event.target.value as OperationFilter, quick: null })}
+              onChange={(event) => {
+                const value = event.target.value as OperationFilter;
+                // Clear quick filter when manual dropdown changes
+                const patch: Partial<CatalogFiltersState> = { operation: value, quick: null };
+                update(patch);
+              }}
             >
               <option value="all">Tất cả</option>
               <option value="new_subscription">Mua SIM mới</option>
@@ -111,7 +116,11 @@ const ProductFilters = ({ searchQuery, onSearchChange, filters, onFiltersChange 
             <span>Hình thức</span>
             <select
               value={filters.medium}
-              onChange={(event) => update({ medium: event.target.value as MediumFilter, quick: null })}
+              onChange={(event) => {
+                const value = event.target.value as MediumFilter;
+                const patch: Partial<CatalogFiltersState> = { medium: value, quick: null };
+                update(patch);
+              }}
             >
               <option value="all">Tất cả</option>
               <option value="esim">eSIM</option>
@@ -146,7 +155,11 @@ const ProductFilters = ({ searchQuery, onSearchChange, filters, onFiltersChange 
             <span>Trạng thái</span>
             <select
               value={filters.status}
-              onChange={(event) => update({ status: event.target.value as StatusFilter, quick: null })}
+              onChange={(event) => {
+                const value = event.target.value as StatusFilter;
+                const patch: Partial<CatalogFiltersState> = { status: value, quick: null };
+                update(patch);
+              }}
             >
               <option value="all">Tất cả</option>
               {(Object.keys(STATUS_LABELS) as CatalogStatus[]).map((key) => (

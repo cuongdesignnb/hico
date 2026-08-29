@@ -210,22 +210,25 @@ const InventoryCell = ({ product }: { product: CatalogProductRecord }) => {
     return <span className="catalog-inventory-tag catalog-inventory-tag--ok">Manual QR</span>;
   }
 
-  // Check for physical stock using persisted stock values, not variant count.
-  const physicalVariants = product.variants.filter(
-    (variant) => variant.fulfillmentMethod === 'HICO_PHYSICAL_STOCK',
+  // Check for physical stock - use real stock values
+  const hasPhysicalStock = product.variants.some(
+    (v) => v.fulfillmentMethod === 'HICO_PHYSICAL_STOCK',
   );
-  if (physicalVariants.length > 0) {
-    const physicalStock = physicalVariants.reduce(
-      (total, variant) => total + (variant.stock ?? 0),
-      0,
-    );
+  if (hasPhysicalStock) {
+    const physicalStock = product.variants
+      .filter((v) => v.fulfillmentMethod === 'HICO_PHYSICAL_STOCK')
+      .reduce((total, v) => total + (v.stock ?? 0), 0);
     const label = product.operation === 'device_sale' ? 'thiết bị' : 'SIM';
-    return <span className="catalog-inventory-tag">{physicalStock} {label}</span>;
+    return (
+      <span className="catalog-inventory-tag">
+        {physicalStock} {label}
+      </span>
+    );
   }
 
   // Check for provider-based fulfillment
-  const providerCount = product.variants.filter((v) => v.fulfillmentMethod.startsWith('WORLDMOVE_')).length;
-  if (providerCount > 0) {
+  const hasProvider = product.variants.some((v) => v.fulfillmentMethod.startsWith('WORLDMOVE_'));
+  if (hasProvider) {
     const isPhysical = product.variants.some((v) => v.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER');
     return (
       <span className="catalog-inventory-tag catalog-inventory-tag--provider">

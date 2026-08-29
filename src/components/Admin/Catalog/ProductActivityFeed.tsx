@@ -22,16 +22,36 @@ const ProductActivityFeed = ({
   inventoryWarnings,
   onTabChange,
 }: ProductActivityFeedProps) => {
+  const getSkuDescription = () => {
+    if (skuConflicts === null) return 'Chưa có dữ liệu';
+    if (skuConflicts.total > 0) return `${skuConflicts.total} nhóm SKU trùng cần xử lý`;
+    return 'Không có cảnh báo SKU';
+  };
+
+  const getReviewDescription = () => {
+    if (needsReview === null) return 'Chưa có dữ liệu';
+    if (needsReview.total > 0) return `${needsReview.total} variant cần xác nhận nguồn`;
+    return 'Không có variant cần review';
+  };
+
+  const getProviderDescription = () => {
+    if (providerIssues === null) return 'Chưa có dữ liệu';
+    if (providerIssues.total > 0) return `${providerIssues.total} cảnh báo nguồn cấp`;
+    return 'Không có cảnh báo nguồn cấp';
+  };
+
+  const getInventoryDescription = () => {
+    if (inventoryWarnings === null) return 'Chưa có dữ liệu';
+    if (inventoryWarnings.total > 0) return `${inventoryWarnings.total} cảnh báo tồn kho`;
+    return 'Tồn kho ổn định';
+  };
+
   const items = [
     {
       id: 'sku',
       icon: <Tag size={16} />,
       title: 'SKU trùng',
-      description: skuConflicts === null
-        ? 'Chưa có dữ liệu'
-        : skuConflicts.total > 0
-          ? `${skuConflicts.total} nhóm SKU trùng cần xử lý`
-          : 'Không có cảnh báo SKU',
+      description: getSkuDescription(),
       onClick: () => onTabChange('sku'),
       tone: skuConflicts && skuConflicts.total > 0 ? 'warning' : 'neutral',
     },
@@ -39,11 +59,7 @@ const ProductActivityFeed = ({
       id: 'review',
       icon: <AlertTriangle size={16} />,
       title: 'Cần review',
-      description: needsReview === null
-        ? 'Chưa có dữ liệu'
-        : needsReview.total > 0
-          ? `${needsReview.total} variant cần xác nhận nguồn`
-          : 'Không có variant cần review',
+      description: getReviewDescription(),
       onClick: () => onTabChange('review'),
       tone: needsReview && needsReview.total > 0 ? 'warning' : 'neutral',
     },
@@ -51,11 +67,7 @@ const ProductActivityFeed = ({
       id: 'provider',
       icon: <RefreshCw size={16} />,
       title: 'Nguồn cấp',
-      description: providerIssues === null
-        ? 'Chưa có dữ liệu'
-        : providerIssues.total > 0
-          ? `${providerIssues.total} cảnh báo nguồn cấp`
-          : 'Không có cảnh báo nguồn cấp',
+      description: getProviderDescription(),
       onClick: () => onTabChange('provider'),
       tone: providerIssues && providerIssues.total > 0 ? 'info' : 'neutral',
     },
@@ -63,11 +75,7 @@ const ProductActivityFeed = ({
       id: 'inventory',
       icon: <Boxes size={16} />,
       title: 'Tồn kho',
-      description: inventoryWarnings === null
-        ? 'Chưa có dữ liệu'
-        : inventoryWarnings.total > 0
-          ? `${inventoryWarnings.total} cảnh báo tồn kho`
-          : 'Không có cảnh báo tồn kho',
+      description: getInventoryDescription(),
       onClick: () => onTabChange('inventory'),
       tone: inventoryWarnings && inventoryWarnings.total > 0 ? 'danger' : 'neutral',
     },
