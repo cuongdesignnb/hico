@@ -14,7 +14,7 @@ const getErrorMessage = (payload: unknown) => {
 };
 
 const requestJson = async <T>(url: string, signal?: AbortSignal): Promise<T> => {
-  const response = await fetch(url, { signal });
+  const response = await fetch(url, { signal, credentials: 'include' });
   const payload: unknown = await response.json();
 
   if (!response.ok) {

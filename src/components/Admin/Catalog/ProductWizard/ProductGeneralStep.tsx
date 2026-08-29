@@ -6,7 +6,8 @@ interface ProductGeneralStepProps {
   onGenerateSlug: () => void;
 }
 
-const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGeneralStepProps) => (
+const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGeneralStepProps) => {
+  return (
   <section className="product-wizard-step-content">
     <div className="product-wizard-section-heading">
       <span className="product-wizard-kicker">Bước 2</span>
@@ -23,9 +24,10 @@ const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGenera
         <input value={product.slug} onChange={(event) => onChange({ slug: event.target.value })} placeholder="esim-nhat-ban-10gb" />
         <button type="button" className="product-wizard-inline-button" onClick={onGenerateSlug}>Tạo slug từ tên</button>
       </label>
-      <label className="product-wizard-field">
+      <label className="product-wizard-field product-wizard-field-wide">
         <span>Ảnh đại diện</span>
-        <input value={product.image} onChange={(event) => onChange({ image: event.target.value })} placeholder="https://..." />
+        <input type="text" value={product.image} onChange={(event) => onChange({ image: event.target.value })} placeholder="/uploads/ten-anh.webp" />
+        <small className="product-wizard-field-hint">Dùng đường dẫn /images/... hoặc /uploads/...</small>
       </label>
       <label className="product-wizard-field product-wizard-field-wide">
         <span>Mô tả</span>
@@ -49,6 +51,7 @@ const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGenera
       </div>
     </div>
   </section>
-);
+  );
+};
 
 export default ProductGeneralStep;

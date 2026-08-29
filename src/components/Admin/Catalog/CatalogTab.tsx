@@ -3,6 +3,7 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
+  Database,
   LoaderCircle,
   Plus,
   RefreshCw,
@@ -14,15 +15,15 @@ import { useBulkPreview } from '../../../hooks/catalog/useBulkPreview';
 import { useBulkSelection } from '../../../hooks/catalog/useBulkSelection';
 import { useCatalogQueues } from '../../../hooks/catalog/useCatalogQueues';
 import type { BulkEntityType, BulkFilter, BulkOperation } from '../../../types/catalogBulk';
-import type {
-  CatalogProductRecord,
-  CoverageType,
-  ProductOperation,
-  SimMedium,
-  Supplier,
-} from '../../../types/catalog';
+import type { CatalogProductRecord, CatalogStatus } from '../../../types/catalog';
 import ProductTable from './ProductTable';
 import ProductWizard from './ProductWizard/ProductWizard';
+import ProductStatsCards from './ProductStatsCards';
+import ProductFilters, {
+  type CatalogFiltersState,
+} from './ProductFilters';
+import ProductOverviewPanel from './ProductOverviewPanel';
+import ProductActivityFeed from './ProductActivityFeed';
 import BulkActionBar, { type BulkOperationType } from './Bulk/BulkActionBar';
 import BulkPreviewDialog from './Bulk/BulkPreviewDialog';
 import BulkResultDialog from './Bulk/BulkResultDialog';
@@ -37,21 +38,21 @@ interface CatalogTabProps {
   searchQuery: string;
 }
 
-type OperationFilter = ProductOperation | 'all';
-type CoverageFilter = CoverageType | 'all';
-type MediumFilter = Exclude<SimMedium, null> | 'all';
-type SupplierFilter = Supplier | 'all';
-
 const PAGE_SIZE = 20;
 
 const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
   const [products, setProducts] = useState<CatalogProductRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [operation, setOperation] = useState<OperationFilter>('all');
-  const [coverage, setCoverage] = useState<CoverageFilter>('all');
-  const [medium, setMedium] = useState<MediumFilter>('all');
-  const [supplier, setSupplier] = useState<SupplierFilter>('all');
+  const [localSearch, setLocalSearch] = useState(searchQuery);
+  const [filters, setFilters] = useState<CatalogFiltersState>({
+    operation: 'all',
+    medium: 'all',
+    supplier: 'all',
+    coverage: 'all',
+    status: 'all',
+    quick: null,
+  });
   const [page, setPage] = useState(1);
   const [wizard, setWizard] = useState<{ mode: 'create' | 'edit'; productId?: string } | null>(null);
   const [entityType, setEntityType] = useState<BulkEntityType>('product');
@@ -59,10 +60,18 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
   const [catalogVersionId, setCatalogVersionId] = useState('');
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [queueTab, setQueueTab] = useState<'sku' | 'review' | 'provider' | 'inventory'>('sku');
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const bulkSelection = useBulkSelection();
   const bulkPreview = useBulkPreview();
   const bulkExecute = useBulkExecute();
   const queues = useCatalogQueues();
+
+  // Sync local search with global search query
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync with parent prop
+    setLocalSearch(searchQuery);
+    setPage(1);
+  }, [searchQuery]);
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -101,7 +110,7 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
   }, []);
 
   const filteredProducts = useMemo(() => {
-    const normalizedSearch = searchQuery.trim().toLocaleLowerCase('vi-VN');
+    const normalizedSearch = localSearch.trim().toLocaleLowerCase('vi-VN');
 
     return products.filter((product) => {
       const matchesSearch = normalizedSearch === ''
@@ -111,20 +120,24 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
           variant.sku.toLocaleLowerCase('vi-VN').includes(normalizedSearch)
           || variant.wmproductId?.toLocaleLowerCase('vi-VN').includes(normalizedSearch)
         ));
-      const matchesOperation = operation === 'all' || product.operation === operation;
-      const matchesCoverage = coverage === 'all' || product.coverageType === coverage;
-      const matchesMedium = medium === 'all'
-        || product.variants.some((variant) => variant.medium === medium);
-      const matchesSupplier = supplier === 'all'
-        || product.variants.some((variant) => variant.supplier === supplier);
+      const matchesOperation = filters.operation === 'all' || product.operation === filters.operation;
+      const matchesCoverage = filters.coverage === 'all' || product.coverageType === filters.coverage;
+      const matchesMedium = filters.medium === 'all'
+        || product.variants.some((variant) => variant.medium === filters.medium);
+      const matchesSupplier = filters.supplier === 'all'
+        || product.variants.some((variant) => variant.supplier === filters.supplier);
+      const matchesStatus = filters.status === 'all' || product.status === filters.status;
+      const matchesReview = filters.quick !== 'review' || product.variants.some((variant) => variant.needsReview);
 
       return matchesSearch
         && matchesOperation
         && matchesCoverage
         && matchesMedium
-        && matchesSupplier;
+        && matchesSupplier
+        && matchesStatus
+        && matchesReview;
     });
-  }, [coverage, medium, operation, products, searchQuery, supplier]);
+  }, [filters, products, localSearch]);
 
   const totalVariants = useMemo(
     () => products.reduce((total, product) => total + product.variants.length, 0),
@@ -144,12 +157,30 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
     currentPage * PAGE_SIZE,
   );
 
+  const selectedProduct = useMemo(() => {
+    if (!selectedProductId) return null;
+    return products.find((product) => product.id === selectedProductId) ?? null;
+  }, [products, selectedProductId]);
+
+  const handleFiltersChange = useCallback((next: CatalogFiltersState) => {
+    setFilters(next);
+    setPage(1);
+  }, []);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setLocalSearch(value);
+    setPage(1);
+    setSelectedProductId(null);
+  }, []);
+
   const bulkFilter = useMemo<BulkFilter>(() => ({
-    ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
-    ...(operation !== 'all' ? { operation } : {}),
-    ...(medium !== 'all' ? { medium } : {}),
-    ...(supplier !== 'all' ? { supplier } : {}),
-  }), [medium, operation, searchQuery, supplier]);
+    ...(localSearch.trim() ? { search: localSearch.trim() } : {}),
+    ...(filters.operation !== 'all' ? { operation: filters.operation } : {}),
+    ...(filters.medium !== 'all' ? { medium: filters.medium } : {}),
+    ...(filters.supplier !== 'all' ? { supplier: filters.supplier } : {}),
+    ...(filters.status !== 'all' ? { status: filters.status as CatalogStatus } : {}),
+    ...(filters.quick === 'review' ? { needsReview: true } : {}),
+  }), [filters, localSearch]);
   const openBulkPreview = () => {
     bulkPreview.clear();
     bulkExecute.clear();
@@ -172,9 +203,9 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
     }).catch(() => undefined);
   };
 
-  const updateFilter = <T,>(setter: (value: T) => void, value: T) => {
-    setter(value);
-    setPage(1);
+  const handleReload = () => {
+    void loadProducts();
+    void queues.reload();
   };
 
   if (loading) {
@@ -199,33 +230,55 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
   return (
     <>
     <section className="catalog-tab">
-      <div className="catalog-heading-row">
-        <div>
-          <h2>Danh mục sản phẩm</h2>
-          <p>{filteredProducts.length.toLocaleString('vi-VN')} sản phẩm phù hợp</p>
+      <div className="catalog-tab__header">
+        <div className="catalog-tab__header-info">
+          <span className="catalog-tab__breadcrumb">Trang chủ / Sản phẩm</span>
+          <h2>Quản lý sản phẩm</h2>
+          <p>Quản lý và kiểm soát toàn bộ sản phẩm eSIM, SIM vật lý và thiết bị.</p>
         </div>
-        <div className="catalog-heading-actions">
-        <button type="button" className="catalog-secondary-button" onClick={() => setWizard({ mode: 'create' })}>
-          <Plus size={16} /> Tạo sản phẩm
-        </button>
-        <button
-          type="button"
-          className="catalog-icon-button"
-          onClick={() => void loadProducts()}
-          aria-label="Làm mới danh mục"
-          title="Làm mới"
-        >
-          <RefreshCw size={17} />
-        </button>
+        <div className="catalog-tab__header-actions">
+          <button type="button" className="catalog-primary-button" onClick={() => setWizard({ mode: 'create' })}>
+            <Plus size={16} /> Thêm sản phẩm
+          </button>
+          <button
+            type="button"
+            className="catalog-icon-button"
+            onClick={() => void handleReload()}
+            aria-label="Làm mới danh mục"
+            title="Làm mới"
+          >
+            <RefreshCw size={17} />
+          </button>
         </div>
       </div>
 
-      <div className="catalog-summary" aria-label="Tổng quan danh mục">
-        <div><span>Sản phẩm</span><strong>{products.length.toLocaleString('vi-VN')}</strong></div>
-        <div><span>Gói bán</span><strong>{totalVariants.toLocaleString('vi-VN')}</strong></div>
-        <div><span>Cần xác nhận nguồn</span><strong>{reviewCount.toLocaleString('vi-VN')}</strong></div>
-        <div><span>Nguồn dữ liệu</span><strong>Legacy adapter</strong></div>
+      <div className="catalog-tab__summary" aria-label="Tổng quan danh mục">
+        <div>
+          <span>Sản phẩm</span>
+          <strong>{products.length.toLocaleString('vi-VN')}</strong>
+        </div>
+        <div>
+          <span>Gói bán</span>
+          <strong>{totalVariants.toLocaleString('vi-VN')}</strong>
+        </div>
+        <div>
+          <span>Cần xác nhận nguồn</span>
+          <strong>{reviewCount.toLocaleString('vi-VN')}</strong>
+        </div>
+        <div>
+          <span>Nguồn dữ liệu</span>
+          <strong>Legacy adapter</strong>
+        </div>
       </div>
+
+      <ProductStatsCards products={products} />
+
+      <ProductFilters
+        searchQuery={localSearch}
+        onSearchChange={handleSearchChange}
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+      />
 
       <BulkActionBar
         entityType={entityType}
@@ -240,93 +293,100 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
       />
       {(bulkSelection.selectedIds.length > 0 || bulkSelection.isFilterSelection) && <BulkSelectionSummary count={bulkSelection.selectedIds.length} isFilterSelection={bulkSelection.isFilterSelection} onClear={bulkSelection.clear} />}
 
-      <div className="catalog-filters">
-        <label>
-          <span>Nghiệp vụ</span>
-          <select
-            value={operation}
-            onChange={(event) => updateFilter(setOperation, event.target.value as OperationFilter)}
-          >
-            <option value="all">Tất cả</option>
-            <option value="new_subscription">Mua SIM mới</option>
-            <option value="topup">Top-up</option>
-            <option value="device_sale">Thiết bị</option>
-          </select>
-        </label>
-        <label>
-          <span>Hình thức</span>
-          <select
-            value={medium}
-            onChange={(event) => updateFilter(setMedium, event.target.value as MediumFilter)}
-          >
-            <option value="all">Tất cả</option>
-            <option value="esim">eSIM</option>
-            <option value="physical_sim">SIM vật lý</option>
-          </select>
-        </label>
-        <label>
-          <span>Nguồn cấp</span>
-          <select
-            value={supplier}
-            onChange={(event) => updateFilter(setSupplier, event.target.value as SupplierFilter)}
-          >
-            <option value="all">Tất cả</option>
-            <option value="worldmove">Worldmove</option>
-            <option value="local_carrier">Nhà mạng địa phương</option>
-            <option value="hico">HICO</option>
-            <option value="other">Chưa xác nhận</option>
-          </select>
-        </label>
-        <label>
-          <span>Vùng phủ</span>
-          <select
-            value={coverage}
-            onChange={(event) => updateFilter(setCoverage, event.target.value as CoverageFilter)}
-          >
-            <option value="all">Tất cả</option>
-            <option value="country">Một quốc gia</option>
-            <option value="region">Khu vực</option>
-            <option value="global">Toàn cầu</option>
-            <option value="not_applicable">Không áp dụng</option>
-          </select>
-        </label>
-      </div>
-
-      {visibleProducts.length > 0 ? (
-        <>
-          <ProductTable products={visibleProducts} onEdit={(productId) => setWizard({ mode: 'edit', productId })} entityType={entityType} selectedIds={bulkSelection.selectedIds} onTogglePage={bulkSelection.selectPage} />
-          <div className="catalog-pagination">
-            <span>
-              Trang {currentPage.toLocaleString('vi-VN')} / {totalPages.toLocaleString('vi-VN')}
-            </span>
-            <div>
+      <div className="catalog-tab__split">
+        <div className="catalog-tab__list">
+          {visibleProducts.length > 0 ? (
+            <>
+              <ProductTable
+                products={visibleProducts}
+                onEdit={(productId) => setWizard({ mode: 'edit', productId })}
+                entityType={entityType}
+                selectedIds={bulkSelection.selectedIds}
+                onTogglePage={bulkSelection.selectPage}
+                selectedProductId={selectedProductId}
+                onSelect={setSelectedProductId}
+              />
+              <div className="catalog-pagination">
+                <span>
+                  Hiển thị {(filteredProducts.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1).toLocaleString('vi-VN')}
+                  {' - '}
+                  {Math.min(currentPage * PAGE_SIZE, filteredProducts.length).toLocaleString('vi-VN')}
+                  {' trong tổng số '}
+                  <strong>{filteredProducts.length.toLocaleString('vi-VN')}</strong>
+                  {' sản phẩm'}
+                </span>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setPage((value) => Math.max(1, value - 1))}
+                    disabled={currentPage === 1}
+                    aria-label="Trang trước"
+                    title="Trang trước"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="catalog-pagination__page">
+                    Trang <strong>{currentPage.toLocaleString('vi-VN')}</strong> / {totalPages.toLocaleString('vi-VN')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                    disabled={currentPage === totalPages}
+                    aria-label="Trang sau"
+                    title="Trang sau"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="catalog-empty">
+              <strong>Không có sản phẩm phù hợp</strong>
+              <span>Hãy đổi bộ lọc hoặc từ khóa tìm kiếm.</span>
               <button
                 type="button"
-                onClick={() => setPage((value) => Math.max(1, value - 1))}
-                disabled={currentPage === 1}
-                aria-label="Trang trước"
-                title="Trang trước"
+                className="catalog-text-button"
+                onClick={() => handleFiltersChange({
+                  operation: 'all',
+                  medium: 'all',
+                  supplier: 'all',
+                  coverage: 'all',
+                  status: 'all',
+                  quick: null,
+                })}
               >
-                <ChevronLeft size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-                disabled={currentPage === totalPages}
-                aria-label="Trang sau"
-                title="Trang sau"
-              >
-                <ChevronRight size={16} />
+                Đặt lại bộ lọc
               </button>
             </div>
-          </div>
-        </>
-      ) : (
-        <div className="catalog-empty">
-          <strong>Không có sản phẩm phù hợp</strong>
-          <span>Hãy đổi bộ lọc hoặc từ khóa tìm kiếm.</span>
+          )}
         </div>
-      )}
+
+        <div className={`catalog-tab__side${selectedProduct ? ' is-open' : ''}`}>
+          {selectedProduct ? (
+            <ProductOverviewPanel
+              product={selectedProduct}
+              onClose={() => setSelectedProductId(null)}
+              onEdit={() => setWizard({ mode: 'edit', productId: selectedProduct.id })}
+            />
+          ) : (
+            <div className="catalog-overview-placeholder" aria-live="polite">
+              <Database size={28} />
+              <strong>Chọn sản phẩm để xem chi tiết</strong>
+              <span>Click vào một sản phẩm trong danh sách để mở panel preview.</span>
+            </div>
+          )}
+
+          <ProductActivityFeed
+            skuConflicts={queues.skuConflicts}
+            needsReview={queues.needsReview}
+            providerIssues={queues.providerIssues}
+            inventoryWarnings={queues.inventoryWarnings}
+            onTabChange={setQueueTab}
+          />
+        </div>
+      </div>
+
       <section className="catalog-queues" aria-label="Hàng đợi xử lý catalog">
         <div className="catalog-queues-heading"><div><h3>Hàng đợi cần xử lý</h3><span>Chỉ cảnh báo để Admin kiểm tra, không tự sửa dữ liệu.</span></div><button type="button" className="catalog-icon-button" onClick={() => void queues.reload()} aria-label="Làm mới hàng đợi" title="Làm mới"><RefreshCw size={16} /></button></div>
         <div className="catalog-queue-tabs"><button type="button" className={queueTab === 'sku' ? 'is-active' : ''} onClick={() => setQueueTab('sku')}>SKU trùng <b>{queues.skuConflicts?.total ?? '—'}</b></button><button type="button" className={queueTab === 'review' ? 'is-active' : ''} onClick={() => setQueueTab('review')}>Cần review <b>{queues.needsReview?.total ?? '—'}</b></button><button type="button" className={queueTab === 'provider' ? 'is-active' : ''} onClick={() => setQueueTab('provider')}>Nguồn cấp <b>{queues.providerIssues?.total ?? '—'}</b></button><button type="button" className={queueTab === 'inventory' ? 'is-active' : ''} onClick={() => setQueueTab('inventory')}>Tồn kho <b>{queues.inventoryWarnings?.total ?? '—'}</b></button></div>

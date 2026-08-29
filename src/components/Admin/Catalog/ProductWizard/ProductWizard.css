@@ -2,7 +2,8 @@
 .product-wizard-dialog-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  /* Stay above the Admin sidebar/header stacking layers. */
+  z-index: 1000;
   display: grid;
   place-items: center;
   padding: 24px;
