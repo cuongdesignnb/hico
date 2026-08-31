@@ -17,6 +17,7 @@ export interface LegacyProduct {
   region?: string;
   network?: string;
   image?: string;
+  imageMediaId?: string | null;
   price?: number;
   compareAtPrice?: number;
   guide?: string;
@@ -122,6 +123,7 @@ export interface AdminArticle {
   id: string;
   title?: string;
   image?: string;
+  imageMediaId?: string | null;
   date?: string;
   content?: string;
   seoTitle?: string;

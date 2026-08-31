@@ -9,8 +9,12 @@ import {
 } from 'lucide-react';
 import './AdminDashboard.css';
 import RichTextEditor from './RichTextEditor';
+import { MediaAssetField } from './media/MediaAssetField';
 import CatalogTab from './Catalog/CatalogTab';
 import ProviderCatalogTab from './Providers/ProviderCatalogTab';
+import { CatalogSheetSync } from './CatalogSheetSync/CatalogSheetSync';
+import { SheetVariantReconciliation } from './Catalog/SheetVariantReconciliation';
+import { GoogleSheetSettings } from './Settings/Integrations/GoogleSheetSettings';
 import { createLegacyVariantId } from '../../utils/ids';
 import { useAuth } from '../../auth/useAuth';
 import type {
@@ -204,7 +208,7 @@ export const AdminDashboard: React.FC = () => {
   const [deviceForm, setDeviceForm] = useState({ 
     sku: '', name: '', category: 'pocket', specs: '', price: '', 
     compareAtPrice: '', stock: '50', description: '', badge: '', 
-    bestSeller: false, image: '', seoTitle: '', seoDescription: '', seoKeywords: ''
+    bestSeller: false, image: '', imageMediaId: null as string | null, seoTitle: '', seoDescription: '', seoKeywords: ''
   });
   
   const [isAddingPackage, setIsAddingPackage] = useState(false);
@@ -217,13 +221,13 @@ export const AdminDashboard: React.FC = () => {
   const [isAddingDestination, setIsAddingDestination] = useState(false);
   const [destinationForm, setDestinationForm] = useState({ 
     sku: '', name: '', flag: '', dataLimit: '', duration: '', price: '', 
-    compareAtPrice: '', wmproductId: '', image: '', network: '', 
+    compareAtPrice: '', wmproductId: '', image: '', imageMediaId: null as string | null, network: '',
     featured: false, guide: '', leSIM: true, seoTitle: '', seoDescription: '', seoKeywords: ''
   });
 
   const [isAddingArticle, setIsAddingArticle] = useState(false);
   const [articleForm, setArticleForm] = useState({ 
-    title: '', image: '', date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '',
+    title: '', image: '', imageMediaId: null as string | null, date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '',
     status: 'published', scheduledDate: ''
   });
 
@@ -522,6 +526,7 @@ export const AdminDashboard: React.FC = () => {
           body: JSON.stringify({
             title: keyword,
             image: data.image,
+            imageMediaId: data.imageMediaId,
             date: targetDate,
             content: data.content,
             seoTitle: data.seoTitle,
@@ -595,15 +600,20 @@ export const AdminDashboard: React.FC = () => {
     { id: 'warehouse', name: 'Kho hàng', icon: <Box className="admin-nav-icon" /> },
     { id: 'personnel', name: 'Nhân sự & phân quyền', icon: <Users2 className="admin-nav-icon" /> },
     { id: 'settings', name: 'Cài đặt', icon: <Settings className="admin-nav-icon" /> },
+    { id: 'catalog-sheet-sync', name: 'Đồng bộ Sheet', icon: <PackageSearch className="admin-nav-icon" /> },
+    { id: 'catalog-sheet-reconciliation', name: 'Sheet variant identity', icon: <PackageSearch className="admin-nav-icon" /> },
   ];
-  const tabPermissions: Record<string, string> = {
+  const tabPermissions: Record<string, string | string[]> = {
     overview: 'admin.dashboard.read', catalog: 'catalog.product.read', providers: 'provider.read', orders: 'orders.read',
     devices: 'catalog.product.read', packages: 'catalog.product.read', coverage: 'catalog.product.read', customers: 'orders.read',
     promos: 'catalog.product.update', articles: 'articles.read', 'ai-bulk-writing': 'articles.manage', reviews: 'articles.manage',
     media: 'media.upload', support: 'orders.update', reports: 'orders.read', payments: 'orders.read', warehouse: 'inventory.stock.read',
-    personnel: 'admin.users.read', settings: 'system.config.read_masked',
+    personnel: 'admin.users.read', settings: ['system.config.read_masked', 'catalog.sheet.settings.read'], 'catalog-sheet-sync': 'catalog.sheet_sync', 'catalog-sheet-reconciliation': 'catalog.sheet.reconcile.read',
   };
-  const visibleSidebarNavItems = sidebarNavItems.filter((item) => hasPermission(tabPermissions[item.id]));
+  const visibleSidebarNavItems = sidebarNavItems.filter((item) => {
+    const required = tabPermissions[item.id];
+    return Array.isArray(required) ? required.some((permission) => hasPermission(permission)) : hasPermission(required);
+  });
 
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -1003,6 +1013,8 @@ export const AdminDashboard: React.FC = () => {
           {activeTab === 'providers' && (
             <ProviderCatalogTab searchQuery={searchQuery} />
           )}
+          {activeTab === 'catalog-sheet-sync' && <CatalogSheetSync />}
+          {activeTab === 'catalog-sheet-reconciliation' && <SheetVariantReconciliation />}
           
           {activeTab === 'overview' && (
             <>
@@ -2155,7 +2167,7 @@ export const AdminDashboard: React.FC = () => {
                     setDeviceForm({ 
                       sku: '', name: '', category: 'pocket', specs: '', price: '', 
                       compareAtPrice: '', stock: '50', description: '', badge: '', 
-                      bestSeller: false, image: '', seoTitle: '', seoDescription: '', seoKeywords: ''
+                      bestSeller: false, image: '', imageMediaId: null, seoTitle: '', seoDescription: '', seoKeywords: ''
                     });
                     setEditingDeviceId(null);
                   }
@@ -2182,7 +2194,7 @@ export const AdminDashboard: React.FC = () => {
                     setDeviceForm({ 
                       sku: '', name: '', category: 'pocket', specs: '', price: '', 
                       compareAtPrice: '', stock: '50', description: '', badge: '', 
-                      bestSeller: false, image: '', seoTitle: '', seoDescription: '', seoKeywords: '' 
+                      bestSeller: false, image: '', imageMediaId: null, seoTitle: '', seoDescription: '', seoKeywords: ''
                     });
                     fetchData('devices');
                   }
@@ -2222,24 +2234,7 @@ export const AdminDashboard: React.FC = () => {
                       <input type="text" value={deviceForm.badge} onChange={e => setDeviceForm({...deviceForm, badge: e.target.value})} />
                     </div>
                     <div className="form-group">
-                      <label>Hình ảnh thiết bị (URL)</label>
-                      <div className="form-input-with-button">
-                        <input type="text" value={deviceForm.image} onChange={e => setDeviceForm({...deviceForm, image: e.target.value})} placeholder="e.g. /images/device_wifi_mini.png" />
-                        <button type="button" className="admin-action-btn-mini primary" style={{ marginLeft: '8px' }} onClick={() => {
-                          setSelectedImageCallback(() => (url: string) => setDeviceForm(prev => ({ ...prev, image: url })));
-                          setIsMediaModalOpen(true);
-                        }}>Chọn thư viện</button>
-                      </div>
-                      {deviceForm.image && (
-                        <div className="admin-image-preview-container">
-                          <img 
-                            src={deviceForm.image} 
-                            alt="Device Preview" 
-                            className="admin-image-preview-thumb"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        </div>
-                      )}
+                      <MediaAssetField value={deviceForm.imageMediaId} legacyUrl={deviceForm.image} label="Hình ảnh thiết bị" onChange={(imageMediaId) => setDeviceForm((prev) => ({ ...prev, imageMediaId }))} />
                     </div>
                     <div className="form-group full-width">
                       <label>Thông số kỹ thuật (Mỗi dòng một thông số)</label>
@@ -2330,6 +2325,7 @@ export const AdminDashboard: React.FC = () => {
                                   badge: d.badge || '',
                                   bestSeller: !!d.bestSeller,
                                   image: d.image || '',
+                                  imageMediaId: d.imageMediaId || null,
                                   seoTitle: d.seoTitle || '',
                                   seoDescription: d.seoDescription || '',
                                   seoKeywords: d.seoKeywords || ''
@@ -2627,7 +2623,7 @@ export const AdminDashboard: React.FC = () => {
                   if (isAddingDestination) {
                     setDestinationForm({ 
                       sku: '', name: '', flag: '', dataLimit: '', duration: '', price: '', 
-                      compareAtPrice: '', wmproductId: '', image: '', network: '', 
+                      compareAtPrice: '', wmproductId: '', image: '', imageMediaId: null, network: '',
                       featured: false, guide: '', leSIM: true, seoTitle: '', seoDescription: '', seoKeywords: ''
                     });
                     setEditingDestinationId(null);
@@ -2663,7 +2659,7 @@ export const AdminDashboard: React.FC = () => {
                     setEditingDestinationId(null);
                     setDestinationForm({ 
                       sku: '', name: '', flag: '', dataLimit: '', duration: '', price: '', 
-                      compareAtPrice: '', wmproductId: '', image: '', network: '', 
+                      compareAtPrice: '', wmproductId: '', image: '', imageMediaId: null, network: '',
                       featured: false, guide: '', leSIM: true, seoTitle: '', seoDescription: '', seoKeywords: ''
                     });
                     fetchData('coverage');
@@ -2718,24 +2714,7 @@ export const AdminDashboard: React.FC = () => {
                       </select>
                     </div>
                     <div className="form-group full-width">
-                      <label>Link ảnh nền Quốc gia (URL)</label>
-                      <div className="form-input-with-button">
-                        <input type="text" value={destinationForm.image} onChange={e => setDestinationForm({...destinationForm, image: e.target.value})} placeholder="Link Unsplash hoặc /images/dest_japan.png" required />
-                        <button type="button" className="admin-action-btn-mini primary" style={{ marginLeft: '8px' }} onClick={() => {
-                          setSelectedImageCallback(() => (url: string) => setDestinationForm(prev => ({ ...prev, image: url })));
-                          setIsMediaModalOpen(true);
-                        }}>Chọn thư viện</button>
-                      </div>
-                      {destinationForm.image && (
-                        <div className="admin-image-preview-container">
-                          <img 
-                            src={destinationForm.image} 
-                            alt="Destination Preview" 
-                            className="admin-image-preview-thumb"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        </div>
-                      )}
+                      <MediaAssetField value={destinationForm.imageMediaId} legacyUrl={destinationForm.image} label="Ảnh nền điểm đến" required onChange={(imageMediaId) => setDestinationForm((prev) => ({ ...prev, imageMediaId }))} />
                     </div>
                     <div className="form-group full-width">
                       <label>Cẩm nang du lịch & Hướng dẫn kích hoạt (guide)</label>
@@ -2837,6 +2816,7 @@ export const AdminDashboard: React.FC = () => {
                                   compareAtPrice: d.compareAtPrice ? d.compareAtPrice.toString() : '',
                                   wmproductId: d.wmproductId || '',
                                   image: d.image || '',
+                                  imageMediaId: d.imageMediaId || null,
                                   network: d.network || '',
                                   featured: !!d.featured,
                                   guide: d.guide || '',
@@ -3456,7 +3436,7 @@ export const AdminDashboard: React.FC = () => {
                 <h2 className="admin-card-title">Quản lý Bài viết Cẩm nang</h2>
                 <button className="admin-create-btn" onClick={() => {
                   if (isAddingArticle) {
-                    setArticleForm({ title: '', image: '', date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '', status: 'published', scheduledDate: '' });
+                    setArticleForm({ title: '', image: '', imageMediaId: null, date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '', status: 'published', scheduledDate: '' });
                     setEditingArticleId(null);
                   }
                   setIsAddingArticle(!isAddingArticle);
@@ -3479,7 +3459,7 @@ export const AdminDashboard: React.FC = () => {
                   if (res.ok) {
                     setIsAddingArticle(false);
                     setEditingArticleId(null);
-                    setArticleForm({ title: '', image: '', date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '', status: 'published', scheduledDate: '' });
+                    setArticleForm({ title: '', image: '', imageMediaId: null, date: '', content: '', seoTitle: '', seoDescription: '', seoKeywords: '', status: 'published', scheduledDate: '' });
                     fetchData('articles');
                   }
                 }}>
@@ -3539,24 +3519,7 @@ export const AdminDashboard: React.FC = () => {
                       </div>
                     </div>
                     <div className="form-group">
-                      <label>Ảnh bìa bài viết (URL)</label>
-                      <div className="form-input-with-button">
-                        <input type="text" value={articleForm.image} onChange={e => setArticleForm({...articleForm, image: e.target.value})} placeholder="e.g. /images/art_esim_intro.png" required />
-                        <button type="button" className="admin-action-btn-mini primary" style={{ marginLeft: '8px' }} onClick={() => {
-                          setSelectedImageCallback(() => (url: string) => setArticleForm(prev => ({ ...prev, image: url })));
-                          setIsMediaModalOpen(true);
-                        }}>Chọn thư viện</button>
-                      </div>
-                      {articleForm.image && (
-                        <div className="admin-image-preview-container">
-                          <img 
-                            src={articleForm.image} 
-                            alt="Article Preview" 
-                            className="admin-image-preview-thumb"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        </div>
-                      )}
+                      <MediaAssetField value={articleForm.imageMediaId} legacyUrl={articleForm.image} label="Ảnh bìa bài viết" required onChange={(imageMediaId) => setArticleForm((prev) => ({ ...prev, imageMediaId }))} />
                     </div>
                     <div className="form-group">
                       <label>Trạng thái bài viết</label>
@@ -3663,6 +3626,7 @@ export const AdminDashboard: React.FC = () => {
                                 setArticleForm({
                                   title: art.title || '',
                                   image: art.image || '',
+                                  imageMediaId: art.imageMediaId || null,
                                   date: art.date || '',
                                   content: art.content || '',
                                   seoTitle: art.seoTitle || '',
@@ -4255,6 +4219,8 @@ export const AdminDashboard: React.FC = () => {
 
           {/* Tab: settings (Cài đặt hệ thống & API) */}
           {activeTab === 'settings' && (
+            <>
+            <GoogleSheetSettings />
             <div className="admin-card animate-fade-in">
               <div className="admin-card-header" style={{ borderBottom: '1px solid #E5E7EB', paddingBottom: '16px' }}>
                 <div>
@@ -4498,6 +4464,7 @@ export const AdminDashboard: React.FC = () => {
                 </div>
               </form>
             </div>
+            </>
           )}
 
           {/* Media Selector Modal Pop-up */}

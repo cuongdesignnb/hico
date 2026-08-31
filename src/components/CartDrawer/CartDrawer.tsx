@@ -25,15 +25,16 @@ export const CartDrawer: React.FC = () => {
   if (!isCartOpen) return null;
 
   // Format currency helper
-  const formatPrice = (price: number) => {
-    return `${price.toLocaleString('vi-VN')}đ`;
+  const formatPrice = (price: number, currency: 'VND' | 'USD') => {
+    return `${price.toLocaleString('vi-VN')} ${currency}`;
   };
 
   // Sum all items (all are now in VND)
-  const totalInVND = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const cartCurrency = cart[0]?.currency ?? 'VND';
+  const totalInCurrency = cart.reduce((sum, item) => sum + (item.currency === cartCurrency ? item.price * item.quantity : 0), 0);
 
   // Apply promo discount
-  const discountedTotalVND = totalInVND * (1 - discount);
+  const discountedTotalVND = totalInCurrency * (1 - discount);
 
   const handleApplyPromo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,12 +113,11 @@ export const CartDrawer: React.FC = () => {
         return;
       }
       const promises = cart.map(async (item) => {
-        const baseProductId = item.id.includes('-pkg-') ? item.id.split('-pkg-')[0] : item.id;
         const response = await fetch('/api/payment/webhook', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            productId: baseProductId,
+            productId: item.productId,
             qty: item.quantity,
             email: checkoutForm.email,
             shippingAddress: {
@@ -185,7 +185,7 @@ export const CartDrawer: React.FC = () => {
                       </p>
                     )}
                     <p className="cart-item-price">
-                      {formatPrice(item.price)}
+                      {formatPrice(item.price, item.currency)}
                     </p>
                   </div>
                   
@@ -251,21 +251,21 @@ export const CartDrawer: React.FC = () => {
             <div className="cart-summary">
               <div className="summary-row">
                 <span>Tạm tính</span>
-                <span>{formatPrice(totalInVND)}</span>
+                  <span>{formatPrice(totalInCurrency, cartCurrency)}</span>
               </div>
               {discount > 0 && (
                 <div className="summary-row discount">
                   <span>Giảm giá ({(discount * 100)}%)</span>
                   <span>
-                    -{formatPrice(totalInVND * discount)}
+                    -{formatPrice(totalInCurrency * discount, cartCurrency)}
                   </span>
                 </div>
               )}
               <div className="summary-row total">
                 <span>Tổng cộng</span>
                 <div className="total-prices">
-                  <span className="primary-total">
-                    {formatPrice(discountedTotalVND)}
+                    <span className="primary-total">
+                    {hasMixedCurrency ? 'Nhiều loại tiền tệ' : formatPrice(discountedTotalVND, cartCurrency)}
                   </span>
                 </div>
               </div>

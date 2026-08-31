@@ -21,6 +21,8 @@ export const createCheckoutService = ({
   catalogReader,
   orderService,
   idempotencyRepository,
+  fulfillmentBindingRepository = null,
+  fulfillmentProfileRepository = null,
   providerOffersFile = path.join(defaultUploadsDirectory, 'provider_offers.json'),
 } = {}) => {
   let createQueue = Promise.resolve();
@@ -32,7 +34,13 @@ export const createCheckoutService = ({
   const load = async (request, requireCustomer) => {
     const catalog = await catalogReader.readCatalog();
     const providerOffers = await readJson(providerOffersFile, []);
-    return validateCanonicalCart({ catalog, providerOffers, request, requireCustomer });
+    const providerBindings = fulfillmentBindingRepository
+      ? await fulfillmentBindingRepository.listActive('WORLDMOVE')
+      : [];
+    const providerProfiles = fulfillmentProfileRepository
+      ? await fulfillmentProfileRepository.listActive('WORLDMOVE')
+      : [];
+    return validateCanonicalCart({ catalog, providerOffers, providerBindings, providerProfiles, request, requireCustomer });
   };
   return {
     engine: env.CHECKOUT_ENGINE ?? 'legacy',

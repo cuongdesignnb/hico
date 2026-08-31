@@ -99,6 +99,10 @@ const buildVariantPayload = (variant: VariantDraft) => {
     stock: source?.fulfillmentMethod === 'HICO_PHYSICAL_STOCK' ? Number(variant.stock) : null,
     active: source?.fulfillmentMethod === 'MANUAL_PROCESSING' ? false : variant.active,
     needsReview: source?.fulfillmentMethod === 'MANUAL_PROCESSING' ? true : variant.needsReview,
+    // Public content metadata
+    ...(variant.networkLabel ? { networkLabel: variant.networkLabel } : {}),
+    ...(variant.activationPolicy ? { activationPolicy: variant.activationPolicy } : {}),
+    ...(variant.hotspotSupport ? { hotspotSupport: variant.hotspotSupport } : {}),
   };
 };
 

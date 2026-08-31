@@ -3,8 +3,23 @@ import { AppContext, type CartItem, type CurrentUser } from './contextValue';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [cart, setCart] = useState<CartItem[]>(() => {
-    const savedCart = localStorage.getItem('hico_cart');
-    return savedCart ? JSON.parse(savedCart) : [];
+    try {
+      const savedCart: unknown = JSON.parse(localStorage.getItem('hico_cart') || 'null');
+      if (!Array.isArray(savedCart)) return [];
+      return savedCart.filter((item: unknown): item is CartItem => {
+        if (!item || typeof item !== 'object') return false;
+        const record = item as Record<string, unknown>;
+        return typeof record.id === 'string'
+          && typeof record.productId === 'string'
+          && typeof record.variantId === 'string'
+          && typeof record.slug === 'string'
+          && typeof record.operation === 'string'
+          && typeof record.currency === 'string'
+          && typeof record.quantity === 'number';
+      });
+    } catch {
+      return [];
+    }
   });
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

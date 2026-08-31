@@ -124,3 +124,18 @@ adds the one-default partial unique index, creates contact/support tables, and
 extends the notification type constraint. It does not rewrite migration 010,
 change order ownership, import demo profiles, or auto-link the five legacy
 orders.
+
+## PR15.8 quarantine table
+
+Migration `012_customer_platform_cutover.sql` adds
+`customer_data_quarantine` for source records that cannot be safely imported.
+Allowed source types are `DEMO_PROFILE`, `MOCK_ESIM`, `MOCK_MANUAL_QR`,
+`LEGACY_ORDER_UNRESOLVED`, `OWNER_CONFLICT`, `MISSING_FULFILLMENT`,
+`INVALID_ASSET_REFERENCE`, and `DUPLICATE_CUSTOMER_CONTACT`.
+
+Each row has a stable source reference, reason code, status, review metadata,
+and safe JSON metadata. A unique source-type/reference pair makes the import
+idempotent. A database check rejects sensitive metadata keys including email,
+phone, address, password, token, QR, LPA, PIN, PUK, ICCID, and redemption code.
+Quarantine is evidence, not an ownership source. It cannot be resolved by
+email matching or provider callbacks and is retained through rollback.

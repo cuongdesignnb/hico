@@ -1,0 +1,90 @@
+import { useEffect, useState } from 'react';
+import { getPublicProducts } from '../../services/publicCatalogApi';
+import type { PublicProduct } from '../../types/publicCatalog';
+
+export interface RecommendationItem {
+  id: string;
+  slug: string;
+  name: string;
+  primaryImage: string | null;
+  dataLimit: string | null;
+  duration: string | null;
+  price: number;
+  currency: 'VND' | 'USD';
+}
+
+const toRecommendation = (product: PublicProduct): RecommendationItem | null => {
+  const variants = product.variants ?? [];
+  if (variants.length === 0) return null;
+  const cheapest = variants.reduce((acc, current) => (
+    current.currency === acc.currency && current.price < acc.price ? current : acc
+  ), variants[0]);
+  return {
+    id: product.id,
+    slug: product.slug,
+    name: product.name,
+    primaryImage: product.primaryImage ?? product.image ?? null,
+    dataLimit: cheapest.dataLimit ?? null,
+    duration: cheapest.duration ?? null,
+    price: cheapest.price,
+    currency: cheapest.currency,
+  };
+};
+
+export const useProductRecommendations = (
+  product: PublicProduct | null,
+  limit = 3,
+): {
+  items: RecommendationItem[];
+  loaded: boolean;
+} => {
+  const [items, setItems] = useState<RecommendationItem[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!product) {
+      queueMicrotask(() => {
+        setItems([]);
+        setLoaded(false);
+      });
+      return;
+    }
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      setItems([]);
+      setLoaded(false);
+    });
+
+    const coverageId = product.coverageIds?.[0];
+    const filters = {
+      coverage: coverageId,
+      pageSize: 24,
+      sort: 'featured' as const,
+    };
+
+    getPublicProducts(filters, controller.signal)
+      .then((products) => {
+        const others = products.filter((entry) => entry.id !== product.id && entry.status === 'active');
+        const ranked = [
+          ...others.filter((entry) => entry.featured),
+          ...others.filter((entry) => !entry.featured),
+        ];
+        const mapped = ranked
+          .map(toRecommendation)
+          .filter((entry): entry is RecommendationItem => entry !== null)
+          .slice(0, limit);
+        setItems(mapped);
+        setLoaded(true);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        setItems([]);
+        setLoaded(true);
+      });
+
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-run when product identity or limit changes; product fields are captured each render.
+  }, [product?.id, limit]);
+
+  return { items, loaded };
+};

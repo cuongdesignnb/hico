@@ -1,0 +1,21 @@
+.sheet-variant-reconciliation { display: grid; gap: 16px; }
+.sheet-variant-reconciliation > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.sheet-variant-reconciliation h2, .sheet-variant-reconciliation h3, .sheet-variant-reconciliation h4 { margin: 0; }
+.sheet-variant-reconciliation header p { margin: 4px 0 0; color: #56616f; }
+.sheet-reconciliation-message { margin: 0; color: #b42318; }
+.sheet-reconciliation-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .8fr); gap: 16px; align-items: start; }
+.sheet-reconciliation-table-wrap, .sheet-reconciliation-detail { overflow: auto; border: 1px solid #d9dee7; background: #fff; }
+.sheet-reconciliation-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sheet-reconciliation-table-wrap th, .sheet-reconciliation-table-wrap td { padding: 10px; border-bottom: 1px solid #e8ecf1; text-align: left; vertical-align: top; }
+.sheet-reconciliation-table-wrap th { background: #f8fafc; }
+.sheet-reconciliation-table-wrap tr.is-selected { background: #eff6ff; }
+.sheet-reconciliation-detail { display: grid; gap: 12px; padding: 16px; }
+.sheet-reconciliation-detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
+.sheet-reconciliation-detail dt { color: #56616f; }
+.sheet-reconciliation-detail dd { margin: 0; overflow-wrap: anywhere; }
+.sheet-reconciliation-suggestion { display: grid; gap: 6px; padding: 12px; border: 1px solid #d9dee7; }
+.sheet-reconciliation-suggestion span, .sheet-reconciliation-suggestion small { color: #56616f; overflow-wrap: anywhere; }
+.sheet-reconciliation-suggestion .warning { display: flex; gap: 4px; align-items: center; color: #b54708; }
+.sheet-reconciliation-empty { padding: 20px; color: #56616f; }
+.icon-text-button { display: inline-flex; align-items: center; gap: 5px; border: 0; background: transparent; color: #175cd3; cursor: pointer; }
+@media (max-width: 900px) { .sheet-reconciliation-layout { grid-template-columns: 1fr; } .sheet-variant-reconciliation > header { align-items: flex-start; } }

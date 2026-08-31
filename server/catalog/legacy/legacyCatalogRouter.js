@@ -27,12 +27,20 @@ export const createLegacyCatalogRouter = ({
   destinationsStore,
   packagesStore,
   catalogGuard = (_req, _res, next) => next(),
+  mediaAssetRepository = null,
 } = {}) => {
   const service = legacyCatalogService ?? createLegacyCatalogService({
     destinationsStore,
     packagesStore,
   });
   const router = express.Router();
+  const resolveMediaInput = async (input = {}) => {
+    if (!Object.prototype.hasOwnProperty.call(input, 'imageMediaId') || !mediaAssetRepository) return input;
+    if (input.imageMediaId === null || input.imageMediaId === '') return { ...input, image: '' };
+    const asset = await mediaAssetRepository.getById(input.imageMediaId);
+    if (!asset) throw new LegacyCatalogProjectionError('MediaAsset không tồn tại hoặc đã archive.');
+    return { ...input, image: asset.publicUrl };
+  };
   router.use(['/admin/destinations', '/admin/packages', '/admin/catalog/legacy-parity'], catalogGuard);
 
   router.get('/admin/destinations', async (_req, res) => {
@@ -42,18 +50,18 @@ export const createLegacyCatalogRouter = ({
       return sendError(res, error);
     }
   });
-  router.post('/admin/destinations', (req, res) => {
+  router.post('/admin/destinations', async (req, res) => {
     try {
-      return res.json(service.createDestination(req.body));
+      return res.json(service.createDestination(await resolveMediaInput(req.body)));
     } catch (error) {
       return sendError(res, error);
     }
   });
-  router.put('/admin/destinations/:id', (req, res) => {
+  router.put('/admin/destinations/:id', async (req, res) => {
     try {
       return sendResult(
         res,
-        service.updateDestination(req.params.id, req.body),
+        service.updateDestination(req.params.id, await resolveMediaInput(req.body)),
         'Destination not found',
       );
     } catch (error) {
@@ -75,18 +83,18 @@ export const createLegacyCatalogRouter = ({
       return sendError(res, error);
     }
   });
-  router.post('/admin/packages', (req, res) => {
+  router.post('/admin/packages', async (req, res) => {
     try {
-      return res.json(service.createPackage(req.body));
+      return res.json(service.createPackage(await resolveMediaInput(req.body)));
     } catch (error) {
       return sendError(res, error);
     }
   });
-  router.put('/admin/packages/:id', (req, res) => {
+  router.put('/admin/packages/:id', async (req, res) => {
     try {
       return sendResult(
         res,
-        service.updatePackage(req.params.id, req.body),
+        service.updatePackage(req.params.id, await resolveMediaInput(req.body)),
         'Package not found',
       );
     } catch (error) {

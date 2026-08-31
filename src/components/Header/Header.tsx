@@ -71,15 +71,15 @@ export const Header: React.FC = () => {
               <span className="currency-text">{currency === 'VND' ? 'VND / USD' : 'USD / VND'}</span><ChevronDown size={14} className="currency-chevron" />
             </button>
             <button className="cart-btn-header" onClick={openCart} aria-label="Cart"><span className="cart-icon-wrapper"><ShoppingCart size={20} />{cartItemCount > 0 && <span className="cart-badge">{cartItemCount}</span>}</span></button>
-            <button className="login-btn-header" onClick={openAccount}><LogIn size={16} /><span>{status === 'authenticated' ? user?.displayName || 'Admin' : 'Dang nhap'}</span></button>
+            <button className="login-btn-header" onClick={openAccount}><LogIn size={16} /><span>{status === 'authenticated' ? user?.displayName || 'Admin' : 'Đăng nhập'}</span></button>
             <button className="icon-btn mobile-menu-toggle" onClick={() => setIsMobileMenuOpen((open) => !open)} aria-label="Open navigation">{isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}</button>
           </div>
         </div>
         <nav className="desktop-nav-row" aria-label="Main navigation">
           <Link to="/diem-den" className="nav-link-item">Diem den</Link>
-          <Link to="/san-pham" className="nav-link-item">San pham</Link>
-          <Link to="/nap-them" className="nav-link-item">Nap them</Link>
-          <Link to="/thiet-bi" className="nav-link-item">Thiet bi 4G / 5G</Link>
+          <Link to="/san-pham" className="nav-link-item">Sản phẩm</Link>
+          <Link to="/nap-them" className="nav-link-item">Nạp thêm</Link>
+          <Link to="/thiet-bi" className="nav-link-item">Thiết bị 4G / 5G</Link>
           <Link to="/bai-viet" className="nav-link-item">Huong dan</Link>
           <button onClick={() => goToSection('reviews-and-articles')} className="nav-link-item">Tin tuc</button>
         </nav>
@@ -88,11 +88,11 @@ export const Header: React.FC = () => {
         <div className="mobile-drawer-header"><Link to="/" className="logo-link" onClick={() => setIsMobileMenuOpen(false)}><Logo /></Link><button className="icon-btn" onClick={() => setIsMobileMenuOpen(false)} aria-label="Close navigation"><X size={24} /></button></div>
         <nav className="mobile-nav" aria-label="Mobile navigation">
           <Link to="/diem-den" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Diem den</Link>
-          <Link to="/san-pham" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">San pham</Link>
-          <Link to="/nap-them" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Nap them</Link>
-          <Link to="/thiet-bi" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Thiet bi</Link>
+          <Link to="/san-pham" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Sản phẩm</Link>
+          <Link to="/nap-them" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Nạp thêm</Link>
+          <Link to="/thiet-bi" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Thiết bị</Link>
           <Link to="/bai-viet" onClick={() => setIsMobileMenuOpen(false)} className="mobile-nav-link">Huong dan</Link>
-          <div className="mobile-drawer-footer"><button className="mobile-action-btn primary" onClick={openAccount}>Dang nhap</button></div>
+          <div className="mobile-drawer-footer"><button className="mobile-action-btn primary" onClick={openAccount}>Đăng nhập</button></div>
         </nav>
       </div>
       {isMobileMenuOpen && <div className="drawer-overlay" onClick={() => setIsMobileMenuOpen(false)} />}

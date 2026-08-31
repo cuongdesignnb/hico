@@ -1,0 +1,67 @@
+.google-sheet-settings-shell { display: grid; gap: 16px; margin-bottom: 20px; }
+.google-sheet-guide { display: grid; gap: 14px; padding: 20px; background: #f8fbfc; border: 1px solid #cfe4e8; border-radius: 8px; }
+.google-sheet-guide-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; color: #16324f; }
+.google-sheet-guide-header h3 { margin: 0; }
+.google-sheet-guide-header p:not(.google-sheet-settings-eyebrow) { margin: 5px 0 0; color: #52606d; font-size: 13px; }
+.google-sheet-guide-notice, .google-sheet-guide-warning { display: flex; align-items: flex-start; gap: 9px; padding: 12px 14px; color: #694d00; background: #fff8e5; border: 1px solid #f0d58a; border-radius: 6px; font-size: 13px; line-height: 1.55; }
+.google-sheet-guide-notice svg, .google-sheet-guide-warning svg { flex: 0 0 auto; margin-top: 2px; }
+.google-sheet-guide-steps { display: grid; gap: 8px; }
+.google-sheet-guide-step { overflow: hidden; background: #fff; border: 1px solid #d9e2e8; border-radius: 6px; }
+.google-sheet-guide-step-toggle, .google-sheet-guide-subsection-toggle { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border: 0; color: #172b4d; background: transparent; text-align: left; font: inherit; font-weight: 700; cursor: pointer; }
+.google-sheet-guide-step-toggle:hover, .google-sheet-guide-step-toggle:focus-visible, .google-sheet-guide-subsection-toggle:hover, .google-sheet-guide-subsection-toggle:focus-visible { background: #eef6f8; }
+.google-sheet-guide-step-toggle svg, .google-sheet-guide-subsection-toggle svg { transition: transform .18s ease; }
+.google-sheet-guide-step-toggle svg.is-open, .google-sheet-guide-subsection-toggle svg.is-open { transform: rotate(180deg); }
+.google-sheet-guide-step-number { display: grid; place-items: center; width: 24px; height: 24px; color: #fff; background: #167c80; border-radius: 50%; font-size: 12px; }
+.google-sheet-guide-step-content { padding: 0 48px 16px; color: #344563; font-size: 13px; line-height: 1.65; }
+.google-sheet-guide-step-content p { margin: 0 0 10px; }
+.google-sheet-guide-step-content p:last-child { margin-bottom: 0; }
+.google-sheet-guide-step-content ul, .google-sheet-guide-step-content ol { margin: 0 0 10px; padding-left: 20px; }
+.google-sheet-guide-step-content a { display: inline-flex; align-items: center; gap: 4px; color: #086f73; font-weight: 700; }
+.google-sheet-guide-step-content code, .google-sheet-guide-errors code { overflow-wrap: anywhere; color: #16324f; background: #eef2f4; border-radius: 3px; padding: 1px 4px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+.google-sheet-guide-check { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.google-sheet-guide-check input { width: 16px; height: 16px; accent-color: #167c80; }
+.google-sheet-guide-subsection { overflow: hidden; background: #fff; border: 1px solid #d9e2e8; border-radius: 6px; }
+.google-sheet-guide-subsection-toggle { grid-template-columns: minmax(0, 1fr) auto; }
+.google-sheet-guide-errors { display: grid; gap: 10px; margin: 0; padding: 0 16px 16px; }
+.google-sheet-guide-errors div { display: grid; gap: 4px; }
+.google-sheet-guide-errors dt, .google-sheet-guide-errors dd { margin: 0; }
+.google-sheet-guide-errors dt { color: #a32935; font-weight: 700; }
+.google-sheet-guide-errors dd { color: #52606d; font-size: 13px; line-height: 1.5; }
+.google-sheet-settings-header, .google-sheet-panel-heading, .google-sheet-status-heading, .google-sheet-action-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.google-sheet-settings-header { padding: 22px; color: #16324f; background: #eef6f8; border: 1px solid #cfe4e8; border-radius: 8px; }
+.google-sheet-settings-header h2, .google-sheet-panel-heading h3 { margin: 0; }
+.google-sheet-settings-header p, .google-sheet-panel-heading p { margin: 5px 0 0; color: #52606d; font-size: 13px; }
+.google-sheet-settings-eyebrow { color: #167c80 !important; font-size: 12px !important; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.google-sheet-settings-status, .google-sheet-settings-panel, .google-sheet-test-result { padding: 20px; background: #fff; border: 1px solid #d9e2e8; border-radius: 8px; }
+.google-sheet-status-success { border-color: #a7d9bd; background: #f4fcf7; }
+.google-sheet-status-failed { border-color: #f1b4b4; background: #fff8f8; }
+.google-sheet-status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #9aa6b2; }
+.google-sheet-status-success .google-sheet-status-dot { background: #17834b; }
+.google-sheet-status-failed .google-sheet-status-dot { background: #bb2d3b; }
+.google-sheet-status-grid, .google-sheet-test-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 16px 0 0; }
+.google-sheet-status-grid div, .google-sheet-test-grid div { min-width: 0; }
+.google-sheet-status-grid dt, .google-sheet-test-grid dt { color: #687681; font-size: 11px; }
+.google-sheet-status-grid dd, .google-sheet-test-grid dd { margin: 3px 0 0; color: #172b4d; overflow-wrap: anywhere; font-size: 13px; }
+.google-sheet-settings-warning, .google-sheet-settings-error-code, .google-sheet-settings-hint { margin: 14px 0 0; color: #7a4d00; font-size: 12px; }
+.google-sheet-settings-error-code { color: #a32935; }
+.google-sheet-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.google-sheet-field { display: grid; gap: 6px; color: #344563; font-size: 13px; font-weight: 600; }
+.google-sheet-field-wide { grid-column: 1 / -1; }
+.google-sheet-field input, .google-sheet-field textarea { width: 100%; box-sizing: border-box; border: 1px solid #c7d2dc; border-radius: 6px; padding: 10px 12px; color: #172b4d; background: #fff; font: inherit; font-weight: 400; }
+.google-sheet-field textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+.google-sheet-toggle { display: flex; align-items: center; gap: 9px; color: #172b4d; font-size: 13px; font-weight: 600; }
+.google-sheet-toggle input { width: 17px; height: 17px; accent-color: #167c80; }
+.google-sheet-guardrails { display: grid; align-content: center; gap: 7px; color: #167c80; font-size: 12px; }
+.google-sheet-guardrails span { display: flex; align-items: center; gap: 6px; }
+.google-sheet-action-row { justify-content: flex-start; flex-wrap: wrap; margin-top: 18px; }
+.google-sheet-action-row button { display: inline-flex; align-items: center; gap: 7px; }
+.google-sheet-discovery-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.google-sheet-discovery-result { display: grid; gap: 4px; grid-column: 1 / -1; padding: 12px 14px; color: #344563; background: #f4fcf7; border: 1px solid #a7d9bd; border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; }
+.google-sheet-danger-button { color: #a32935 !important; border-color: #e5a5ab !important; }
+.google-sheet-test-result { background: #f4fcf7; border-color: #a7d9bd; }
+.google-sheet-settings-message, .google-sheet-settings-error { margin: 0; padding: 12px 14px; border-radius: 6px; font-size: 13px; }
+.google-sheet-settings-message { color: #146c43; background: #e7f6ec; }
+.google-sheet-settings-error { color: #a32935; background: #fff0f1; }
+@media (max-width: 720px) { .google-sheet-settings-header, .google-sheet-panel-heading, .google-sheet-status-heading { align-items: flex-start; flex-direction: column; } .google-sheet-form-grid, .google-sheet-status-grid, .google-sheet-test-grid { grid-template-columns: 1fr; } .google-sheet-field-wide { grid-column: auto; } .google-sheet-action-row button { width: 100%; justify-content: center; } }
+@media (max-width: 390px) { .google-sheet-discovery-actions { display: grid; } .google-sheet-discovery-actions button { width: 100%; } }
+@media (max-width: 390px) { .google-sheet-guide, .google-sheet-settings-panel, .google-sheet-settings-status, .google-sheet-test-result { padding: 14px; } .google-sheet-guide-step-content { padding: 0 14px 14px; } .google-sheet-guide-step-toggle { padding: 11px; } }

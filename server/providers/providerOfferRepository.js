@@ -67,6 +67,13 @@ export const createProviderOfferRepository = ({
       return offers.find((offer) => offer.id === offerId) ?? null;
     },
 
+    // Used by an approved catalog Sheet batch. This deliberately does not
+    // deactivate offers that are absent from the Sheet.
+    async replaceOffers(offers) {
+      await writeOffers(offers);
+      return offers;
+    },
+
     async replaceFromSync(incomingOffers, syncedAt) {
       validateProviderOffers(incomingOffers);
       const existingOffers = await readOffers();

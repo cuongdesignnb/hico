@@ -1,0 +1,3295 @@
+From e444d830a5f868fd18b5d6901aba8eace2ccbaea Mon Sep 17 00:00:00 2001
+From: cuongdesignnb <132921532+cuongdesignnb@users.noreply.github.com>
+Date: Sat, 29 Aug 2026 09:13:30 +0700
+Subject: [PATCH] feat(admin): redesign product management UI
+
+- redesign product catalog layout, filters and KPI cards
+- add product detail previews for variants, fulfillment, media and SEO
+- preserve existing catalog write contracts and currency boundaries
+- improve responsive product management experience
+---
+ src/components/Admin/Catalog/CatalogTab.css   | 1410 +++++++++++++++++
+ src/components/Admin/Catalog/CatalogTab.tsx   |  332 ++--
+ .../Admin/Catalog/ProductActivityFeed.tsx     |  111 ++
+ .../Admin/Catalog/ProductFilters.tsx          |  199 +++
+ .../Catalog/ProductFulfillmentPreview.tsx     |   96 ++
+ .../Admin/Catalog/ProductMediaPreview.tsx     |   32 +
+ .../Admin/Catalog/ProductOverviewPanel.tsx    |  195 +++
+ .../Admin/Catalog/ProductSeoPreview.tsx       |   54 +
+ .../Admin/Catalog/ProductStatsCards.tsx       |   86 +
+ src/components/Admin/Catalog/ProductTable.tsx |  235 ++-
+ .../Admin/Catalog/ProductVariantsPreview.tsx  |   91 ++
+ .../ProductWizard/ProductGeneralStep.tsx      |   11 +-
+ .../Catalog/ProductWizard/ProductWizard.css   |    3 +-
+ src/components/Admin/Catalog/productLabels.ts |   96 ++
+ src/services/catalogApi.ts                    |    2 +-
+ src/services/catalogWriteApi.ts               |    6 +-
+ 16 files changed, 2740 insertions(+), 219 deletions(-)
+ create mode 100644 src/components/Admin/Catalog/ProductActivityFeed.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductFilters.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductFulfillmentPreview.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductMediaPreview.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductOverviewPanel.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductSeoPreview.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductStatsCards.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductVariantsPreview.tsx
+ create mode 100644 src/components/Admin/Catalog/productLabels.ts
+
+diff --git a/src/components/Admin/Catalog/CatalogTab.css b/src/components/Admin/Catalog/CatalogTab.css
+index af141ae..21e8a35 100644
+--- a/src/components/Admin/Catalog/CatalogTab.css
++++ b/src/components/Admin/Catalog/CatalogTab.css
+@@ -773,3 +773,1413 @@
+     grid-template-columns: 1fr;
+   }
+ }
++
++/* === Product Admin Redesign CSS === */
++
++/* Tab Header */
++.catalog-tab__header {
++  display: flex;
++  align-items: flex-start;
++  justify-content: space-between;
++  gap: 16px;
++  padding: 18px 20px;
++  border-bottom: 1px solid var(--admin-border);
++}
++
++.catalog-tab__header-info h2 {
++  margin: 0;
++  color: var(--admin-text-dark);
++  font-size: 16px;
++}
++
++.catalog-tab__header-info p {
++  margin: 4px 0 0;
++  color: var(--admin-text-light);
++  font-size: 12px;
++}
++
++.catalog-tab__breadcrumb {
++  display: block;
++  color: var(--admin-text-light);
++  font-size: 11px;
++  margin-bottom: 4px;
++}
++
++.catalog-tab__header-actions {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  flex-wrap: wrap;
++}
++
++.catalog-secondary-outline-button {
++  display: inline-flex;
++  align-items: center;
++  gap: 6px;
++  min-height: 34px;
++  padding: 7px 11px;
++  border: 1px solid var(--admin-border);
++  border-radius: 6px;
++  background: #fff;
++  color: var(--admin-text-dark);
++  font-size: 12px;
++  cursor: pointer;
++}
++
++.catalog-secondary-outline-button:hover {
++  border-color: var(--admin-primary);
++  color: var(--admin-primary);
++}
++
++.catalog-secondary-outline-button:disabled {
++  cursor: not-allowed;
++  opacity: 0.5;
++}
++
++/* Summary row */
++.catalog-tab__summary {
++  display: grid;
++  grid-template-columns: repeat(4, minmax(0, 1fr));
++  border-bottom: 1px solid var(--admin-border);
++  background: #f8fafc;
++}
++
++.catalog-tab__summary > div {
++  min-width: 0;
++  padding: 14px 20px;
++  border-right: 1px solid var(--admin-border);
++}
++
++.catalog-tab__summary > div:last-child {
++  border-right: 0;
++}
++
++.catalog-tab__summary span {
++  display: block;
++  color: var(--admin-text-light);
++  font-size: 11px;
++  margin-bottom: 4px;
++}
++
++.catalog-tab__summary strong {
++  display: block;
++  color: var(--admin-text-dark);
++  font-size: 15px;
++  overflow-wrap: anywhere;
++}
++
++/* KPI Cards */
++.catalog-kpi-grid {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
++  gap: 12px;
++  padding: 16px 20px;
++  border-bottom: 1px solid var(--admin-border);
++}
++
++.catalog-kpi-card {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  padding: 12px 14px;
++  border-radius: 8px;
++  border: 1px solid transparent;
++}
++
++.catalog-kpi-card--primary { background: #eff6ff; border-color: #bfdbfe; }
++.catalog-kpi-card--success { background: #f0fdf4; border-color: #bbf7d0; }
++.catalog-kpi-card--warning { background: #fffbeb; border-color: #fde68a; }
++.catalog-kpi-card--neutral { background: #f9fafb; border-color: var(--admin-border); }
++.catalog-kpi-card--info { background: #f5f3ff; border-color: #ddd6fe; }
++
++.catalog-kpi-card__icon {
++  flex-shrink: 0;
++  width: 36px;
++  height: 36px;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  border-radius: 8px;
++}
++
++.catalog-kpi-card--primary .catalog-kpi-card__icon { background: #dbeafe; color: #1d4ed8; }
++.catalog-kpi-card--success .catalog-kpi-card__icon { background: #dcfce7; color: #15803d; }
++.catalog-kpi-card--warning .catalog-kpi-card__icon { background: #fef3c7; color: #b45309; }
++.catalog-kpi-card--neutral .catalog-kpi-card__icon { background: #f3f4f6; color: #6b7280; }
++.catalog-kpi-card--info .catalog-kpi-card__icon { background: #ede9fe; color: #7c3aed; }
++
++.catalog-kpi-card__body {
++  min-width: 0;
++}
++
++.catalog-kpi-card__label {
++  color: var(--admin-text-light);
++  font-size: 11px;
++}
++
++.catalog-kpi-card__value {
++  color: var(--admin-text-dark);
++  font-size: 18px;
++  font-weight: 700;
++}
++
++.catalog-kpi-card__sub {
++  color: var(--admin-text-light);
++  font-size: 10px;
++}
++
++/* Filters section */
++.catalog-filters-section {
++  padding: 16px 20px;
++  border-bottom: 1px solid var(--admin-border);
++}
++
++.catalog-filters-row {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  flex-wrap: wrap;
++}
++
++.catalog-search-wrapper {
++  position: relative;
++  flex: 1;
++  min-width: 200px;
++  max-width: 320px;
++}
++
++.catalog-search-icon {
++  position: absolute;
++  left: 10px;
++  top: 50%;
++  transform: translateY(-50%);
++  color: var(--admin-text-light);
++  pointer-events: none;
++}
++
++.catalog-search-input {
++  width: 100%;
++  height: 36px;
++  padding: 0 10px 0 34px;
++  border: 1px solid var(--admin-border);
++  border-radius: 6px;
++  font-size: 12px;
++  color: var(--admin-text-dark);
++  background: #fff;
++}
++
++.catalog-search-input:focus {
++  border-color: var(--admin-primary);
++  outline: none;
++}
++
++.catalog-filters-grid {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  flex-wrap: wrap;
++}
++
++.catalog-filter-label {
++  color: var(--admin-text-light);
++  font-size: 11px;
++  font-weight: 600;
++}
++
++.catalog-chips {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  flex-wrap: wrap;
++}
++
++.catalog-chip {
++  display: inline-flex;
++  align-items: center;
++  gap: 4px;
++  padding: 5px 10px;
++  border: 1px solid var(--admin-border);
++  border-radius: 16px;
++  background: #fff;
++  color: var(--admin-text-dark);
++  font-size: 11px;
++  cursor: pointer;
++  white-space: nowrap;
++}
++
++.catalog-chip:hover {
++  border-color: var(--admin-primary);
++  color: var(--admin-primary);
++}
++
++.catalog-chip.is-active {
++  background: var(--admin-primary);
++  border-color: var(--admin-primary);
++  color: #fff;
++}
++
++/* Tab split layout */
++.catalog-tab__split {
++  display: flex;
++  min-height: 0;
++}
++
++.catalog-tab__list {
++  flex: 1;
++  min-width: 0;
++  overflow-x: auto;
++}
++
++.catalog-tab__side {
++  width: 340px;
++  flex-shrink: 0;
++  border-left: 1px solid var(--admin-border);
++  display: flex;
++  flex-direction: column;
++  overflow-y: auto;
++  max-height: 500px;
++}
++
++/* Overview panel */
++.catalog-overview-panel {
++  border-bottom: 1px solid var(--admin-border);
++  background: #fff;
++}
++
++.catalog-overview-panel__head {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 8px;
++  padding: 12px 14px;
++  border-bottom: 1px solid var(--admin-border);
++}
++
++.catalog-overview-panel__head-info {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++}
++
++.catalog-overview-panel__head-product {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  min-width: 0;
++}
++
++.catalog-overview-panel__avatar {
++  width: 36px;
++  height: 36px;
++  border-radius: 6px;
++  object-fit: cover;
++  background: #eef2f7;
++  flex-shrink: 0;
++}
++
++.catalog-overview-panel__avatar--placeholder {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  background: #e0f2fe;
++  color: #0369a1;
++  font-size: 12px;
++  font-weight: 800;
++}
++
++.catalog-overview-panel__title {
++  min-width: 0;
++  overflow: hidden;
++}
++
++.catalog-overview-panel__title strong {
++  display: block;
++  color: var(--admin-text-dark);
++  font-size: 12.5px;
++  white-space: nowrap;
++  overflow: hidden;
++  text-overflow: ellipsis;
++}
++
++.catalog-overview-panel__title span {
++  display: block;
++  color: var(--admin-text-light);
++  font-size: 10.5px;
++}
++
++.catalog-overview-panel__close {
++  flex-shrink: 0;
++  width: 28px;
++  height: 28px;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  border: none;
++  border-radius: 4px;
++  background: transparent;
++  color: var(--admin-text-light);
++  cursor: pointer;
++}
++
++.catalog-overview-panel__close:hover {
++  background: #f3f4f6;
++  color: var(--admin-text-dark);
++}
++
++.catalog-overview-panel__body {
++  padding: 12px 14px;
++}
++
++.catalog-overview-section {
++  margin-bottom: 12px;
++}
++
++.catalog-overview-section:last-child {
++  margin-bottom: 0;
++}
++
++.catalog-overview-section strong {
++  display: block;
++  color: var(--admin-text-light);
++  font-size: 10px;
++  text-transform: uppercase;
++  margin-bottom: 4px;
++}
++
++.catalog-overview-placeholder {
++  flex: 1;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  gap: 8px;
++  padding: 24px 16px;
++  color: var(--admin-text-light);
++  text-align: center;
++}
++
++.catalog-overview-placeholder strong {
++  color: var(--admin-text-dark);
++  font-size: 13px;
++}
++
++.catalog-overview-placeholder span {
++  font-size: 11px;
++}
++
++/* Activity feed / Queue summary */
++.catalog-activity-feed {
++  flex: 1;
++  padding: 12px 14px;
++  border-top: 1px solid var(--admin-border);
++}
++
++.catalog-activity-feed__heading {
++  margin-bottom: 10px;
++}
++
++.catalog-activity-feed__heading h3 {
++  margin: 0 0 4px;
++  color: var(--admin-text-dark);
++  font-size: 12px;
++}
++
++.catalog-activity-feed__heading span {
++  color: var(--admin-text-light);
++  font-size: 10.5px;
++}
++
++.catalog-activity-feed__list {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++  list-style: none;
++  margin: 0;
++  padding: 0;
++}
++
++.catalog-activity-feed__item {
++  display: flex;
++  align-items: flex-start;
++  gap: 8px;
++  width: 100%;
++  padding: 8px 10px;
++  border: 1px solid var(--admin-border);
++  border-radius: 6px;
++  background: #fff;
++  text-align: left;
++  cursor: pointer;
++  font-size: 11px;
++}
++
++.catalog-activity-feed__item:hover {
++  border-color: var(--admin-primary);
++}
++
++.catalog-activity-feed__item--warning { border-color: #fde68a; background: #fffbeb; }
++.catalog-activity-feed__item--info { border-color: #bfdbfe; background: #eff6ff; }
++.catalog-activity-feed__item--danger { border-color: #fecaca; background: #fef2f2; }
++.catalog-activity-feed__item--neutral { border-color: var(--admin-border); background: #f9fafb; }
++
++.catalog-activity-feed__icon {
++  flex-shrink: 0;
++  width: 20px;
++  height: 20px;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  border-radius: 4px;
++}
++
++.catalog-activity-feed__item--warning .catalog-activity-feed__icon { background: #fef3c7; color: #b45309; }
++.catalog-activity-feed__item--info .catalog-activity-feed__icon { background: #dbeafe; color: #1d4ed8; }
++.catalog-activity-feed__item--danger .catalog-activity-feed__icon { background: #fef2f2; color: #b91c1c; }
++.catalog-activity-feed__item--neutral .catalog-activity-feed__icon { background: #f3f4f6; color: #6b7280; }
++
++.catalog-activity-feed__body {
++  flex: 1;
++  min-width: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++}
++
++.catalog-activity-feed__body strong {
++  color: var(--admin-text-dark);
++  font-size: 11px;
++}
++
++.catalog-activity-feed__body span {
++  color: var(--admin-text-light);
++  font-size: 10px;
++}
++
++.catalog-activity-feed__tab.is-active {
++  background: var(--admin-primary);
++  border-color: var(--admin-primary);
++  color: #fff;
++}
++
++.catalog-activity-feed__list {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++}
++
++.catalog-activity-item {
++  display: flex;
++  align-items: flex-start;
++  gap: 8px;
++  padding: 8px 10px;
++  border: 1px solid var(--admin-border);
++  border-radius: 6px;
++  background: #fff;
++  font-size: 11px;
++}
++
++.catalog-activity-item__icon {
++  flex-shrink: 0;
++  width: 20px;
++  height: 20px;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  border-radius: 4px;
++}
++
++.catalog-activity-item__icon--warning { background: #fef3c7; color: #b45309; }
++.catalog-activity-item__icon--error { background: #fef2f2; color: #b91c1c; }
++.catalog-activity-item__icon--info { background: #eff6ff; color: #1d4ed8; }
++
++.catalog-activity-item__content {
++  min-width: 0;
++}
++
++.catalog-activity-item__title {
++  color: var(--admin-text-dark);
++  font-weight: 600;
++}
++
++.catalog-activity-item__meta {
++  color: var(--admin-text-light);
++  font-size: 10px;
++  margin-top: 2px;
++}
++
++.catalog-activity-empty {
++  padding: 16px;
++  text-align: center;
++  color: var(--admin-text-light);
++  font-size: 11px;
++}
++
++/* Empty state */
++.catalog-tab__empty {
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  gap: 10px;
++  padding: 40px 20px;
++  text-align: center;
++  color: var(--admin-text-light);
++}
++
++.catalog-tab__empty strong {
++  color: var(--admin-text-dark);
++  font-size: 14px;
++}
++
++/* Overview panel extra styles */
++.catalog-overview-panel__head-product {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  min-width: 0;
++}
++
++.catalog-overview-panel__title {
++  min-width: 0;
++  flex: 1;
++}
++
++.catalog-overview-panel__title strong {
++  display: block;
++  color: var(--admin-text-dark);
++  font-size: 12px;
++  white-space: nowrap;
++  overflow: hidden;
++  text-overflow: ellipsis;
++}
++
++.catalog-overview-panel__title span {
++  color: var(--admin-text-light);
++  font-size: 10px;
++}
++
++.catalog-overview-panel__actions {
++  display: flex;
++  gap: 8px;
++  flex-wrap: wrap;
++  padding: 8px 0;
++}
++
++.catalog-overview-panel__tabs {
++  display: flex;
++  gap: 4px;
++  padding: 8px 0;
++  border-bottom: 1px solid var(--admin-border);
++  flex-wrap: wrap;
++}
++
++.catalog-overview-panel__tab {
++  display: inline-flex;
++  align-items: center;
++  gap: 4px;
++  padding: 4px 8px;
++  border: 0;
++  border-radius: 4px;
++  background: transparent;
++  color: var(--admin-text-medium);
++  font-size: 10.5px;
++  cursor: pointer;
++}
++
++.catalog-overview-panel__tab:hover {
++  background: #f3f4f6;
++  color: var(--admin-text-dark);
++}
++
++.catalog-overview-panel__tab.is-active {
++  background: var(--admin-primary);
++  color: #fff;
++}
++
++.catalog-overview-panel__overview {
++  padding: 8px 0;
++}
++
++.catalog-overview-panel__list {
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++}
++
++.catalog-overview-panel__list > div {
++  display: flex;
++  justify-content: space-between;
++  gap: 8px;
++}
++
++.catalog-overview-panel__list dt {
++  color: var(--admin-text-light);
++  font-size: 10.5px;
++}
++
++.catalog-overview-panel__list dd {
++  color: var(--admin-text-dark);
++  font-size: 11px;
++  font-weight: 600;
++  text-align: right;
++}
++
++.catalog-overview-panel__price {
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++}
++
++.catalog-overview-panel__price strong {
++  color: var(--admin-text-dark);
++  font-size: 16px;
++}
++
++.catalog-overview-panel__price span {
++  color: var(--admin-text-light);
++  font-size: 10px;
++}
++
++.catalog-overview-panel__price-empty {
++  color: var(--admin-text-light);
++  font-size: 11px;
++  font-style: italic;
++}
++
++.catalog-overview-panel__providers {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++
++.catalog-overview-panel__providers li {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  color: var(--admin-text-dark);
++  font-size: 11px;
++}
++
++.catalog-provider-dot__bullet {
++  width: 6px;
++  height: 6px;
++  border-radius: 50%;
++  flex-shrink: 0;
++}
++
++.catalog-provider-dot__bullet--worldmove { background: #3b82f6; }
++.catalog-provider-dot__bullet--local_carrier { background: #10b981; }
++.catalog-provider-dot__bullet--hico { background: #f59e0b; }
++.catalog-provider-dot__bullet--other { background: #6b7280; }
++
++.catalog-overview-panel__status-list {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++
++.catalog-overview-panel__status-list li {
++  display: flex;
++  justify-content: space-between;
++  font-size: 10.5px;
++}
++
++.catalog-overview-panel__status-list span {
++  color: var(--admin-text-light);
++}
++
++.catalog-overview-panel__status-list strong {
++  color: var(--admin-text-dark);
++  font-weight: 600;
++}
++
++.catalog-overview-panel__hint {
++  margin: 8px 0 0;
++  padding: 6px 8px;
++  background: #fffbeb;
++  border: 1px solid #fde68a;
++  border-radius: 4px;
++  color: #92400e;
++  font-size: 10px;
++  line-height: 1.4;
++}
++
++.catalog-overview-panel__hint strong {
++  color: #92400e;
++}
++
++.catalog-overview-panel__footnote {
++  margin: 12px 0 0;
++  padding: 8px;
++  background: #f8fafc;
++  border-radius: 4px;
++  color: var(--admin-text-light);
++  font-size: 10px;
++}
++
++.catalog-mono {
++  font-family: monospace;
++  font-size: 10px;
++}
++
++.catalog-price-multi {
++  color: #7c3aed;
++  font-weight: 600;
++  font-size: 11px;
++}
++
++@media (max-width: 1200px) {
++  .catalog-tab__side {
++    position: fixed;
++    right: 0;
++    top: 0;
++    bottom: 0;
++    z-index: 110;
++    width: min(420px, 100vw);
++    max-height: none;
++    background: #fff;
++    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
++    transform: translateX(100%);
++    transition: transform 0.2s ease;
++  }
++
++  .catalog-tab__side.is-open {
++    transform: translateX(0);
++  }
++}
++
++/* Quick filter chips */
++.catalog-quick-chips {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  flex-wrap: wrap;
++  padding: 10px 0 0;
++}
++
++.catalog-quick-chip {
++  display: inline-flex;
++  align-items: center;
++  gap: 4px;
++  padding: 5px 10px;
++  border: 1px solid var(--admin-border);
++  border-radius: 16px;
++  background: #fff;
++  color: var(--admin-text-dark);
++  font-size: 11px;
++  cursor: pointer;
++  white-space: nowrap;
++}
++
++.catalog-quick-chip:hover {
++  border-color: var(--admin-primary);
++  color: var(--admin-primary);
++}
++
++.catalog-quick-chip.is-active,
++.catalog-quick-chip--medium.is-active {
++  background: var(--admin-primary);
++  border-color: var(--admin-primary);
++  color: #fff;
++}
++
++.catalog-quick-chip--status.is-active {
++  background: #059669;
++  border-color: #059669;
++  color: #fff;
++}
++
++.catalog-quick-chip--review.is-active {
++  background: #d97706;
++  border-color: #d97706;
++  color: #fff;
++}
++
++.catalog-quick-chip--reset {
++  background: #f3f4f6;
++  border-color: #e5e7eb;
++  color: #6b7280;
++}
++
++.catalog-quick-chip--reset:hover {
++  background: #fef3c7;
++  border-color: #fcd34d;
++  color: #92400e;
++}
++
++/* === Preview Components CSS === */
++
++/* Filter styling */
++.catalog-filter-label {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++
++.catalog-filter-label > span {
++  display: block;
++  margin-bottom: 2px;
++  color: var(--admin-text-light);
++  font-size: 11px;
++  font-weight: 600;
++}
++
++.catalog-filter-label select {
++  min-width: 130px;
++  height: 36px;
++  padding: 0 10px;
++  border: 1px solid var(--admin-border);
++  border-radius: 6px;
++  background: #fff;
++  color: var(--admin-text-dark);
++  font: inherit;
++  font-size: 12px;
++  cursor: pointer;
++}
++
++.catalog-filter-label select:focus {
++  border-color: var(--admin-primary);
++  outline: none;
++}
++
++/* Search */
++.catalog-search-wrapper {
++  position: relative;
++  flex: 1;
++  min-width: 200px;
++  max-width: 320px;
++}
++
++.catalog-search-icon {
++  position: absolute;
++  left: 10px;
++  top: 50%;
++  transform: translateY(-50%);
++  color: var(--admin-text-light);
++  pointer-events: none;
++}
++
++.catalog-search-input {
++  width: 100%;
++  height: 36px;
++  padding: 0 10px 0 34px;
++  border: 1px solid var(--admin-border);
++  border-radius: 6px;
++  font-size: 12px;
++  color: var(--admin-text-dark);
++  background: #fff;
++}
++
++.catalog-search-input:focus {
++  border-color: var(--admin-primary);
++  outline: none;
++}
++
++/* Table cells */
++.catalog-product-cell {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++}
++
++.catalog-product-image {
++  width: 40px;
++  height: 40px;
++  border-radius: 6px;
++  object-fit: cover;
++  background: #eef2f7;
++  flex-shrink: 0;
++}
++
++.catalog-product-placeholder {
++  width: 40px;
++  height: 40px;
++  border-radius: 6px;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  background: #e0f2fe;
++  color: #0369a1;
++  font-weight: 800;
++  font-size: 14px;
++}
++
++.catalog-product-copy {
++  min-width: 0;
++  flex: 1;
++}
++
++.catalog-product-copy strong {
++  display: block;
++  color: var(--admin-text-dark);
++  font-size: 12.5px;
++  font-weight: 600;
++  white-space: nowrap;
++  overflow: hidden;
++  text-overflow: ellipsis;
++}
++
++.catalog-product-copy > span {
++  color: var(--admin-text-light);
++  font-size: 10.5px;
++  display: block;
++  white-space: nowrap;
++  overflow: hidden;
++  text-overflow: ellipsis;
++}
++
++.catalog-product-id {
++  font-family: monospace;
++  font-size: 10px;
++  color: var(--admin-text-light);
++}
++
++.catalog-type-cell {
++  white-space: nowrap;
++}
++
++.catalog-coverage-tag {
++  display: inline-flex;
++  padding: 3px 7px;
++  border-radius: 4px;
++  background: #f1f5f9;
++  color: var(--admin-text-medium);
++  font-size: 10px;
++  font-weight: 600;
++}
++
++.catalog-price-cell {
++  font-weight: 700;
++  color: var(--admin-text-dark);
++  white-space: nowrap;
++}
++
++.catalog-price-multi {
++  color: #7c3aed;
++  font-weight: 600;
++  font-size: 11px;
++}
++
++.catalog-currency-tag {
++  display: inline-flex;
++  padding: 2px 5px;
++  border-radius: 3px;
++  font-size: 10px;
++  font-weight: 700;
++  background: #f1f5f9;
++  color: var(--admin-text-medium);
++}
++
++.catalog-currency-tag--usd { background: #fef3c7; color: #92400e; }
++.catalog-currency-tag--vnd { background: #eff6ff; color: #1d4ed8; }
++
++.catalog-status {
++  display: inline-flex;
++  padding: 3px 7px;
++  border-radius: 4px;
++  font-size: 10.5px;
++  font-weight: 700;
++  white-space: nowrap;
++}
++
++.catalog-status-active { background: #dcfce7; color: #166534; }
++.catalog-status-draft { background: #fef3c7; color: #92400e; }
++.catalog-status-archived { background: #e5e7eb; color: #4b5563; }
++
++.catalog-medium-chip,
++.catalog-medium-tag {
++  display: inline-flex;
++  padding: 2px 6px;
++  border-radius: 10px;
++  font-size: 10px;
++  font-weight: 600;
++  background: #f1f5f9;
++  color: var(--admin-text-medium);
++}
++
++.catalog-medium-chip--esim { background: #ede9fe; color: #6d28d9; }
++.catalog-medium-tag--esim { background: #ede9fe; color: #6d28d9; }
++
++.catalog-provider-cell {
++  font-size: 11px;
++  color: var(--admin-text-dark);
++}
++
++.catalog-provider-empty {
++  color: var(--admin-text-light);
++  font-style: italic;
++}
++
++.catalog-provider-multi {
++  font-size: 10px;
++  color: var(--admin-text-light);
++}
++
++.catalog-provider-dot__bullet {
++  display: inline-block;
++  width: 6px;
++  height: 6px;
++  border-radius: 50%;
++  flex-shrink: 0;
++}
++
++.catalog-provider-dot__bullet--worldmove { background: #3b82f6; }
++.catalog-provider-dot__bullet--local_carrier { background: #10b981; }
++.catalog-provider-dot__bullet--hico { background: #f59e0b; }
++.catalog-provider-dot__bullet--other { background: #6b7280; }
++
++.catalog-inventory-tag {
++  display: inline-flex;
++  padding: 2px 6px;
++  border-radius: 3px;
++  font-size: 10px;
++  font-weight: 600;
++}
++
++.catalog-inventory-tag--ok { background: #dcfce7; color: #166534; }
++.catalog-inventory-tag--low { background: #fef3c7; color: #92400e; }
++.catalog-inventory-tag--out { background: #fef2f2; color: #991b1b; }
++.catalog-inventory-tag--provider { background: #eff6ff; color: #1d4ed8; }
++
++.catalog-inventory-empty {
++  color: var(--admin-text-light);
++  font-size: 10px;
++  font-style: italic;
++}
++
++.catalog-actions-cell {
++  display: flex;
++  gap: 4px;
++}
++
++.catalog-review-warning {
++  display: inline-flex;
++  align-items: center;
++  gap: 3px;
++  color: #b45309;
++  font-weight: 700;
++  font-size: 10px;
++}
++
++.catalog-row-selected {
++  background: #eff6ff;
++}
++
++.catalog-row-selected:hover {
++  background: #dbeafe;
++}
++
++/* Preview components */
++.catalog-preview-empty {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++  padding: 24px 16px;
++  text-align: center;
++}
++
++.catalog-preview-empty strong {
++  color: var(--admin-text-dark);
++  font-size: 12px;
++}
++
++.catalog-preview-empty span {
++  color: var(--admin-text-light);
++  font-size: 11px;
++}
++
++/* Variants preview */
++.catalog-preview-variants {
++  padding: 12px 0;
++}
++
++.catalog-preview-variants__summary {
++  display: flex;
++  gap: 12px;
++  margin-bottom: 10px;
++  font-size: 10.5px;
++  color: var(--admin-text-light);
++}
++
++.catalog-preview-variants__summary strong {
++  color: var(--admin-text-dark);
++}
++
++.catalog-preview-variants__list {
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++}
++
++.catalog-preview-variant {
++  border: 1px solid var(--admin-border);
++  border-radius: 6px;
++  overflow: hidden;
++}
++
++.catalog-preview-variant__head {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  padding: 8px 10px;
++  background: #f8fafc;
++  border-bottom: 1px solid var(--admin-border);
++}
++
++.catalog-preview-variant__head strong {
++  font-size: 11px;
++  color: var(--admin-text-dark);
++}
++
++.catalog-preview-variant__body {
++  padding: 8px 10px;
++  font-size: 10.5px;
++}
++
++.catalog-preview-variant__body > div {
++  display: flex;
++  justify-content: space-between;
++  padding: 3px 0;
++}
++
++.catalog-preview-variant__body dt {
++  color: var(--admin-text-light);
++}
++
++.catalog-preview-variant__body dd {
++  color: var(--admin-text-dark);
++  font-weight: 600;
++}
++
++.catalog-preview-variant__warning {
++  display: flex;
++  align-items: center;
++  gap: 4px;
++  padding: 4px 8px;
++  background: #fef3c7;
++  color: #92400e;
++  font-size: 10px;
++  font-weight: 600;
++}
++
++/* Fulfillment preview */
++.catalog-preview-fulfillment {
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++  padding: 12px 0;
++}
++
++.catalog-preview-fulfillment__card {
++  border: 1px solid var(--admin-border);
++  border-radius: 6px;
++  overflow: hidden;
++}
++
++.catalog-preview-fulfillment__head {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  padding: 8px 10px;
++  background: #f8fafc;
++  border-bottom: 1px solid var(--admin-border);
++}
++
++.catalog-preview-fulfillment__head strong {
++  font-size: 11px;
++  font-family: monospace;
++  color: var(--admin-text-dark);
++}
++
++.catalog-fulfillment-method {
++  display: inline-flex;
++  padding: 2px 6px;
++  border-radius: 3px;
++  background: #eff6ff;
++  color: #1d4ed8;
++  font-size: 10px;
++  font-weight: 600;
++}
++
++.catalog-preview-fulfillment__list {
++  padding: 8px 10px;
++}
++
++.catalog-preview-fulfillment__list > div {
++  display: flex;
++  justify-content: space-between;
++  padding: 3px 0;
++  font-size: 10.5px;
++}
++
++.catalog-preview-fulfillment__list dt {
++  color: var(--admin-text-light);
++}
++
++.catalog-preview-fulfillment__list dd {
++  color: var(--admin-text-dark);
++  font-weight: 600;
++}
++
++/* Media preview */
++.catalog-preview-media {
++  padding: 12px 0;
++}
++
++.catalog-preview-media__primary {
++  margin-bottom: 12px;
++}
++
++.catalog-preview-media__label {
++  display: block;
++  color: var(--admin-text-light);
++  font-size: 10px;
++  font-weight: 600;
++  margin-bottom: 6px;
++  text-transform: uppercase;
++}
++
++.catalog-preview-media__primary-image {
++  width: 80px;
++  height: 80px;
++  border-radius: 6px;
++  overflow: hidden;
++  border: 1px solid var(--admin-border);
++}
++
++.catalog-preview-media__primary-image img {
++  width: 100%;
++  height: 100%;
++  object-fit: cover;
++}
++
++.catalog-preview-media__placeholder {
++  width: 80px;
++  height: 80px;
++  border-radius: 6px;
++  border: 1px dashed var(--admin-border);
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  gap: 4px;
++  color: var(--admin-text-light);
++  font-size: 10px;
++}
++
++.catalog-preview-media__hint {
++  margin-top: 12px;
++  padding: 8px;
++  background: #f8fafc;
++  border-radius: 4px;
++  color: var(--admin-text-light);
++  font-size: 10.5px;
++}
++
++/* SEO preview */
++.catalog-preview-seo {
++  padding: 12px 0;
++}
++
++.catalog-preview-seo__row {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++  margin-bottom: 12px;
++}
++
++.catalog-preview-seo__row > span {
++  color: var(--admin-text-light);
++  font-size: 10px;
++  font-weight: 600;
++  text-transform: uppercase;
++}
++
++.catalog-preview-seo__row > input,
++.catalog-preview-seo__row > textarea {
++  padding: 6px 8px;
++  border: 1px solid var(--admin-border);
++  border-radius: 4px;
++  font-size: 12px;
++  color: var(--admin-text-dark);
++  background: #fff;
++  width: 100%;
++}
++
++.catalog-preview-seo__serp {
++  padding: 12px;
++  background: #f8fafc;
++  border-radius: 6px;
++}
++
++.catalog-preview-seo__serp-label {
++  font-size: 10px;
++  color: var(--admin-text-light);
++  margin-bottom: 8px;
++}
++
++.catalog-preview-seo__serp-card {
++  padding: 8px 0;
++  border-top: 1px solid var(--admin-border);
++}
++
++.catalog-preview-seo__serp-card:first-child {
++  border-top: none;
++  padding-top: 0;
++}
++
++.catalog-preview-seo__serp-url {
++  color: #1a7f32;
++  font-size: 11px;
++  margin-bottom: 2px;
++}
++
++.catalog-preview-seo__serp-title {
++  color: #1a0dab;
++  font-size: 14px;
++  font-weight: 500;
++  margin-bottom: 2px;
++  text-decoration: underline;
++}
++
++.catalog-preview-seo__serp-desc {
++  color: #4d5156;
++  font-size: 12px;
++  line-height: 1.4;
++}
++
++.catalog-preview-seo__empty {
++  padding: 16px;
++  text-align: center;
++  color: var(--admin-text-light);
++  font-size: 11px;
++}
++
++.catalog-preview-seo__hint {
++  margin-top: 12px;
++  padding: 8px;
++  background: #f8fafc;
++  border-radius: 4px;
++  color: var(--admin-text-light);
++  font-size: 10.5px;
++}
++
++/* Pagination */
++.catalog-pagination__page {
++  padding: 0 8px;
++  color: var(--admin-text-medium);
++  font-size: 11px;
++}
++
++/* Product Wizard fields */
++.product-wizard-field-hint {
++  display: block;
++  color: var(--admin-text-light);
++  font-size: 10px;
++  margin-top: 4px;
++}
+diff --git a/src/components/Admin/Catalog/CatalogTab.tsx b/src/components/Admin/Catalog/CatalogTab.tsx
+index 426a069..8df2c76 100644
+--- a/src/components/Admin/Catalog/CatalogTab.tsx
++++ b/src/components/Admin/Catalog/CatalogTab.tsx
+@@ -3,6 +3,7 @@ import {
+   AlertCircle,
+   ChevronLeft,
+   ChevronRight,
++  Database,
+   LoaderCircle,
+   Plus,
+   RefreshCw,
+@@ -14,15 +15,15 @@ import { useBulkPreview } from '../../../hooks/catalog/useBulkPreview';
+ import { useBulkSelection } from '../../../hooks/catalog/useBulkSelection';
+ import { useCatalogQueues } from '../../../hooks/catalog/useCatalogQueues';
+ import type { BulkEntityType, BulkFilter, BulkOperation } from '../../../types/catalogBulk';
+-import type {
+-  CatalogProductRecord,
+-  CoverageType,
+-  ProductOperation,
+-  SimMedium,
+-  Supplier,
+-} from '../../../types/catalog';
++import type { CatalogProductRecord, CatalogStatus } from '../../../types/catalog';
+ import ProductTable from './ProductTable';
+ import ProductWizard from './ProductWizard/ProductWizard';
++import ProductStatsCards from './ProductStatsCards';
++import ProductFilters, {
++  type CatalogFiltersState,
++} from './ProductFilters';
++import ProductOverviewPanel from './ProductOverviewPanel';
++import ProductActivityFeed from './ProductActivityFeed';
+ import BulkActionBar, { type BulkOperationType } from './Bulk/BulkActionBar';
+ import BulkPreviewDialog from './Bulk/BulkPreviewDialog';
+ import BulkResultDialog from './Bulk/BulkResultDialog';
+@@ -37,21 +38,21 @@ interface CatalogTabProps {
+   searchQuery: string;
+ }
+ 
+-type OperationFilter = ProductOperation | 'all';
+-type CoverageFilter = CoverageType | 'all';
+-type MediumFilter = Exclude<SimMedium, null> | 'all';
+-type SupplierFilter = Supplier | 'all';
+-
+ const PAGE_SIZE = 20;
+ 
+ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+   const [products, setProducts] = useState<CatalogProductRecord[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState('');
+-  const [operation, setOperation] = useState<OperationFilter>('all');
+-  const [coverage, setCoverage] = useState<CoverageFilter>('all');
+-  const [medium, setMedium] = useState<MediumFilter>('all');
+-  const [supplier, setSupplier] = useState<SupplierFilter>('all');
++  const [localSearch, setLocalSearch] = useState(searchQuery);
++  const [filters, setFilters] = useState<CatalogFiltersState>({
++    operation: 'all',
++    medium: 'all',
++    supplier: 'all',
++    coverage: 'all',
++    status: 'all',
++    quick: null,
++  });
+   const [page, setPage] = useState(1);
+   const [wizard, setWizard] = useState<{ mode: 'create' | 'edit'; productId?: string } | null>(null);
+   const [entityType, setEntityType] = useState<BulkEntityType>('product');
+@@ -59,11 +60,19 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+   const [catalogVersionId, setCatalogVersionId] = useState('');
+   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+   const [queueTab, setQueueTab] = useState<'sku' | 'review' | 'provider' | 'inventory'>('sku');
++  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+   const bulkSelection = useBulkSelection();
+   const bulkPreview = useBulkPreview();
+   const bulkExecute = useBulkExecute();
+   const queues = useCatalogQueues();
+ 
++  // Sync local search with global search query
++  useEffect(() => {
++    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync with parent prop
++    setLocalSearch(searchQuery);
++    setPage(1);
++  }, [searchQuery]);
++
+   const loadProducts = useCallback(async () => {
+     setLoading(true);
+     setError('');
+@@ -101,7 +110,7 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+   }, []);
+ 
+   const filteredProducts = useMemo(() => {
+-    const normalizedSearch = searchQuery.trim().toLocaleLowerCase('vi-VN');
++    const normalizedSearch = localSearch.trim().toLocaleLowerCase('vi-VN');
+ 
+     return products.filter((product) => {
+       const matchesSearch = normalizedSearch === ''
+@@ -111,20 +120,24 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+           variant.sku.toLocaleLowerCase('vi-VN').includes(normalizedSearch)
+           || variant.wmproductId?.toLocaleLowerCase('vi-VN').includes(normalizedSearch)
+         ));
+-      const matchesOperation = operation === 'all' || product.operation === operation;
+-      const matchesCoverage = coverage === 'all' || product.coverageType === coverage;
+-      const matchesMedium = medium === 'all'
+-        || product.variants.some((variant) => variant.medium === medium);
+-      const matchesSupplier = supplier === 'all'
+-        || product.variants.some((variant) => variant.supplier === supplier);
++      const matchesOperation = filters.operation === 'all' || product.operation === filters.operation;
++      const matchesCoverage = filters.coverage === 'all' || product.coverageType === filters.coverage;
++      const matchesMedium = filters.medium === 'all'
++        || product.variants.some((variant) => variant.medium === filters.medium);
++      const matchesSupplier = filters.supplier === 'all'
++        || product.variants.some((variant) => variant.supplier === filters.supplier);
++      const matchesStatus = filters.status === 'all' || product.status === filters.status;
++      const matchesReview = filters.quick !== 'review' || product.variants.some((variant) => variant.needsReview);
+ 
+       return matchesSearch
+         && matchesOperation
+         && matchesCoverage
+         && matchesMedium
+-        && matchesSupplier;
++        && matchesSupplier
++        && matchesStatus
++        && matchesReview;
+     });
+-  }, [coverage, medium, operation, products, searchQuery, supplier]);
++  }, [filters, products, localSearch]);
+ 
+   const totalVariants = useMemo(
+     () => products.reduce((total, product) => total + product.variants.length, 0),
+@@ -144,12 +157,30 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+     currentPage * PAGE_SIZE,
+   );
+ 
++  const selectedProduct = useMemo(() => {
++    if (!selectedProductId) return null;
++    return products.find((product) => product.id === selectedProductId) ?? null;
++  }, [products, selectedProductId]);
++
++  const handleFiltersChange = useCallback((next: CatalogFiltersState) => {
++    setFilters(next);
++    setPage(1);
++  }, []);
++
++  const handleSearchChange = useCallback((value: string) => {
++    setLocalSearch(value);
++    setPage(1);
++    setSelectedProductId(null);
++  }, []);
++
+   const bulkFilter = useMemo<BulkFilter>(() => ({
+-    ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
+-    ...(operation !== 'all' ? { operation } : {}),
+-    ...(medium !== 'all' ? { medium } : {}),
+-    ...(supplier !== 'all' ? { supplier } : {}),
+-  }), [medium, operation, searchQuery, supplier]);
++    ...(localSearch.trim() ? { search: localSearch.trim() } : {}),
++    ...(filters.operation !== 'all' ? { operation: filters.operation } : {}),
++    ...(filters.medium !== 'all' ? { medium: filters.medium } : {}),
++    ...(filters.supplier !== 'all' ? { supplier: filters.supplier } : {}),
++    ...(filters.status !== 'all' ? { status: filters.status as CatalogStatus } : {}),
++    ...(filters.quick === 'review' ? { needsReview: true } : {}),
++  }), [filters, localSearch]);
+   const openBulkPreview = () => {
+     bulkPreview.clear();
+     bulkExecute.clear();
+@@ -172,9 +203,9 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+     }).catch(() => undefined);
+   };
+ 
+-  const updateFilter = <T,>(setter: (value: T) => void, value: T) => {
+-    setter(value);
+-    setPage(1);
++  const handleReload = () => {
++    void loadProducts();
++    void queues.reload();
+   };
+ 
+   if (loading) {
+@@ -199,34 +230,56 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+   return (
+     <>
+     <section className="catalog-tab">
+-      <div className="catalog-heading-row">
+-        <div>
+-          <h2>Danh mục sản phẩm</h2>
+-          <p>{filteredProducts.length.toLocaleString('vi-VN')} sản phẩm phù hợp</p>
++      <div className="catalog-tab__header">
++        <div className="catalog-tab__header-info">
++          <span className="catalog-tab__breadcrumb">Trang chủ / Sản phẩm</span>
++          <h2>Quản lý sản phẩm</h2>
++          <p>Quản lý và kiểm soát toàn bộ sản phẩm eSIM, SIM vật lý và thiết bị.</p>
+         </div>
+-        <div className="catalog-heading-actions">
+-        <button type="button" className="catalog-secondary-button" onClick={() => setWizard({ mode: 'create' })}>
+-          <Plus size={16} /> Tạo sản phẩm
+-        </button>
+-        <button
+-          type="button"
+-          className="catalog-icon-button"
+-          onClick={() => void loadProducts()}
+-          aria-label="Làm mới danh mục"
+-          title="Làm mới"
+-        >
+-          <RefreshCw size={17} />
+-        </button>
++        <div className="catalog-tab__header-actions">
++          <button type="button" className="catalog-primary-button" onClick={() => setWizard({ mode: 'create' })}>
++            <Plus size={16} /> Thêm sản phẩm
++          </button>
++          <button
++            type="button"
++            className="catalog-icon-button"
++            onClick={() => void handleReload()}
++            aria-label="Làm mới danh mục"
++            title="Làm mới"
++          >
++            <RefreshCw size={17} />
++          </button>
+         </div>
+       </div>
+ 
+-      <div className="catalog-summary" aria-label="Tổng quan danh mục">
+-        <div><span>Sản phẩm</span><strong>{products.length.toLocaleString('vi-VN')}</strong></div>
+-        <div><span>Gói bán</span><strong>{totalVariants.toLocaleString('vi-VN')}</strong></div>
+-        <div><span>Cần xác nhận nguồn</span><strong>{reviewCount.toLocaleString('vi-VN')}</strong></div>
+-        <div><span>Nguồn dữ liệu</span><strong>Legacy adapter</strong></div>
++      <div className="catalog-tab__summary" aria-label="Tổng quan danh mục">
++        <div>
++          <span>Sản phẩm</span>
++          <strong>{products.length.toLocaleString('vi-VN')}</strong>
++        </div>
++        <div>
++          <span>Gói bán</span>
++          <strong>{totalVariants.toLocaleString('vi-VN')}</strong>
++        </div>
++        <div>
++          <span>Cần xác nhận nguồn</span>
++          <strong>{reviewCount.toLocaleString('vi-VN')}</strong>
++        </div>
++        <div>
++          <span>Nguồn dữ liệu</span>
++          <strong>Legacy adapter</strong>
++        </div>
+       </div>
+ 
++      <ProductStatsCards products={products} />
++
++      <ProductFilters
++        searchQuery={localSearch}
++        onSearchChange={handleSearchChange}
++        filters={filters}
++        onFiltersChange={handleFiltersChange}
++      />
++
+       <BulkActionBar
+         entityType={entityType}
+         operation={bulkOperation}
+@@ -240,93 +293,100 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+       />
+       {(bulkSelection.selectedIds.length > 0 || bulkSelection.isFilterSelection) && <BulkSelectionSummary count={bulkSelection.selectedIds.length} isFilterSelection={bulkSelection.isFilterSelection} onClear={bulkSelection.clear} />}
+ 
+-      <div className="catalog-filters">
+-        <label>
+-          <span>Nghiệp vụ</span>
+-          <select
+-            value={operation}
+-            onChange={(event) => updateFilter(setOperation, event.target.value as OperationFilter)}
+-          >
+-            <option value="all">Tất cả</option>
+-            <option value="new_subscription">Mua SIM mới</option>
+-            <option value="topup">Top-up</option>
+-            <option value="device_sale">Thiết bị</option>
+-          </select>
+-        </label>
+-        <label>
+-          <span>Hình thức</span>
+-          <select
+-            value={medium}
+-            onChange={(event) => updateFilter(setMedium, event.target.value as MediumFilter)}
+-          >
+-            <option value="all">Tất cả</option>
+-            <option value="esim">eSIM</option>
+-            <option value="physical_sim">SIM vật lý</option>
+-          </select>
+-        </label>
+-        <label>
+-          <span>Nguồn cấp</span>
+-          <select
+-            value={supplier}
+-            onChange={(event) => updateFilter(setSupplier, event.target.value as SupplierFilter)}
+-          >
+-            <option value="all">Tất cả</option>
+-            <option value="worldmove">Worldmove</option>
+-            <option value="local_carrier">Nhà mạng địa phương</option>
+-            <option value="hico">HICO</option>
+-            <option value="other">Chưa xác nhận</option>
+-          </select>
+-        </label>
+-        <label>
+-          <span>Vùng phủ</span>
+-          <select
+-            value={coverage}
+-            onChange={(event) => updateFilter(setCoverage, event.target.value as CoverageFilter)}
+-          >
+-            <option value="all">Tất cả</option>
+-            <option value="country">Một quốc gia</option>
+-            <option value="region">Khu vực</option>
+-            <option value="global">Toàn cầu</option>
+-            <option value="not_applicable">Không áp dụng</option>
+-          </select>
+-        </label>
+-      </div>
+-
+-      {visibleProducts.length > 0 ? (
+-        <>
+-          <ProductTable products={visibleProducts} onEdit={(productId) => setWizard({ mode: 'edit', productId })} entityType={entityType} selectedIds={bulkSelection.selectedIds} onTogglePage={bulkSelection.selectPage} />
+-          <div className="catalog-pagination">
+-            <span>
+-              Trang {currentPage.toLocaleString('vi-VN')} / {totalPages.toLocaleString('vi-VN')}
+-            </span>
+-            <div>
++      <div className="catalog-tab__split">
++        <div className="catalog-tab__list">
++          {visibleProducts.length > 0 ? (
++            <>
++              <ProductTable
++                products={visibleProducts}
++                onEdit={(productId) => setWizard({ mode: 'edit', productId })}
++                entityType={entityType}
++                selectedIds={bulkSelection.selectedIds}
++                onTogglePage={bulkSelection.selectPage}
++                selectedProductId={selectedProductId}
++                onSelect={setSelectedProductId}
++              />
++              <div className="catalog-pagination">
++                <span>
++                  Hiển thị {(filteredProducts.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1).toLocaleString('vi-VN')}
++                  {' - '}
++                  {Math.min(currentPage * PAGE_SIZE, filteredProducts.length).toLocaleString('vi-VN')}
++                  {' trong tổng số '}
++                  <strong>{filteredProducts.length.toLocaleString('vi-VN')}</strong>
++                  {' sản phẩm'}
++                </span>
++                <div>
++                  <button
++                    type="button"
++                    onClick={() => setPage((value) => Math.max(1, value - 1))}
++                    disabled={currentPage === 1}
++                    aria-label="Trang trước"
++                    title="Trang trước"
++                  >
++                    <ChevronLeft size={16} />
++                  </button>
++                  <span className="catalog-pagination__page">
++                    Trang <strong>{currentPage.toLocaleString('vi-VN')}</strong> / {totalPages.toLocaleString('vi-VN')}
++                  </span>
++                  <button
++                    type="button"
++                    onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
++                    disabled={currentPage === totalPages}
++                    aria-label="Trang sau"
++                    title="Trang sau"
++                  >
++                    <ChevronRight size={16} />
++                  </button>
++                </div>
++              </div>
++            </>
++          ) : (
++            <div className="catalog-empty">
++              <strong>Không có sản phẩm phù hợp</strong>
++              <span>Hãy đổi bộ lọc hoặc từ khóa tìm kiếm.</span>
+               <button
+                 type="button"
+-                onClick={() => setPage((value) => Math.max(1, value - 1))}
+-                disabled={currentPage === 1}
+-                aria-label="Trang trước"
+-                title="Trang trước"
++                className="catalog-text-button"
++                onClick={() => handleFiltersChange({
++                  operation: 'all',
++                  medium: 'all',
++                  supplier: 'all',
++                  coverage: 'all',
++                  status: 'all',
++                  quick: null,
++                })}
+               >
+-                <ChevronLeft size={16} />
+-              </button>
+-              <button
+-                type="button"
+-                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+-                disabled={currentPage === totalPages}
+-                aria-label="Trang sau"
+-                title="Trang sau"
+-              >
+-                <ChevronRight size={16} />
++                Đặt lại bộ lọc
+               </button>
+             </div>
+-          </div>
+-        </>
+-      ) : (
+-        <div className="catalog-empty">
+-          <strong>Không có sản phẩm phù hợp</strong>
+-          <span>Hãy đổi bộ lọc hoặc từ khóa tìm kiếm.</span>
++          )}
++        </div>
++
++        <div className={`catalog-tab__side${selectedProduct ? ' is-open' : ''}`}>
++          {selectedProduct ? (
++            <ProductOverviewPanel
++              product={selectedProduct}
++              onClose={() => setSelectedProductId(null)}
++              onEdit={() => setWizard({ mode: 'edit', productId: selectedProduct.id })}
++            />
++          ) : (
++            <div className="catalog-overview-placeholder" aria-live="polite">
++              <Database size={28} />
++              <strong>Chọn sản phẩm để xem chi tiết</strong>
++              <span>Click vào một sản phẩm trong danh sách để mở panel preview.</span>
++            </div>
++          )}
++
++          <ProductActivityFeed
++            skuConflicts={queues.skuConflicts}
++            needsReview={queues.needsReview}
++            providerIssues={queues.providerIssues}
++            inventoryWarnings={queues.inventoryWarnings}
++            onTabChange={setQueueTab}
++          />
+         </div>
+-      )}
++      </div>
++
+       <section className="catalog-queues" aria-label="Hàng đợi xử lý catalog">
+         <div className="catalog-queues-heading"><div><h3>Hàng đợi cần xử lý</h3><span>Chỉ cảnh báo để Admin kiểm tra, không tự sửa dữ liệu.</span></div><button type="button" className="catalog-icon-button" onClick={() => void queues.reload()} aria-label="Làm mới hàng đợi" title="Làm mới"><RefreshCw size={16} /></button></div>
+         <div className="catalog-queue-tabs"><button type="button" className={queueTab === 'sku' ? 'is-active' : ''} onClick={() => setQueueTab('sku')}>SKU trùng <b>{queues.skuConflicts?.total ?? '—'}</b></button><button type="button" className={queueTab === 'review' ? 'is-active' : ''} onClick={() => setQueueTab('review')}>Cần review <b>{queues.needsReview?.total ?? '—'}</b></button><button type="button" className={queueTab === 'provider' ? 'is-active' : ''} onClick={() => setQueueTab('provider')}>Nguồn cấp <b>{queues.providerIssues?.total ?? '—'}</b></button><button type="button" className={queueTab === 'inventory' ? 'is-active' : ''} onClick={() => setQueueTab('inventory')}>Tồn kho <b>{queues.inventoryWarnings?.total ?? '—'}</b></button></div>
+diff --git a/src/components/Admin/Catalog/ProductActivityFeed.tsx b/src/components/Admin/Catalog/ProductActivityFeed.tsx
+new file mode 100644
+index 0000000..11df504
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductActivityFeed.tsx
+@@ -0,0 +1,111 @@
++import { AlertTriangle, Boxes, RefreshCw, Tag } from 'lucide-react';
++import type { QueueResponse } from '../../../types/catalogQueue';
++import type {
++  InventoryWarningItem,
++  NeedsReviewItem,
++  ProviderIssueItem,
++  SkuConflictGroup,
++} from '../../../types/catalogQueue';
++
++interface ProductActivityFeedProps {
++  skuConflicts: QueueResponse<SkuConflictGroup> | null;
++  needsReview: QueueResponse<NeedsReviewItem> | null;
++  providerIssues: QueueResponse<ProviderIssueItem> | null;
++  inventoryWarnings: QueueResponse<InventoryWarningItem> | null;
++  onTabChange: (tab: 'sku' | 'review' | 'provider' | 'inventory') => void;
++}
++
++const ProductActivityFeed = ({
++  skuConflicts,
++  needsReview,
++  providerIssues,
++  inventoryWarnings,
++  onTabChange,
++}: ProductActivityFeedProps) => {
++  const getSkuDescription = () => {
++    if (skuConflicts === null) return 'Chưa có dữ liệu';
++    if (skuConflicts.total > 0) return `${skuConflicts.total} nhóm SKU trùng cần xử lý`;
++    return 'Không có cảnh báo SKU';
++  };
++
++  const getReviewDescription = () => {
++    if (needsReview === null) return 'Chưa có dữ liệu';
++    if (needsReview.total > 0) return `${needsReview.total} variant cần xác nhận nguồn`;
++    return 'Không có variant cần review';
++  };
++
++  const getProviderDescription = () => {
++    if (providerIssues === null) return 'Chưa có dữ liệu';
++    if (providerIssues.total > 0) return `${providerIssues.total} cảnh báo nguồn cấp`;
++    return 'Không có cảnh báo nguồn cấp';
++  };
++
++  const getInventoryDescription = () => {
++    if (inventoryWarnings === null) return 'Chưa có dữ liệu';
++    if (inventoryWarnings.total > 0) return `${inventoryWarnings.total} cảnh báo tồn kho`;
++    return 'Tồn kho ổn định';
++  };
++
++  const items = [
++    {
++      id: 'sku',
++      icon: <Tag size={16} />,
++      title: 'SKU trùng',
++      description: getSkuDescription(),
++      onClick: () => onTabChange('sku'),
++      tone: skuConflicts && skuConflicts.total > 0 ? 'warning' : 'neutral',
++    },
++    {
++      id: 'review',
++      icon: <AlertTriangle size={16} />,
++      title: 'Cần review',
++      description: getReviewDescription(),
++      onClick: () => onTabChange('review'),
++      tone: needsReview && needsReview.total > 0 ? 'warning' : 'neutral',
++    },
++    {
++      id: 'provider',
++      icon: <RefreshCw size={16} />,
++      title: 'Nguồn cấp',
++      description: getProviderDescription(),
++      onClick: () => onTabChange('provider'),
++      tone: providerIssues && providerIssues.total > 0 ? 'info' : 'neutral',
++    },
++    {
++      id: 'inventory',
++      icon: <Boxes size={16} />,
++      title: 'Tồn kho',
++      description: getInventoryDescription(),
++      onClick: () => onTabChange('inventory'),
++      tone: inventoryWarnings && inventoryWarnings.total > 0 ? 'danger' : 'neutral',
++    },
++  ] as const;
++
++  return (
++    <div className="catalog-activity-feed">
++      <div className="catalog-activity-feed__heading">
++        <h3>Cảnh báo catalog</h3>
++        <span>Các vấn đề cần xử lý trong danh mục.</span>
++      </div>
++      <ul className="catalog-activity-feed__list">
++        {items.map((item) => (
++          <li key={item.id}>
++            <button
++              type="button"
++              className={`catalog-activity-feed__item catalog-activity-feed__item--${item.tone}`}
++              onClick={item.onClick}
++            >
++              <span className="catalog-activity-feed__icon" aria-hidden="true">{item.icon}</span>
++              <span className="catalog-activity-feed__body">
++                <strong>{item.title}</strong>
++                <span>{item.description}</span>
++              </span>
++            </button>
++          </li>
++        ))}
++      </ul>
++    </div>
++  );
++};
++
++export default ProductActivityFeed;
+\ No newline at end of file
+diff --git a/src/components/Admin/Catalog/ProductFilters.tsx b/src/components/Admin/Catalog/ProductFilters.tsx
+new file mode 100644
+index 0000000..9cca11a
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductFilters.tsx
+@@ -0,0 +1,199 @@
++import { useCallback } from 'react';
++import { Search } from 'lucide-react';
++import type {
++  CatalogStatus,
++  CoverageType,
++  ProductOperation,
++  SimMedium,
++  Supplier,
++} from '../../../types/catalog';
++import { COVERAGE_LABELS, STATUS_LABELS, SUPPLIER_LABELS, MEDIUM_CHIP_LABELS } from './productLabels';
++
++export type StatusFilter = CatalogStatus | 'all';
++export type OperationFilter = ProductOperation | 'all';
++export type CoverageFilter = CoverageType | 'all';
++export type MediumFilter = Exclude<SimMedium, null> | 'all';
++export type SupplierFilter = Supplier | 'all';
++export type QuickFilter = 'esim' | 'physical_sim' | 'device_sale' | 'active' | 'draft' | 'review';
++
++export interface CatalogFiltersState {
++  operation: OperationFilter;
++  medium: MediumFilter;
++  supplier: SupplierFilter;
++  coverage: CoverageFilter;
++  status: StatusFilter;
++  quick: QuickFilter | null;
++}
++
++interface ProductFiltersProps {
++  searchQuery: string;
++  onSearchChange: (value: string) => void;
++  filters: CatalogFiltersState;
++  onFiltersChange: (filters: CatalogFiltersState) => void;
++}
++
++const QUICK_CHIP_LABELS: Array<{ id: QuickFilter; label: string; group: 'medium' | 'status' | 'review' }> = [
++  { id: 'esim', label: MEDIUM_CHIP_LABELS.esim, group: 'medium' },
++  { id: 'physical_sim', label: MEDIUM_CHIP_LABELS.physical_sim, group: 'medium' },
++  { id: 'device_sale', label: 'Thiết bị', group: 'medium' },
++  { id: 'active', label: STATUS_LABELS.active, group: 'status' },
++  { id: 'draft', label: STATUS_LABELS.draft, group: 'status' },
++  { id: 'review', label: 'Cần review', group: 'review' },
++];
++
++const ProductFilters = ({ searchQuery, onSearchChange, filters, onFiltersChange }: ProductFiltersProps) => {
++  const update = useCallback((patch: Partial<CatalogFiltersState>) => {
++    onFiltersChange({ ...filters, ...patch });
++  }, [filters, onFiltersChange]);
++
++  const handleQuick = (chip: QuickFilter) => {
++    // Start with full reset of quick-controlled fields
++    const baseReset: CatalogFiltersState = {
++      medium: 'all',
++      operation: 'all',
++      supplier: filters.supplier, // Keep independent filters
++      coverage: filters.coverage,
++      status: 'all',
++      quick: null,
++    };
++
++    if (filters.quick === chip) {
++      // Deselecting: reset to all
++      update(baseReset);
++      return;
++    }
++
++    // Apply chip-specific settings on top of base reset
++    const patch: CatalogFiltersState = { ...baseReset, quick: chip };
++    if (chip === 'esim' || chip === 'physical_sim') {
++      patch.medium = chip;
++    } else if (chip === 'device_sale') {
++      patch.operation = 'device_sale';
++    } else if (chip === 'active') {
++      patch.status = 'active';
++    } else if (chip === 'draft') {
++      patch.status = 'draft';
++    } else if (chip === 'review') {
++      // review doesn't set any filter, just quick flag
++    }
++    update(patch);
++  };
++
++  return (
++    <div className="catalog-filters-section">
++      <div className="catalog-filters-row">
++        <div className="catalog-search-wrapper">
++          <Search size={16} className="catalog-search-icon" />
++          <input
++            type="search"
++            className="catalog-search-input"
++            placeholder="Tìm sản phẩm, SKU, wmproductId..."
++            value={searchQuery}
++            onChange={(event) => onSearchChange(event.target.value)}
++            aria-label="Tìm sản phẩm"
++          />
++        </div>
++
++        <div className="catalog-filters-grid">
++          <label className="catalog-filter-label">
++            <span>Nghiệp vụ</span>
++            <select
++              value={filters.operation}
++              onChange={(event) => {
++                const value = event.target.value as OperationFilter;
++                // Clear quick filter when manual dropdown changes
++                const patch: Partial<CatalogFiltersState> = { operation: value, quick: null };
++                update(patch);
++              }}
++            >
++              <option value="all">Tất cả</option>
++              <option value="new_subscription">Mua SIM mới</option>
++              <option value="topup">Top-up</option>
++              <option value="device_sale">Thiết bị</option>
++            </select>
++          </label>
++          <label className="catalog-filter-label">
++            <span>Hình thức</span>
++            <select
++              value={filters.medium}
++              onChange={(event) => {
++                const value = event.target.value as MediumFilter;
++                const patch: Partial<CatalogFiltersState> = { medium: value, quick: null };
++                update(patch);
++              }}
++            >
++              <option value="all">Tất cả</option>
++              <option value="esim">eSIM</option>
++              <option value="physical_sim">SIM vật lý</option>
++            </select>
++          </label>
++          <label className="catalog-filter-label">
++            <span>Nguồn cấp</span>
++            <select
++              value={filters.supplier}
++              onChange={(event) => update({ supplier: event.target.value as SupplierFilter })}
++            >
++              <option value="all">Tất cả</option>
++              {(Object.keys(SUPPLIER_LABELS) as Supplier[]).map((key) => (
++                <option key={key} value={key}>{SUPPLIER_LABELS[key]}</option>
++              ))}
++            </select>
++          </label>
++          <label className="catalog-filter-label">
++            <span>Vùng phủ</span>
++            <select
++              value={filters.coverage}
++              onChange={(event) => update({ coverage: event.target.value as CoverageFilter })}
++            >
++              <option value="all">Tất cả</option>
++              {(Object.keys(COVERAGE_LABELS) as CoverageType[]).map((key) => (
++                <option key={key} value={key}>{COVERAGE_LABELS[key]}</option>
++              ))}
++            </select>
++          </label>
++          <label className="catalog-filter-label">
++            <span>Trạng thái</span>
++            <select
++              value={filters.status}
++              onChange={(event) => {
++                const value = event.target.value as StatusFilter;
++                const patch: Partial<CatalogFiltersState> = { status: value, quick: null };
++                update(patch);
++              }}
++            >
++              <option value="all">Tất cả</option>
++              {(Object.keys(STATUS_LABELS) as CatalogStatus[]).map((key) => (
++                <option key={key} value={key}>{STATUS_LABELS[key]}</option>
++              ))}
++            </select>
++          </label>
++        </div>
++      </div>
++
++      <div className="catalog-quick-chips" role="tablist" aria-label="Lọc nhanh">
++        {QUICK_CHIP_LABELS.map((chip) => (
++          <button
++            key={chip.id}
++            type="button"
++            className={`catalog-quick-chip catalog-quick-chip--${chip.group}${filters.quick === chip.id ? ' is-active' : ''}`}
++            onClick={() => handleQuick(chip.id)}
++            aria-pressed={filters.quick === chip.id}
++          >
++            {chip.label}
++          </button>
++        ))}
++        {filters.quick !== null && (
++          <button
++            type="button"
++            className="catalog-quick-chip catalog-quick-chip--reset"
++            onClick={() => update({ quick: null, medium: 'all', operation: 'all', status: 'all' })}
++          >
++            Xoá lọc nhanh
++          </button>
++        )}
++      </div>
++    </div>
++  );
++};
++
++export default ProductFilters;
+diff --git a/src/components/Admin/Catalog/ProductFulfillmentPreview.tsx b/src/components/Admin/Catalog/ProductFulfillmentPreview.tsx
+new file mode 100644
+index 0000000..420682b
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductFulfillmentPreview.tsx
+@@ -0,0 +1,96 @@
++import type { CatalogProductRecord } from '../../../types/catalog';
++import { FULFILLMENT_LABELS } from './productLabels';
++
++interface ProductFulfillmentPreviewProps {
++  product: CatalogProductRecord;
++}
++
++const ProductFulfillmentPreview = ({ product }: ProductFulfillmentPreviewProps) => {
++  if (product.variants.length === 0) {
++    return (
++      <div className="catalog-preview-empty">
++        <strong>Chưa có thông tin fulfillment</strong>
++        <span>Sản phẩm cần ít nhất một variant để hiển thị cấu hình fulfillment.</span>
++      </div>
++    );
++  }
++
++  return (
++    <div className="catalog-preview-fulfillment">
++      {product.variants.map((variant) => (
++        <div key={variant.id} className="catalog-preview-fulfillment__card">
++          <div className="catalog-preview-fulfillment__head">
++            <strong>{variant.sku}</strong>
++            <span className="catalog-fulfillment-method">
++              {FULFILLMENT_LABELS[variant.fulfillmentMethod]}
++            </span>
++          </div>
++
++          <dl className="catalog-preview-fulfillment__list">
++            <div>
++              <dt>Nhà cung cấp</dt>
++              <dd>
++                <span className="catalog-provider-dot__bullet" aria-hidden="true" />
++                {variant.supplier}
++              </dd>
++            </div>
++            {variant.wmproductId && (
++              <div>
++                <dt>wmproductId</dt>
++                <dd className="catalog-mono">{variant.wmproductId}</dd>
++              </div>
++            )}
++            {variant.providerOfferId && (
++              <div>
++                <dt>providerOfferId</dt>
++                <dd className="catalog-mono">{variant.providerOfferId}</dd>
++              </div>
++            )}
++            {variant.providerProductId && (
++              <div>
++                <dt>providerProductId</dt>
++                <dd className="catalog-mono">{variant.providerProductId}</dd>
++              </div>
++            )}
++            {variant.providerProductType !== null && variant.providerProductType !== undefined && (
++              <div>
++                <dt>providerProductType</dt>
++                <dd className="catalog-mono">{variant.providerProductType}</dd>
++              </div>
++            )}
++            <div>
++              <dt>leSIM</dt>
++              <dd>
++                {variant.leSIM === true
++                  ? 'Có'
++                  : variant.leSIM === false
++                    ? 'Không'
++                    : 'Không xác định'}
++              </dd>
++            </div>
++            <div>
++              <dt>Yêu cầu SIM sẵn</dt>
++              <dd>{variant.requiresExistingSim ? 'Có' : 'Không'}</dd>
++            </div>
++            <div>
++              <dt>Physical order</dt>
++              <dd>{variant.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER' ? 'Có' : 'Không'}</dd>
++            </div>
++            <div>
++              <dt>Trạng thái</dt>
++              <dd>
++                {variant.active
++                  ? 'Đang hoạt động'
++                  : variant.needsReview
++                    ? 'Cần review'
++                    : 'Không hoạt động'}
++              </dd>
++            </div>
++          </dl>
++        </div>
++      ))}
++    </div>
++  );
++};
++
++export default ProductFulfillmentPreview;
+diff --git a/src/components/Admin/Catalog/ProductMediaPreview.tsx b/src/components/Admin/Catalog/ProductMediaPreview.tsx
+new file mode 100644
+index 0000000..a5c56e4
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductMediaPreview.tsx
+@@ -0,0 +1,32 @@
++import { Image as ImageIcon } from 'lucide-react';
++import type { CatalogProductRecord } from '../../../types/catalog';
++
++interface ProductMediaPreviewProps {
++  product: CatalogProductRecord;
++}
++
++const ProductMediaPreview = ({ product }: ProductMediaPreviewProps) => {
++  return (
++    <div className="catalog-preview-media">
++      <div className="catalog-preview-media__primary">
++        <span className="catalog-preview-media__label">Ảnh chính</span>
++        {product.image ? (
++          <div className="catalog-preview-media__primary-image">
++            <img src={product.image} alt={product.name} />
++          </div>
++        ) : (
++          <div className="catalog-preview-media__placeholder">
++            <ImageIcon size={28} />
++            <span>Chưa có ảnh</span>
++          </div>
++        )}
++      </div>
++
++      <div className="catalog-preview-media__hint">
++        Sử dụng Product Wizard để cập nhật ảnh sản phẩm.
++      </div>
++    </div>
++  );
++};
++
++export default ProductMediaPreview;
+diff --git a/src/components/Admin/Catalog/ProductOverviewPanel.tsx b/src/components/Admin/Catalog/ProductOverviewPanel.tsx
+new file mode 100644
+index 0000000..e74bd91
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductOverviewPanel.tsx
+@@ -0,0 +1,195 @@
++import { useState } from 'react';
++import { ExternalLink, Image as ImageIcon, Pencil, Search, SlidersHorizontal, Sparkles, Tags, X } from 'lucide-react';
++import type { CatalogProductRecord } from '../../../types/catalog';
++import {
++  COVERAGE_LABELS,
++  OPERATION_LABELS,
++  STATUS_LABELS,
++  SUPPLIER_LABELS,
++  formatPriceWithCurrency,
++  getLowestVariantPrice,
++} from './productLabels';
++import ProductVariantsPreview from './ProductVariantsPreview';
++import ProductFulfillmentPreview from './ProductFulfillmentPreview';
++import ProductMediaPreview from './ProductMediaPreview';
++import ProductSeoPreview from './ProductSeoPreview';
++
++type PanelTab = 'overview' | 'variants' | 'fulfillment' | 'media' | 'seo';
++
++interface ProductOverviewPanelProps {
++  product: CatalogProductRecord;
++  onClose: () => void;
++  onEdit: () => void;
++}
++
++const TABS: Array<{ id: PanelTab; label: string; icon: typeof Search }> = [
++  { id: 'overview', label: 'Tổng quan', icon: Search },
++  { id: 'variants', label: 'Biến thể', icon: Tags },
++  { id: 'fulfillment', label: 'Fulfillment', icon: SlidersHorizontal },
++  { id: 'media', label: 'Media', icon: ImageIcon },
++  { id: 'seo', label: 'SEO', icon: Sparkles },
++];
++
++const ProductOverviewPanel = ({ product, onClose, onEdit }: ProductOverviewPanelProps) => {
++  const [tab, setTab] = useState<PanelTab>('overview');
++  const lowest = getLowestVariantPrice(product.variants);
++  const suppliers = [...new Set(product.variants.map((variant) => variant.supplier))];
++  const primaryMedium = product.variants.find((variant) => variant.medium)?.medium;
++  const isMultiCurrency = lowest !== null && Array.isArray(lowest);
++
++  return (
++    <aside className="catalog-overview-panel" aria-label={`Chi tiết sản phẩm ${product.name}`}>
++      <header className="catalog-overview-panel__head">
++        <div className="catalog-overview-panel__head-info">
++          <span className={`catalog-status catalog-status-${product.status}`}>
++            {STATUS_LABELS[product.status]}
++          </span>
++          <button
++            type="button"
++            className="catalog-overview-panel__close"
++            onClick={onClose}
++            aria-label="Đóng panel"
++            title="Đóng"
++          >
++            <X size={16} />
++          </button>
++        </div>
++        <div className="catalog-overview-panel__head-product">
++          {product.image ? (
++            <img src={product.image} alt="" className="catalog-overview-panel__avatar" />
++          ) : (
++            <span className="catalog-overview-panel__avatar catalog-overview-panel__avatar--placeholder">
++              {product.name.charAt(0).toLocaleUpperCase('vi-VN')}
++            </span>
++          )}
++          <div>
++            <strong>{product.name}</strong>
++            <span className="catalog-mono">{product.id}</span>
++          </div>
++        </div>
++        <div className="catalog-overview-panel__actions">
++          <button type="button" className="catalog-secondary-button" onClick={onEdit}>
++            <Pencil size={14} />
++            <span>Sửa</span>
++          </button>
++          <a
++            href={`/san-pham/${product.slug}`}
++            target="_blank"
++            rel="noreferrer"
++            className="catalog-text-button"
++          >
++            <ExternalLink size={14} />
++            <span>Xem trang public</span>
++          </a>
++        </div>
++      </header>
++
++      <nav className="catalog-overview-panel__tabs" role="tablist">
++        {TABS.map((entry) => {
++          const Icon = entry.icon;
++          return (
++            <button
++              key={entry.id}
++              type="button"
++              role="tab"
++              aria-selected={tab === entry.id}
++              className={`catalog-overview-panel__tab${tab === entry.id ? ' is-active' : ''}`}
++              onClick={() => setTab(entry.id)}
++            >
++              <Icon size={14} />
++              <span>{entry.label}</span>
++            </button>
++          );
++        })}
++      </nav>
++
++      <div className="catalog-overview-panel__body">
++        {tab === 'overview' && (
++          <div className="catalog-overview-panel__overview">
++            <section className="catalog-overview-panel__section">
++              <h4>Thông tin cơ bản</h4>
++              <dl className="catalog-overview-panel__list">
++                <div>
++                  <dt>Tên sản phẩm</dt>
++                  <dd>{product.name}</dd>
++                </div>
++                <div>
++                  <dt>Slug</dt>
++                  <dd className="catalog-mono">{product.slug}</dd>
++                </div>
++                <div>
++                  <dt>Nghiệp vụ</dt>
++                  <dd>{OPERATION_LABELS[product.operation]}</dd>
++                </div>
++                <div>
++                  <dt>Vùng phủ</dt>
++                  <dd>{COVERAGE_LABELS[product.coverageType]}</dd>
++                </div>
++                {product.operation !== 'device_sale' && primaryMedium && (
++                  <div>
++                    <dt>Hình thức</dt>
++                    <dd>{primaryMedium === 'esim' ? 'eSIM' : 'SIM vật lý'}</dd>
++                  </div>
++                )}
++              </dl>
++            </section>
++
++            <section className="catalog-overview-panel__section">
++              <h4>Giá bán</h4>
++              {(() => {
++                if (lowest === null) return <div className="catalog-overview-panel__price-empty">Chưa có variant</div>;
++                if (isMultiCurrency) return <div className="catalog-overview-panel__price"><strong>Nhiều tiền tệ</strong><span>Nhiều loại tiền tệ trong sản phẩm</span></div>;
++                const lp = lowest as { price: number; currency: 'VND' | 'USD' };
++                return <div className="catalog-overview-panel__price"><strong>{formatPriceWithCurrency(lp.price, lp.currency)}</strong><span>Giá khởi điểm</span></div>;
++              })()}
++            </section>
++
++            <section className="catalog-overview-panel__section">
++              <h4>Provider</h4>
++              {suppliers.length > 0 ? (
++                <ul className="catalog-overview-panel__providers">
++                  {suppliers.map((supplier) => (
++                    <li key={supplier}>
++                      <span className={`catalog-provider-dot__bullet catalog-provider-dot__bullet--${supplier}`} aria-hidden="true" />
++                      <strong>{SUPPLIER_LABELS[supplier]}</strong>
++                    </li>
++                  ))}
++                </ul>
++              ) : (
++                <div className="catalog-overview-panel__price-empty">Chưa có provider</div>
++              )}
++            </section>
++
++            <section className="catalog-overview-panel__section">
++              <h4>Trạng thái phát hành</h4>
++              <ul className="catalog-overview-panel__status-list">
++                <li>
++                  <span>Product</span>
++                  <strong>{product.status === 'active' ? 'Đang hoạt động' : STATUS_LABELS[product.status]}</strong>
++                </li>
++                <li>
++                  <span>Variant active</span>
++                  <strong>{product.variants.filter((variant) => variant.active).length}</strong>
++                </li>
++                <li>
++                  <span>Cần review</span>
++                  <strong>{product.variants.filter((variant) => variant.needsReview).length}</strong>
++                </li>
++              </ul>
++              <p className="catalog-overview-panel__hint">
++                HICO không tự động publish sản phẩm chỉ vì mở form edit. Dùng nút <strong>Sửa</strong> để cập nhật qua Product Wizard.
++              </p>
++            </section>
++          </div>
++        )}
++
++        {tab === 'variants' && <ProductVariantsPreview product={product} />}
++        {tab === 'fulfillment' && <ProductFulfillmentPreview product={product} />}
++        {tab === 'media' && <ProductMediaPreview product={product} />}
++        {tab === 'seo' && <ProductSeoPreview product={product} />}
++      </div>
++    </aside>
++  );
++};
++
++export default ProductOverviewPanel;
+\ No newline at end of file
+diff --git a/src/components/Admin/Catalog/ProductSeoPreview.tsx b/src/components/Admin/Catalog/ProductSeoPreview.tsx
+new file mode 100644
+index 0000000..d4cd94b
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductSeoPreview.tsx
+@@ -0,0 +1,54 @@
++import type { CatalogProductRecord } from '../../../types/catalog';
++
++interface ProductSeoPreviewProps {
++  product: CatalogProductRecord;
++}
++
++// Strip HTML tags for preview
++const stripHtml = (html: string): string => html.replace(/<[^>]*>/g, '').trim();
++
++const ProductSeoPreview = ({ product }: ProductSeoPreviewProps) => {
++  const seoTitle = product.seoTitle?.trim() || product.name;
++  const rawDescription = product.seoDescription?.trim() || stripHtml(product.description || '').slice(0, 160);
++  const seoKeywords = product.seoKeywords?.trim() || '';
++
++  return (
++    <div className="catalog-preview-seo">
++      <div className="catalog-preview-seo__row">
++        <span>Slug</span>
++        <strong className="catalog-mono">{product.slug}</strong>
++      </div>
++      <div className="catalog-preview-seo__row">
++        <span>SEO title</span>
++        <strong>{seoTitle || <em className="catalog-preview-seo__empty">Chưa cấu hình</em>}</strong>
++      </div>
++      <div className="catalog-preview-seo__row">
++        <span>SEO description</span>
++        <strong>{rawDescription || <em className="catalog-preview-seo__empty">Chưa cấu hình</em>}</strong>
++      </div>
++      <div className="catalog-preview-seo__row">
++        <span>SEO keywords</span>
++        <strong>{seoKeywords || <em className="catalog-preview-seo__empty">Chưa cấu hình</em>}</strong>
++      </div>
++
++      <div className="catalog-preview-seo__serp" aria-label="Xem trước kết quả tìm kiếm">
++        <span className="catalog-preview-seo__serp-label">Xem trước Google</span>
++        <div className="catalog-preview-seo__serp-card">
++          <span className="catalog-preview-seo__serp-url">
++            hico.vn/san-pham/{product.slug}
++          </span>
++          <strong className="catalog-preview-seo__serp-title">{seoTitle}</strong>
++          <p className="catalog-preview-seo__serp-desc">
++            {rawDescription || 'Mô tả SEO sẽ hiển thị tại đây khi được cấu hình.'}
++          </p>
++        </div>
++      </div>
++
++      <div className="catalog-preview-seo__hint">
++        Cập nhật SEO trong Product Wizard.
++      </div>
++    </div>
++  );
++};
++
++export default ProductSeoPreview;
+\ No newline at end of file
+diff --git a/src/components/Admin/Catalog/ProductStatsCards.tsx b/src/components/Admin/Catalog/ProductStatsCards.tsx
+new file mode 100644
+index 0000000..6c4aa82
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductStatsCards.tsx
+@@ -0,0 +1,86 @@
++import { useMemo } from 'react';
++import { AlertTriangle, CheckCircle2, Package, Tags } from 'lucide-react';
++import type { CatalogProductRecord } from '../../../types/catalog';
++
++interface ProductStatsCardsProps {
++  products: CatalogProductRecord[];
++}
++
++const formatNumber = (value: number) => new Intl.NumberFormat('vi-VN').format(value);
++
++const ProductStatsCards = ({ products }: ProductStatsCardsProps) => {
++  const stats = useMemo(() => {
++    let activeCount = 0;
++    let reviewCount = 0;
++    let totalVariants = 0;
++
++    products.forEach((product) => {
++      if (product.status === 'active') activeCount += 1;
++      totalVariants += product.variants.length;
++      reviewCount += product.variants.filter((v) => v.needsReview).length;
++    });
++
++    return {
++      total: products.length,
++      active: activeCount,
++      totalVariants,
++      review: reviewCount,
++    };
++  }, [products]);
++
++  return (
++    <div className="catalog-kpi-grid" aria-label="Tổng quan sản phẩm">
++      <div className="catalog-kpi-card catalog-kpi-card--primary">
++        <div className="catalog-kpi-card__icon">
++          <Package size={20} />
++        </div>
++        <div className="catalog-kpi-card__body">
++          <span className="catalog-kpi-card__label">Tổng sản phẩm</span>
++          <strong className="catalog-kpi-card__value">{formatNumber(stats.total)}</strong>
++          <span className="catalog-kpi-card__sub">Toàn bộ danh mục</span>
++        </div>
++      </div>
++
++      <div className="catalog-kpi-card catalog-kpi-card--success">
++        <div className="catalog-kpi-card__icon">
++          <CheckCircle2 size={20} />
++        </div>
++        <div className="catalog-kpi-card__body">
++          <span className="catalog-kpi-card__label">Đang bán</span>
++          <strong className="catalog-kpi-card__value">{formatNumber(stats.active)}</strong>
++          <span className="catalog-kpi-card__sub">
++            {stats.total > 0
++              ? `${Math.round((stats.active / stats.total) * 100)}% tổng sản phẩm`
++              : 'Chưa có dữ liệu'}
++          </span>
++        </div>
++      </div>
++
++      <div className="catalog-kpi-card catalog-kpi-card--info">
++        <div className="catalog-kpi-card__icon">
++          <Tags size={20} />
++        </div>
++        <div className="catalog-kpi-card__body">
++          <span className="catalog-kpi-card__label">Tổng variants</span>
++          <strong className="catalog-kpi-card__value">{formatNumber(stats.totalVariants)}</strong>
++          <span className="catalog-kpi-card__sub">Gói bán trong catalog</span>
++        </div>
++      </div>
++
++      <div className="catalog-kpi-card catalog-kpi-card--warning">
++        <div className="catalog-kpi-card__icon">
++          <AlertTriangle size={20} />
++        </div>
++        <div className="catalog-kpi-card__body">
++          <span className="catalog-kpi-card__label">Cần review</span>
++          <strong className="catalog-kpi-card__value">{formatNumber(stats.review)}</strong>
++          <span className="catalog-kpi-card__sub">
++            {stats.review > 0 ? 'Cần xác nhận nguồn' : 'Không có cảnh báo'}
++          </span>
++        </div>
++      </div>
++    </div>
++  );
++};
++
++export default ProductStatsCards;
+diff --git a/src/components/Admin/Catalog/ProductTable.tsx b/src/components/Admin/Catalog/ProductTable.tsx
+index 9fc20dc..ddc7927 100644
+--- a/src/components/Admin/Catalog/ProductTable.tsx
++++ b/src/components/Admin/Catalog/ProductTable.tsx
+@@ -1,12 +1,22 @@
+-import { AlertTriangle, Pencil } from 'lucide-react';
++import { AlertTriangle, Eye, Pencil } from 'lucide-react';
+ import type {
+   CatalogProductRecord,
+   CatalogStatus,
+   CoverageType,
+   ProductOperation,
++  SimMedium,
+   Supplier,
+ } from '../../../types/catalog';
+ import type { BulkEntityType } from '../../../types/catalogBulk';
++import {
++  COVERAGE_LABELS,
++  MEDIUM_CHIP_LABELS,
++  OPERATION_LABELS,
++  STATUS_LABELS,
++  SUPPLIER_LABELS,
++  formatPriceWithCurrency,
++  getLowestVariantPrice,
++} from './productLabels';
+ 
+ interface ProductTableProps {
+   products: CatalogProductRecord[];
+@@ -14,68 +24,17 @@ interface ProductTableProps {
+   entityType: BulkEntityType;
+   selectedIds: string[];
+   onTogglePage: (ids: string[]) => void;
++  selectedProductId?: string | null;
++  onSelect?: (productId: string) => void;
+ }
+ 
+-const operationLabels: Record<ProductOperation, string> = {
+-  new_subscription: 'Mua SIM mới',
+-  topup: 'Top-up',
+-  device_sale: 'Thiết bị',
+-};
+-
+-const coverageLabels: Record<CoverageType, string> = {
+-  country: 'Một quốc gia',
+-  region: 'Khu vực',
+-  global: 'Toàn cầu',
+-  not_applicable: 'Không áp dụng',
+-};
+-
+-const supplierLabels: Record<Supplier, string> = {
+-  worldmove: 'Worldmove',
+-  local_carrier: 'Nhà mạng địa phương',
+-  hico: 'HICO',
+-  other: 'Chưa xác nhận',
+-};
+-
+-const statusLabels: Record<CatalogStatus, string> = {
+-  active: 'Đang bán',
+-  draft: 'Bản nháp',
+-  archived: 'Lưu trữ',
+-};
+-
+-const formatPrice = (product: CatalogProductRecord) => {
+-  const activeVariants = product.variants.filter((variant) => variant.active);
+-  const variants = activeVariants.length > 0 ? activeVariants : product.variants;
+-
+-  if (variants.length === 0) {
+-    return 'Chưa có giá';
+-  }
+-
+-  const lowestVariant = variants.reduce((lowest, variant) => (
+-    variant.price < lowest.price ? variant : lowest
+-  ));
+-
+-  return new Intl.NumberFormat('vi-VN', {
+-    style: 'currency',
+-    currency: lowestVariant.currency,
+-    maximumFractionDigits: 0,
+-  }).format(lowestVariant.price);
+-};
+-
+-const getSupplierSummary = (product: CatalogProductRecord) => {
+-  const suppliers = [...new Set(product.variants.map((variant) => variant.supplier))];
++const operationLabels: Record<ProductOperation, string> = OPERATION_LABELS;
++const coverageLabels: Record<CoverageType, string> = COVERAGE_LABELS;
++const supplierLabels: Record<Supplier, string> = SUPPLIER_LABELS;
++const statusLabels: Record<CatalogStatus, string> = STATUS_LABELS;
++const mediumLabels: Record<Exclude<SimMedium, null>, string> = MEDIUM_CHIP_LABELS;
+ 
+-  if (suppliers.length === 0) {
+-    return 'Chưa có nguồn';
+-  }
+-
+-  if (suppliers.length > 2) {
+-    return `${suppliers.length} nguồn`;
+-  }
+-
+-  return suppliers.map((supplier) => supplierLabels[supplier]).join(', ');
+-};
+-
+-const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage }: ProductTableProps) => {
++const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage, selectedProductId, onSelect }: ProductTableProps) => {
+   const pageIds = products.flatMap((product) => entityType === 'product' ? [product.id] : product.variants.map((variant) => variant.id));
+   const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+ 
+@@ -86,22 +45,29 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage
+         <tr>
+           <th className="catalog-select-cell"><input type="checkbox" checked={allSelected} onChange={() => onTogglePage(pageIds)} aria-label="Chọn toàn bộ trang" /></th>
+           <th>Sản phẩm</th>
+-          <th>Loại nghiệp vụ</th>
+-          <th>Vùng phủ</th>
+-          <th>Số gói</th>
+-          <th>Giá từ</th>
+-          <th>Nguồn</th>
++          <th>Loại</th>
++          <th>Danh mục</th>
++          <th>Giá</th>
++          <th>Tiền tệ</th>
+           <th>Trạng thái</th>
+-          <th>Thao tác</th>
++          <th>Provider</th>
++          <th>Tồn kho / QR</th>
++          <th className="catalog-actions-cell">Hành động</th>
+         </tr>
+       </thead>
+       <tbody>
+         {products.map((product) => {
+           const reviewCount = product.variants.filter((variant) => variant.needsReview).length;
++          const isSelected = selectedProductId === product.id;
++          const lowest = getLowestVariantPrice(product.variants);
+ 
+           return (
+-            <tr key={product.id}>
+-              <td className="catalog-select-cell">
++            <tr
++              key={product.id}
++              className={`${isSelected ? 'catalog-row-selected' : ''}`}
++              onClick={() => onSelect?.(product.id)}
++            >
++              <td className="catalog-select-cell" onClick={(event) => event.stopPropagation()}>
+                 <input
+                   type="checkbox"
+                   checked={(() => {
+@@ -123,7 +89,7 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage
+                   )}
+                   <div className="catalog-product-copy">
+                     <strong>{product.name}</strong>
+-                    <span>{product.id}</span>
++                    <span className="catalog-product-id">{product.id}</span>
+                     {reviewCount > 0 && (
+                       <span className="catalog-review-warning">
+                         <AlertTriangle size={12} />
+@@ -133,18 +99,74 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage
+                   </div>
+                 </div>
+               </td>
+-              <td>{operationLabels[product.operation]}</td>
+-              <td>{coverageLabels[product.coverageType]}</td>
+-              <td>{product.variants.length.toLocaleString('vi-VN')}</td>
+-              <td className="catalog-price-cell">{formatPrice(product)}</td>
+-              <td>{getSupplierSummary(product)}</td>
++              <td>
++                <div className="catalog-type-cell">
++                  <span className="catalog-medium-chip">
++                    {operationLabels[product.operation]}
++                  </span>
++                  {product.operation !== 'device_sale' && (
++                    <span className="catalog-medium-tag">
++                      {(() => {
++                        const mediums = [...new Set(product.variants.map((v) => v.medium).filter(Boolean))];
++                        if (mediums.length === 0) return '—';
++                        if (mediums.length === 1) return mediumLabels[mediums[0] as Exclude<SimMedium, null>];
++                        return `${mediums.length} loại SIM`;
++                      })()}
++                    </span>
++                  )}
++                </div>
++              </td>
++              <td>
++                <span className="catalog-coverage-tag">
++                  {coverageLabels[product.coverageType]}
++                </span>
++              </td>
++              <td className="catalog-price-cell">
++                {lowest === null ? (
++                  'Chưa có giá'
++                ) : Array.isArray(lowest) ? (
++                  <span className="catalog-price-multi">Nhiều tiền tệ</span>
++                ) : (
++                  formatPriceWithCurrency(lowest.price, lowest.currency)
++                )}
++              </td>
++              <td>
++                {lowest !== null && !Array.isArray(lowest) ? (
++                  <span className={`catalog-currency-tag catalog-currency-tag--${lowest.currency.toLowerCase()}`}>
++                    {lowest.currency}
++                  </span>
++                ) : (
++                  <span className="catalog-currency-tag">—</span>
++                )}
++              </td>
+               <td>
+                 <span className={`catalog-status catalog-status-${product.status}`}>
+                   {statusLabels[product.status]}
+                 </span>
+               </td>
+               <td>
+-                <button type="button" className="catalog-icon-button" onClick={() => onEdit(product.id)} aria-label={`Sửa sản phẩm ${product.name}`} title="Sửa sản phẩm">
++                <ProviderCell product={product} />
++              </td>
++              <td>
++                <InventoryCell product={product} />
++              </td>
++              <td className="catalog-actions-cell" onClick={(event) => event.stopPropagation()}>
++                <button
++                  type="button"
++                  className="catalog-icon-button"
++                  onClick={() => onSelect?.(product.id)}
++                  aria-label={`Xem chi tiết ${product.name}`}
++                  title="Xem chi tiết"
++                >
++                  <Eye size={15} />
++                </button>
++                <button
++                  type="button"
++                  className="catalog-icon-button"
++                  onClick={() => onEdit(product.id)}
++                  aria-label={`Sửa sản phẩm ${product.name}`}
++                  title="Sửa sản phẩm"
++                >
+                   <Pencil size={15} />
+                 </button>
+               </td>
+@@ -157,4 +179,65 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage
+   );
+ };
+ 
+-export default ProductTable;
++const ProviderCell = ({ product }: { product: CatalogProductRecord }) => {
++  const suppliers = [...new Set(product.variants.map((variant) => variant.supplier))];
++  if (suppliers.length === 0) {
++    return <span className="catalog-provider-empty">Chưa có nguồn</span>;
++  }
++  if (suppliers.length > 2) {
++    return <span className="catalog-provider-multi">{suppliers.length} nguồn</span>;
++  }
++  return (
++    <span className="catalog-provider-cell">
++      {suppliers.map((supplier) => (
++        <span key={supplier} className={`catalog-provider-dot catalog-provider-dot--${supplier}`}>
++          <span className="catalog-provider-dot__bullet" aria-hidden="true" />
++          {supplierLabels[supplier]}
++        </span>
++      ))}
++    </span>
++  );
++};
++
++const InventoryCell = ({ product }: { product: CatalogProductRecord }) => {
++  if (product.variants.length === 0) {
++    return <span className="catalog-inventory-empty">—</span>;
++  }
++
++  // Check for manual QR fulfillment
++  const hasManualQr = product.variants.some((v) => v.fulfillmentMethod === 'HICO_MANUAL_QR');
++  if (hasManualQr) {
++    return <span className="catalog-inventory-tag catalog-inventory-tag--ok">Manual QR</span>;
++  }
++
++  // Check for physical stock - use real stock values
++  const hasPhysicalStock = product.variants.some(
++    (v) => v.fulfillmentMethod === 'HICO_PHYSICAL_STOCK',
++  );
++  if (hasPhysicalStock) {
++    const physicalStock = product.variants
++      .filter((v) => v.fulfillmentMethod === 'HICO_PHYSICAL_STOCK')
++      .reduce((total, v) => total + (v.stock ?? 0), 0);
++    const label = product.operation === 'device_sale' ? 'thiết bị' : 'SIM';
++    return (
++      <span className="catalog-inventory-tag">
++        {physicalStock} {label}
++      </span>
++    );
++  }
++
++  // Check for provider-based fulfillment
++  const hasProvider = product.variants.some((v) => v.fulfillmentMethod.startsWith('WORLDMOVE_'));
++  if (hasProvider) {
++    const isPhysical = product.variants.some((v) => v.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER');
++    return (
++      <span className="catalog-inventory-tag catalog-inventory-tag--provider">
++        {isPhysical ? 'Provider · Physical' : 'Provider'}
++      </span>
++    );
++  }
++
++  return <span className="catalog-inventory-empty">—</span>;
++};
++
++export default ProductTable;
+\ No newline at end of file
+diff --git a/src/components/Admin/Catalog/ProductVariantsPreview.tsx b/src/components/Admin/Catalog/ProductVariantsPreview.tsx
+new file mode 100644
+index 0000000..f541a8c
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductVariantsPreview.tsx
+@@ -0,0 +1,91 @@
++import type { CatalogProductRecord } from '../../../types/catalog';
++import {
++  FULFILLMENT_LABELS,
++  STATUS_LABELS,
++  SUPPLIER_LABELS,
++  formatPriceWithCurrency,
++} from './productLabels';
++
++interface ProductVariantsPreviewProps {
++  product: CatalogProductRecord;
++}
++
++const ProductVariantsPreview = ({ product }: ProductVariantsPreviewProps) => {
++  if (product.variants.length === 0) {
++    return (
++      <div className="catalog-preview-empty">
++        <strong>Sản phẩm chưa có variant</strong>
++        <span>Hãy thêm variant trong Product Wizard.</span>
++      </div>
++    );
++  }
++
++  return (
++    <div className="catalog-preview-variants">
++      <div className="catalog-preview-variants__summary">
++        <div>
++          <span>Tổng variant</span>
++          <strong>{product.variants.length}</strong>
++        </div>
++        <div>
++          <span>Đang bán</span>
++          <strong>{product.variants.filter((v) => v.active).length}</strong>
++        </div>
++        <div>
++          <span>Cần review</span>
++          <strong>{product.variants.filter((v) => v.needsReview).length}</strong>
++        </div>
++      </div>
++
++      <div className="catalog-preview-variants__list">
++        {product.variants.map((variant) => (
++          <div key={variant.id} className="catalog-preview-variant">
++            <div className="catalog-preview-variant__head">
++              <strong>{variant.dataLimit || variant.duration || variant.sku}</strong>
++              <span className={`catalog-status catalog-status-${variant.active ? 'active' : 'draft'}`}>
++                {variant.active ? STATUS_LABELS.active : STATUS_LABELS.draft}
++              </span>
++            </div>
++            <div className="catalog-preview-variant__body">
++              <div>
++                <span>Giá</span>
++                <strong>{formatPriceWithCurrency(variant.price, variant.currency)}</strong>
++              </div>
++              <div>
++                <span>SKU</span>
++                <strong className="catalog-mono">{variant.sku}</strong>
++              </div>
++              <div>
++                <span>Nhà cung cấp</span>
++                <strong>{SUPPLIER_LABELS[variant.supplier]}</strong>
++              </div>
++              <div>
++                <span>Fulfillment</span>
++                <strong>{FULFILLMENT_LABELS[variant.fulfillmentMethod]}</strong>
++              </div>
++              {variant.wmproductId && (
++                <div>
++                  <span>wmproductId</span>
++                  <strong className="catalog-mono">{variant.wmproductId}</strong>
++                </div>
++              )}
++              {variant.providerOfferId && (
++                <div>
++                  <span>providerOfferId</span>
++                  <strong className="catalog-mono">{variant.providerOfferId}</strong>
++                </div>
++              )}
++            </div>
++            {variant.needsReview && (
++              <div className="catalog-preview-variant__warning">
++                Variant này cần xác nhận nguồn trước khi publish.
++              </div>
++            )}
++          </div>
++        ))}
++      </div>
++    </div>
++  );
++};
++
++export default ProductVariantsPreview;
+diff --git a/src/components/Admin/Catalog/ProductWizard/ProductGeneralStep.tsx b/src/components/Admin/Catalog/ProductWizard/ProductGeneralStep.tsx
+index a39ec9e..f80b2db 100644
+--- a/src/components/Admin/Catalog/ProductWizard/ProductGeneralStep.tsx
++++ b/src/components/Admin/Catalog/ProductWizard/ProductGeneralStep.tsx
+@@ -6,7 +6,8 @@ interface ProductGeneralStepProps {
+   onGenerateSlug: () => void;
+ }
+ 
+-const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGeneralStepProps) => (
++const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGeneralStepProps) => {
++  return (
+   <section className="product-wizard-step-content">
+     <div className="product-wizard-section-heading">
+       <span className="product-wizard-kicker">Bước 2</span>
+@@ -23,9 +24,10 @@ const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGenera
+         <input value={product.slug} onChange={(event) => onChange({ slug: event.target.value })} placeholder="esim-nhat-ban-10gb" />
+         <button type="button" className="product-wizard-inline-button" onClick={onGenerateSlug}>Tạo slug từ tên</button>
+       </label>
+-      <label className="product-wizard-field">
++      <label className="product-wizard-field product-wizard-field-wide">
+         <span>Ảnh đại diện</span>
+-        <input value={product.image} onChange={(event) => onChange({ image: event.target.value })} placeholder="https://..." />
++        <input type="text" value={product.image} onChange={(event) => onChange({ image: event.target.value })} placeholder="/uploads/ten-anh.webp" />
++        <small className="product-wizard-field-hint">Dùng đường dẫn /images/... hoặc /uploads/...</small>
+       </label>
+       <label className="product-wizard-field product-wizard-field-wide">
+         <span>Mô tả</span>
+@@ -49,6 +51,7 @@ const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGenera
+       </div>
+     </div>
+   </section>
+-);
++  );
++};
+ 
+ export default ProductGeneralStep;
+diff --git a/src/components/Admin/Catalog/ProductWizard/ProductWizard.css b/src/components/Admin/Catalog/ProductWizard/ProductWizard.css
+index 09d672f..aa8f507 100644
+--- a/src/components/Admin/Catalog/ProductWizard/ProductWizard.css
++++ b/src/components/Admin/Catalog/ProductWizard/ProductWizard.css
+@@ -2,7 +2,8 @@
+ .product-wizard-dialog-backdrop {
+   position: fixed;
+   inset: 0;
+-  z-index: 50;
++  /* Stay above the Admin sidebar/header stacking layers. */
++  z-index: 1000;
+   display: grid;
+   place-items: center;
+   padding: 24px;
+diff --git a/src/components/Admin/Catalog/productLabels.ts b/src/components/Admin/Catalog/productLabels.ts
+new file mode 100644
+index 0000000..4f49149
+--- /dev/null
++++ b/src/components/Admin/Catalog/productLabels.ts
+@@ -0,0 +1,96 @@
++import type {
++  CatalogStatus,
++  CoverageType,
++  FulfillmentMethod,
++  ProductOperation,
++  SimMedium,
++  Supplier,
++} from '../../../types/catalog';
++
++export const OPERATION_LABELS: Record<ProductOperation, string> = {
++  new_subscription: 'Mua SIM mới',
++  topup: 'Top-up',
++  device_sale: 'Thiết bị',
++};
++
++export const OPERATION_SHORT_LABELS: Record<ProductOperation, string> = {
++  new_subscription: 'eSIM',
++  topup: 'Top-up',
++  device_sale: 'Thiết bị',
++};
++
++export const COVERAGE_LABELS: Record<CoverageType, string> = {
++  country: 'Một quốc gia',
++  region: 'Khu vực',
++  global: 'Toàn cầu',
++  not_applicable: 'Không áp dụng',
++};
++
++export const STATUS_LABELS: Record<CatalogStatus, string> = {
++  active: 'Đang bán',
++  draft: 'Bản nháp',
++  archived: 'Lưu trữ',
++};
++
++export const SUPPLIER_LABELS: Record<Supplier, string> = {
++  worldmove: 'Worldmove',
++  local_carrier: 'Nhà mạng địa phương',
++  hico: 'HICO',
++  other: 'Chưa xác nhận',
++};
++
++export const MEDIUM_LABELS: Record<Exclude<SimMedium, null>, string> = {
++  esim: 'eSIM',
++  physical_sim: 'SIM vật lý',
++};
++
++export const MEDIUM_CHIP_LABELS: Record<Exclude<SimMedium, null>, string> = {
++  esim: 'eSIM',
++  physical_sim: 'SIM vật lý',
++};
++
++export const FULFILLMENT_LABELS: Record<FulfillmentMethod, string> = {
++  WORLDMOVE_ESIM_REDEEM: 'Worldmove — Redeem',
++  WORLDMOVE_ESIM_ORDER_THEN_REDEEM: 'Worldmove — Order → Redeem',
++  WORLDMOVE_PHYSICAL_ORDER: 'Worldmove — Physical Order',
++  WORLDMOVE_TOPUP: 'Worldmove — Top-up',
++  HICO_MANUAL_QR: 'HICO — Manual QR',
++  HICO_PHYSICAL_STOCK: 'HICO — Physical Stock',
++  EXTERNAL_PROVIDER_API: 'External API',
++  MANUAL_PROCESSING: 'Manual Processing',
++};
++
++export const CURRENCY_LABELS = {
++  VND: 'VND',
++  USD: 'USD',
++} as const;
++
++export const formatVariantPrice = (price: number, currency: 'VND' | 'USD') => {
++  const fractionDigits = currency === 'USD' ? 2 : 0;
++  return new Intl.NumberFormat('vi-VN', {
++    minimumFractionDigits: fractionDigits,
++    maximumFractionDigits: fractionDigits,
++  }).format(price);
++};
++
++export const formatPriceWithCurrency = (price: number, currency: 'VND' | 'USD') => (
++  `${formatVariantPrice(price, currency)} ${currency}`
++);
++
++export const getLowestVariantPrice = (variants: Array<{ price: number; currency: 'VND' | 'USD'; active: boolean }>) => {
++  const activeVariants = variants.filter((variant) => variant.active);
++  const candidates = activeVariants.length > 0 ? activeVariants : variants;
++  if (candidates.length === 0) return null;
++
++  // Group by currency and find min per currency
++  const byCurrency: Record<string, typeof candidates[0]> = {};
++  for (const variant of candidates) {
++    if (!byCurrency[variant.currency] || variant.price < byCurrency[variant.currency].price) {
++      byCurrency[variant.currency] = variant;
++    }
++  }
++
++  // Return array of lowest per currency, or single if only one currency
++  const prices = Object.values(byCurrency);
++  return prices.length === 1 ? prices[0] : prices;
++};
+\ No newline at end of file
+diff --git a/src/services/catalogApi.ts b/src/services/catalogApi.ts
+index 4c2281e..8c54491 100644
+--- a/src/services/catalogApi.ts
++++ b/src/services/catalogApi.ts
+@@ -14,7 +14,7 @@ const getErrorMessage = (payload: unknown) => {
+ };
+ 
+ const requestJson = async <T>(url: string, signal?: AbortSignal): Promise<T> => {
+-  const response = await fetch(url, { signal });
++  const response = await fetch(url, { signal, credentials: 'include' });
+   const payload: unknown = await response.json();
+ 
+   if (!response.ok) {
+diff --git a/src/services/catalogWriteApi.ts b/src/services/catalogWriteApi.ts
+index c48c13e..7b8c433 100644
+--- a/src/services/catalogWriteApi.ts
++++ b/src/services/catalogWriteApi.ts
+@@ -40,7 +40,11 @@ export const requestJson = async <T>(url: string, init: RequestInit = {}): Promi
+   const controller = new AbortController();
+   const timeout = window.setTimeout(() => controller.abort(), 15000);
+   try {
+-    const response = await fetch(url, { ...init, signal: init.signal ?? controller.signal });
++    const response = await fetch(url, {
++      ...init,
++      credentials: 'include',
++      signal: init.signal ?? controller.signal,
++    });
+     const payload: unknown = await response.json().catch(() => null);
+     if (!response.ok) {
+       const meta = getErrorMeta(payload);
+-- 
+2.48.1.windows.1
+

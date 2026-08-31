@@ -2,6 +2,16 @@ const isWrite = (method) => !['GET', 'HEAD', 'OPTIONS'].includes(method);
 
 export const permissionForAdminRequest = (req) => {
   const { method, path } = req;
+  if (path.startsWith('/catalog-sheet-sync/')) return 'catalog.sheet_sync';
+  if (path.startsWith('/catalog/sheet-reconciliation/')) return isWrite(method) ? 'catalog.sheet.reconcile.write' : 'catalog.sheet.reconcile.read';
+  if (path.startsWith('/catalog/variant-aliases/')) return 'catalog.sheet.reconcile.write';
+  if (path === '/catalog/variant-aliases') return 'catalog.sheet.reconcile.write';
+  if (path.startsWith('/catalog/fulfillment/')) return isWrite(method) ? 'catalog.fulfillment.write' : 'catalog.fulfillment.read';
+  if (path.startsWith('/settings/integrations/google-sheet')) {
+    if (path.endsWith('/test')) return 'catalog.sheet.settings.test';
+    if (path.endsWith('/preview')) return 'catalog.sheet.sync.preview';
+    return isWrite(method) ? 'catalog.sheet.settings.write' : 'catalog.sheet.settings.read';
+  }
   if (path.startsWith('/providers/')) return method === 'POST' ? 'provider.sync' : 'provider.read';
   if (path.includes('/reconciliation/')) return isWrite(method) ? 'reconciliation.resolve' : 'reconciliation.read';
   if (path.includes('/catalog/bulk/')) return method === 'POST' && path.endsWith('/execute') ? 'catalog.bulk.execute' : 'catalog.product.read';

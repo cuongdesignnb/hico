@@ -2,12 +2,15 @@ import { createContext } from 'react';
 
 export interface CartItem {
   id: string;
-  variantId?: string;
+  productId: string;
+  variantId: string;
+  slug: string;
   name: string;
+  operation: 'new_subscription' | 'topup' | 'device_sale';
   type: 'esim' | 'device' | 'physical';
   simType?: string;
   price: number;
-  currency?: 'VND' | 'USD';
+  currency: 'VND' | 'USD';
   originalPrice?: number;
   duration?: string;
   dataLimit?: string;

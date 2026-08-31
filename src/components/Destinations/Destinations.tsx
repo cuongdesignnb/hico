@@ -4,12 +4,13 @@ import { ArrowRight, Wifi } from 'lucide-react';
 import { useApp } from '../../context/useApp';
 import { getCanonicalProductPath } from '../../routing/canonicalRoute';
 import { getPublicProducts } from '../../services/publicSeoApi';
-import type { CatalogProductRecord } from '../../types/catalog';
+import { getProductMedia } from '../../utils/productMedia';
+import type { PublicProduct } from '../../types/publicCatalog';
 import './Destinations.css';
 
 export const Destinations: React.FC = () => {
   const { searchQuery, setSearchQuery } = useApp();
-  const [products, setProducts] = useState<CatalogProductRecord[]>([]);
+  const [products, setProducts] = useState<PublicProduct[]>([]);
   const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
@@ -28,8 +29,8 @@ export const Destinations: React.FC = () => {
         const prices = product.variants.map((variant) => variant.price).filter(Number.isFinite);
         const price = prices.length ? Math.min(...prices) : 0;
         return <Link key={product.id} className="destination-card" to={getCanonicalProductPath(product)}>
-          <div className="dest-image-box"><img src={product.image || '/images/dest_japan.png'} alt={product.name} className="dest-image" loading="lazy" /></div>
-          <div className="dest-details"><h3 className="dest-name"><span>{product.name}</span></h3><div className="dest-specs"><span>{product.variants.length} goi san sang</span></div><div className="dest-footer"><span className="dest-price">{price.toLocaleString('vi-VN')} VND</span><span className="dest-action-btn"><ArrowRight size={16} /></span></div></div>
+          <div className="dest-image-box"><img src={getProductMedia(product)} alt={product.name} className="dest-image" loading="lazy" /></div>
+          <div className="dest-details"><h3 className="dest-name"><span>{product.name}</span></h3><div className="dest-specs"><span>{product.variantCount} gói sẵn sàng</span></div><div className="dest-footer"><span className="dest-price">{price.toLocaleString('vi-VN')} {product.variants[0]?.currency || 'VND'}</span><span className="dest-action-btn"><ArrowRight size={16} /></span></div></div>
         </Link>;
       })}</div>}
     </div>

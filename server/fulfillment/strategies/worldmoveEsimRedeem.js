@@ -12,7 +12,7 @@ export const createWorldmoveEsimRedeemStrategy = () => ({
     }
     const response = await providerClient.createEsimOrder({
       email: '0',
-      wmproductId: item.wmproductId,
+      wmproductId: item.providerWmproductId ?? item.wmproductId,
       quantity: item.quantity,
       redeem: true,
       idempotencyKey: `${order.orderId}:${itemId}:CREATE_ESIM_REDEEM`,

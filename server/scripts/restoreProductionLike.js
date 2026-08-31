@@ -5,7 +5,15 @@ import { decryptBackup } from './backupCrypto.js';
 import { createPostgresPool } from '../database/postgresPool.js';
 import { migrateDatabase } from './migrateDatabase.js';
 
-const authTableOrder = ['admin_sessions', 'admin_user_roles', 'admin_role_permissions', 'admin_permissions', 'admin_roles', 'admin_users', 'schema_migrations'];
+const restoreTableOrder = [
+  'catalog_variant_fulfillment_binding_events', 'catalog_variant_fulfillment_bindings',
+  'customer_data_quarantine', 'support_attachments', 'support_ticket_messages', 'support_tickets', 'customer_notifications',
+  'referral_rewards', 'referral_events', 'referral_relationships', 'referral_codes',
+  'loyalty_ledger', 'loyalty_rules', 'loyalty_accounts',
+  'order_ownership_events', 'guest_order_claims', 'order_items', 'orders',
+  'customer_security_events', 'customer_contact_changes', 'customer_password_resets', 'customer_email_verifications', 'customer_addresses', 'customer_sessions', 'customer_profiles', 'customers',
+  'admin_sessions', 'admin_user_roles', 'admin_role_permissions', 'admin_permissions', 'admin_roles', 'admin_users', 'schema_migrations',
+];
 const quote = (identifier) => `"${identifier.replaceAll('"', '""')}"`;
 const restoreDatabase = async (payload, env) => {
   if (!env.RESTORE_DATABASE_URL) return false;
@@ -15,8 +23,9 @@ const restoreDatabase = async (payload, env) => {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      for (const table of authTableOrder) await client.query(`DELETE FROM ${table}`);
-      for (const table of [...authTableOrder].reverse()) for (const row of payload.databaseAuth[table] ?? []) {
+      const restoreTables = restoreTableOrder.filter((table) => Object.hasOwn(payload.databaseAuth ?? {}, table));
+      for (const table of restoreTables) await client.query(`DELETE FROM ${table}`);
+      for (const table of [...restoreTables].reverse()) for (const row of payload.databaseAuth[table] ?? []) {
         const columns = Object.keys(row);
         await client.query(`INSERT INTO ${table} (${columns.map(quote).join(', ')}) VALUES (${columns.map((_, index) => `$${index + 1}`).join(', ')})`, columns.map((column) => row[column]));
       }

@@ -1,24 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useApp } from '../context/useApp';
-import { ProductDetail } from '../components/ProductDetail/ProductDetail';
-import { getArticlePath, getCanonicalProductPath } from '../routing/canonicalRoute';
-import { getArticleBySlug, getCoverageBySlug, getProductBySlug, getPublicArticles, getPublicProducts, type PublicArticle } from '../services/publicSeoApi';
-import type { CatalogProductRecord } from '../types/catalog';
+import { getArticlePath, getCanonicalProductPath, slugify } from '../routing/canonicalRoute';
+import { getArticleBySlug, getCoverageBySlug, getPublicArticles, getPublicProducts, type PublicArticle } from '../services/publicSeoApi';
+import type { PublicProduct } from '../types/publicCatalog';
+import { ProductDetailPage } from './ProductDetailPage';
 import { SeoHead } from '../seo/SeoHead';
-import { articleMetadata, defaultMetadata, productMetadata } from '../seo/buildMetadata';
+import { articleMetadata, defaultMetadata } from '../seo/buildMetadata';
 import { buildCanonicalUrl } from '../seo/buildCanonicalUrl';
 import { seoConfig } from '../seo/seoConfig';
 import './publicPages.css';
 
 const breadcrumbSchema = (items: { name: string; path: string }[]) => ({ '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: items.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.name, item: buildCanonicalUrl(item.path) })) });
-const productSchema = (product: CatalogProductRecord, path: string) => {
-  const visible = product.variants.filter((variant) => variant.active && !variant.needsReview && !variant.archived && !variant.skuConflict);
-  const currencies = [...new Set(visible.map((variant) => variant.currency))];
-  const prices = visible.map((variant) => variant.price).filter(Number.isFinite);
-  const offers = currencies.length === 1 && prices.length ? { '@type': 'AggregateOffer', priceCurrency: currencies[0], lowPrice: Math.min(...prices), highPrice: Math.max(...prices), offerCount: prices.length } : undefined;
-  return { '@context': 'https://schema.org', '@type': 'Product', name: product.name, description: product.seoDescription || product.description || product.guide || product.name, image: toImageUrl(product.image), sku: visible[0]?.sku, brand: { '@type': 'Brand', name: 'HICO' }, url: buildCanonicalUrl(path), ...(offers ? { offers } : {}) };
-};
 const toImageUrl = (image: string | undefined) => {
   const value = image || seoConfig.defaultImage;
   return /^https?:\/\//i.test(value) ? value : buildCanonicalUrl(value);
@@ -28,46 +21,36 @@ const articleSchema = (article: PublicArticle, path: string) => ({ '@context': '
 const Loading = () => <main id="main-content" tabIndex={-1} className="route-state" role="status">Loading content...</main>;
 const NotFound = () => <main id="main-content" tabIndex={-1} className="route-state"><SeoHead path="/404" metadata={{ ...defaultMetadata(), title: 'Page not found | HICO eSIM', indexable: false }} noindex /><h1>Page not found</h1><p>The requested public content is unavailable.</p><Link to="/">Return home</Link></main>;
 
-const ProductCard = ({ product }: { product: CatalogProductRecord }) => {
+const ProductCard = ({ product }: { product: PublicProduct }) => {
   const prices = product.variants.map((variant) => variant.price).filter(Number.isFinite);
-  return <Link to={getCanonicalProductPath(product)} className="public-product-card"><img src={product.image || seoConfig.defaultImage} alt={product.name} loading="lazy" /><div><h2>{product.name}</h2><p>{product.coverageType === 'country' ? 'Destination eSIM' : 'Regional connectivity'}</p><strong>{prices.length ? `From ${Math.min(...prices).toLocaleString('vi-VN')} ${product.variants[0]?.currency || 'VND'}` : 'View package'}</strong></div></Link>;
+  return <Link to={getCanonicalProductPath(product)} className="public-product-card"><img src={product.image || product.images[0] || seoConfig.defaultImage} alt={product.name} loading="lazy" /><div><h2>{product.name}</h2><p>{product.coverageType === 'country' ? 'Destination eSIM' : 'Regional connectivity'}</p><strong>{prices.length ? `From ${Math.min(...prices).toLocaleString('vi-VN')} ${product.variants[0]?.currency || 'VND'}` : 'View package'}</strong></div></Link>;
 };
 
-export const ProductListPage = ({ operation }: { operation?: CatalogProductRecord['operation'] }) => {
+export const ProductListPage = ({ operation }: { operation?: PublicProduct['operation'] }) => {
   const { searchQuery } = useApp();
-  const [products, setProducts] = useState<CatalogProductRecord[] | null>(null);
-  useEffect(() => { const controller = new AbortController(); getPublicProducts(controller.signal).then(setProducts).catch(() => setProducts([])); return () => controller.abort(); }, []);
+  const [products, setProducts] = useState<PublicProduct[] | null>(null);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => { const controller = new AbortController(); queueMicrotask(() => setError(false)); getPublicProducts(controller.signal).then(setProducts).catch(() => { setError(true); setProducts([]); }); return () => controller.abort(); }, [attempt]);
   if (products === null) return <Loading />;
+  if (error) return <main className="route-state"><h1>Không thể tải danh mục sản phẩm</h1><p>Hãy thử lại sau giây lát.</p><button type="button" onClick={() => setAttempt((value) => value + 1)}>Thử lại</button></main>;
   const filtered = products.filter((product) => (!operation || product.operation === operation) && product.name.toLowerCase().includes(searchQuery.toLowerCase()));
   const path = operation === 'topup' ? '/nap-them' : operation === 'device_sale' ? '/thiet-bi' : '/san-pham';
   const heading = operation === 'topup' ? 'Top-up packages' : operation === 'device_sale' ? '4G / 5G devices' : 'Travel eSIM packages';
   return <main id="main-content" tabIndex={-1} className="public-page"><SeoHead path={path} metadata={{ ...defaultMetadata(), title: `${heading} | HICO eSIM`, description: `Browse ${heading.toLowerCase()} from HICO.` }} /><div className="container"><div className="page-heading"><p>HICO catalog</p><h1>{heading}</h1></div>{filtered.length ? <div className="public-card-grid">{filtered.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <div className="route-state compact"><h2>No public packages are available yet.</h2></div>}</div></main>;
 };
 
-export const ProductPage = () => {
-  const { slug = '' } = useParams();
-  const navigate = useNavigate();
-  const [product, setProduct] = useState<CatalogProductRecord | null | undefined>(undefined);
-  useEffect(() => {
-    const controller = new AbortController();
-    getProductBySlug(slug, controller.signal).then((result) => {
-      if ('redirect' in result) navigate(result.redirect, { replace: true });
-      else setProduct(result);
-    }).catch(() => setProduct(null));
-    return () => controller.abort();
-  }, [navigate, slug]);
-  if (product === undefined) return <Loading />;
-  if (!product) return <NotFound />;
-  const path = getCanonicalProductPath(product);
-  return <main id="main-content" tabIndex={-1}><SeoHead path={path} metadata={productMetadata(product)} schema={{ '@context': 'https://schema.org', '@graph': [breadcrumbSchema([{ name: 'Home', path: '/' }, { name: 'Products', path: '/san-pham' }, { name: product.name, path }]), productSchema(product, path)] }} /><ProductDetail productId={product.id} /></main>;
-};
+export const ProductPage = () => <ProductDetailPage />;
 
 export const CoverageListPage = () => {
-  const [products, setProducts] = useState<CatalogProductRecord[] | null>(null);
-  useEffect(() => { const controller = new AbortController(); getPublicProducts(controller.signal).then(setProducts).catch(() => setProducts([])); return () => controller.abort(); }, []);
+  const [products, setProducts] = useState<PublicProduct[] | null>(null);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => { const controller = new AbortController(); queueMicrotask(() => setError(false)); getPublicProducts(controller.signal).then(setProducts).catch(() => { setError(true); setProducts([]); }); return () => controller.abort(); }, [attempt]);
   if (!products) return <Loading />;
+  if (error) return <main className="route-state"><h1>Không thể tải điểm đến</h1><p>Hãy thử lại sau giây lát.</p><button type="button" onClick={() => setAttempt((value) => value + 1)}>Thử lại</button></main>;
   const countries = products.filter((product) => product.coverageType === 'country');
-  return <main id="main-content" tabIndex={-1} className="public-page"><SeoHead path="/diem-den" metadata={{ ...defaultMetadata(), title: 'Destinations | HICO eSIM', description: 'Explore public HICO eSIM destinations.' }} /><div className="container"><div className="page-heading"><p>Destination guide</p><h1>Destinations</h1></div><div className="public-card-grid">{countries.map((product) => <Link key={product.id} className="public-product-card" to={`/diem-den/${product.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`}><img src={product.image || seoConfig.defaultImage} alt={product.name} /><div><h2>{product.name}</h2><p>Explore packages for this destination.</p></div></Link>)}</div></div></main>;
+  return <main id="main-content" tabIndex={-1} className="public-page"><SeoHead path="/diem-den" metadata={{ ...defaultMetadata(), title: 'Destinations | HICO eSIM', description: 'Explore public HICO eSIM destinations.' }} /><div className="container"><div className="page-heading"><p>Destination guide</p><h1>Destinations</h1></div><div className="public-card-grid">{countries.map((product) => <Link key={product.id} className="public-product-card" to={`/diem-den/${slugify(product.name)}`}><img src={product.image || product.images[0] || seoConfig.defaultImage} alt={product.name} /><div><h2>{product.name}</h2><p>Explore packages for this destination.</p></div></Link>)}</div></div></main>;
 };
 
 export const CoveragePage = ({ expectedType }: { expectedType: 'country' | 'region' }) => {

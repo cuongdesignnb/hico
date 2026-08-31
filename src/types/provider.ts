@@ -14,6 +14,8 @@ export interface ProviderOffer {
   providerCurrency: 'TWD';
   cEndPrice?: number | null;
   cEndVisible?: boolean;
+  apnHint?: string;
+  networkLabel?: string;
   active: boolean;
   syncedAt: string;
   rawHash?: string;

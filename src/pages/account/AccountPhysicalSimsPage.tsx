@@ -11,5 +11,5 @@ export const AccountPhysicalSimsPage = () => {
   const devices = useCustomerAssetQuery(deviceLoader);
   const combined = sims.data && devices.data ? { ...sims.data, items: [...sims.data.items, ...devices.data.items] } : null;
   usePendingAssetRefresh(Boolean(combined?.items.some((asset) => asset.status === 'PENDING_SHIP')), async () => { await Promise.all([sims.reload(), devices.reload()]); });
-  return <AccountAssetListPage title="SIM vat ly va thiet bi" lead="Theo doi giao hang va trang thai cac san pham vat ly." data={combined} error={sims.error ?? devices.error} loading={sims.loading || devices.loading} reload={() => { void sims.reload(); void devices.reload(); }} />;
+  return <AccountAssetListPage title="SIM vật lý và thiết bị" lead="Theo dõi giao hàng và trạng thái các sản phẩm vật lý." data={combined} error={sims.error ?? devices.error} loading={sims.loading || devices.loading} reload={() => { void sims.reload(); void devices.reload(); }} />;
 };

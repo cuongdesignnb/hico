@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createOrderItemSnapshot } from './checkoutSnapshot.js';
+
+test('order item snapshot keeps sold catalog data and provider fulfillment evidence separately', () => {
+  const snapshot = createOrderItemSnapshot({
+    product: { id: 'product-1', name: 'China eSIM', operation: 'new_subscription' },
+    variant: { id: 'variant-1', sku: 'SKU-1', medium: 'esim', price: 100000, currency: 'VND', supplier: 'hico', fulfillmentMethod: 'MANUAL_PROCESSING', wmproductId: null },
+    providerOffer: { providerProductType: 0, leSIM: true },
+    providerResolution: {
+      provider: 'WORLDMOVE', providerOfferId: 'offer-2', providerWmproductId: 'WM-CN-500MB-2D', requestedDays: 1, providerDurationDays: 2, strategy: 'NEXT_LONGER', upgradeDays: 1, bindingVersion: null, providerSnapshotHash: 'hash', fulfillmentMethod: 'WORLDMOVE_ESIM_REDEEM',
+    },
+    quantity: 1,
+  });
+  assert.equal(snapshot.soldVariantId, 'variant-1');
+  assert.equal(snapshot.soldDurationDays, 1);
+  assert.equal(snapshot.providerWmproductId, 'WM-CN-500MB-2D');
+  assert.equal(snapshot.providerDurationDays, 2);
+  assert.equal(snapshot.fulfillmentStrategy, 'NEXT_LONGER');
+  assert.equal(snapshot.provider, 'WORLDMOVE');
+});

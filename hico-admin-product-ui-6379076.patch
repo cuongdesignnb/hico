@@ -1,0 +1,2460 @@
+From 6379076f1c8eaa5715247beae0149af047ec54ca Mon Sep 17 00:00:00 2001
+From: cuongdesignnb <132921532+cuongdesignnb@users.noreply.github.com>
+Date: Sat, 29 Aug 2026 09:13:30 +0700
+Subject: [PATCH] feat(admin): redesign product management UI
+
+- Redesign CatalogTab with new layout and filters
+- Update ProductTable with improved display
+- Enhance ProductWizard with device specs and new fields
+- Add useProductDraft and useProductWizard hooks
+- Extend catalog types for product management
+---
+ src/components/Admin/Catalog/CatalogTab.tsx   | 330 +++++++++++-------
+ .../Admin/Catalog/ProductActivityFeed.tsx     | 114 ++++++
+ .../Admin/Catalog/ProductFilters.tsx          | 173 +++++++++
+ .../Catalog/ProductFulfillmentPreview.tsx     |  96 +++++
+ .../Admin/Catalog/ProductMediaPreview.tsx     |  51 +++
+ .../Admin/Catalog/ProductOverviewPanel.tsx    | 212 +++++++++++
+ .../Admin/Catalog/ProductSeoPreview.tsx       |  51 +++
+ .../Admin/Catalog/ProductStatsCards.tsx       | 118 +++++++
+ src/components/Admin/Catalog/ProductTable.tsx | 226 ++++++++----
+ .../Admin/Catalog/ProductVariantsPreview.tsx  |  91 +++++
+ .../ProductWizard/ProductGeneralStep.tsx      |  49 ++-
+ .../Catalog/ProductWizard/ProductWizard.css   |   3 +-
+ .../Catalog/ProductWizard/ProductWizard.tsx   |  29 +-
+ src/components/Admin/Catalog/productLabels.ts |  85 +++++
+ .../Admin/media/MediaAssetField.tsx           |  23 ++
+ .../Admin/media/MediaAssetPreview.tsx         |  14 +
+ .../Admin/media/MediaGalleryField.tsx         |  22 ++
+ .../Admin/media/MediaLibraryPicker.tsx        |  84 +++++
+ src/components/Admin/media/media.css          |   1 +
+ src/hooks/catalog/useProductDraft.ts          |  15 +
+ src/hooks/catalog/useProductWizard.ts         |  12 +
+ src/services/adminMediaApi.ts                 |  38 ++
+ src/services/catalogApi.ts                    |   2 +-
+ src/services/catalogWriteApi.ts               |   6 +-
+ src/types/catalog.ts                          |  58 +++
+ src/types/media.ts                            |  22 ++
+ src/types/productWizard.ts                    |  28 ++
+ 27 files changed, 1733 insertions(+), 220 deletions(-)
+ create mode 100644 src/components/Admin/Catalog/ProductActivityFeed.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductFilters.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductFulfillmentPreview.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductMediaPreview.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductOverviewPanel.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductSeoPreview.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductStatsCards.tsx
+ create mode 100644 src/components/Admin/Catalog/ProductVariantsPreview.tsx
+ create mode 100644 src/components/Admin/Catalog/productLabels.ts
+ create mode 100644 src/components/Admin/media/MediaAssetField.tsx
+ create mode 100644 src/components/Admin/media/MediaAssetPreview.tsx
+ create mode 100644 src/components/Admin/media/MediaGalleryField.tsx
+ create mode 100644 src/components/Admin/media/MediaLibraryPicker.tsx
+ create mode 100644 src/components/Admin/media/media.css
+ create mode 100644 src/services/adminMediaApi.ts
+ create mode 100644 src/types/media.ts
+
+diff --git a/src/components/Admin/Catalog/CatalogTab.tsx b/src/components/Admin/Catalog/CatalogTab.tsx
+index 426a069..527e8fd 100644
+--- a/src/components/Admin/Catalog/CatalogTab.tsx
++++ b/src/components/Admin/Catalog/CatalogTab.tsx
+@@ -3,9 +3,13 @@ import {
+   AlertCircle,
+   ChevronLeft,
+   ChevronRight,
++  Database,
++  Download,
+   LoaderCircle,
+   Plus,
+   RefreshCw,
++  RotateCw,
++  Upload,
+ } from 'lucide-react';
+ import { getAdminCatalogProducts } from '../../../services/catalogApi';
+ import { getCatalogSourceStatus } from '../../../services/catalogWriteApi';
+@@ -14,15 +18,15 @@ import { useBulkPreview } from '../../../hooks/catalog/useBulkPreview';
+ import { useBulkSelection } from '../../../hooks/catalog/useBulkSelection';
+ import { useCatalogQueues } from '../../../hooks/catalog/useCatalogQueues';
+ import type { BulkEntityType, BulkFilter, BulkOperation } from '../../../types/catalogBulk';
+-import type {
+-  CatalogProductRecord,
+-  CoverageType,
+-  ProductOperation,
+-  SimMedium,
+-  Supplier,
+-} from '../../../types/catalog';
++import type { CatalogProductRecord, CatalogStatus } from '../../../types/catalog';
+ import ProductTable from './ProductTable';
+ import ProductWizard from './ProductWizard/ProductWizard';
++import ProductStatsCards from './ProductStatsCards';
++import ProductFilters, {
++  type CatalogFiltersState,
++} from './ProductFilters';
++import ProductOverviewPanel from './ProductOverviewPanel';
++import ProductActivityFeed from './ProductActivityFeed';
+ import BulkActionBar, { type BulkOperationType } from './Bulk/BulkActionBar';
+ import BulkPreviewDialog from './Bulk/BulkPreviewDialog';
+ import BulkResultDialog from './Bulk/BulkResultDialog';
+@@ -37,21 +41,20 @@ interface CatalogTabProps {
+   searchQuery: string;
+ }
+ 
+-type OperationFilter = ProductOperation | 'all';
+-type CoverageFilter = CoverageType | 'all';
+-type MediumFilter = Exclude<SimMedium, null> | 'all';
+-type SupplierFilter = Supplier | 'all';
+-
+ const PAGE_SIZE = 20;
+ 
+ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+   const [products, setProducts] = useState<CatalogProductRecord[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState('');
+-  const [operation, setOperation] = useState<OperationFilter>('all');
+-  const [coverage, setCoverage] = useState<CoverageFilter>('all');
+-  const [medium, setMedium] = useState<MediumFilter>('all');
+-  const [supplier, setSupplier] = useState<SupplierFilter>('all');
++  const [filters, setFilters] = useState<CatalogFiltersState>({
++    operation: 'all',
++    medium: 'all',
++    supplier: 'all',
++    coverage: 'all',
++    status: 'all',
++    quick: null,
++  });
+   const [page, setPage] = useState(1);
+   const [wizard, setWizard] = useState<{ mode: 'create' | 'edit'; productId?: string } | null>(null);
+   const [entityType, setEntityType] = useState<BulkEntityType>('product');
+@@ -59,6 +62,7 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+   const [catalogVersionId, setCatalogVersionId] = useState('');
+   const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+   const [queueTab, setQueueTab] = useState<'sku' | 'review' | 'provider' | 'inventory'>('sku');
++  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+   const bulkSelection = useBulkSelection();
+   const bulkPreview = useBulkPreview();
+   const bulkExecute = useBulkExecute();
+@@ -111,20 +115,24 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+           variant.sku.toLocaleLowerCase('vi-VN').includes(normalizedSearch)
+           || variant.wmproductId?.toLocaleLowerCase('vi-VN').includes(normalizedSearch)
+         ));
+-      const matchesOperation = operation === 'all' || product.operation === operation;
+-      const matchesCoverage = coverage === 'all' || product.coverageType === coverage;
+-      const matchesMedium = medium === 'all'
+-        || product.variants.some((variant) => variant.medium === medium);
+-      const matchesSupplier = supplier === 'all'
+-        || product.variants.some((variant) => variant.supplier === supplier);
++      const matchesOperation = filters.operation === 'all' || product.operation === filters.operation;
++      const matchesCoverage = filters.coverage === 'all' || product.coverageType === filters.coverage;
++      const matchesMedium = filters.medium === 'all'
++        || product.variants.some((variant) => variant.medium === filters.medium);
++      const matchesSupplier = filters.supplier === 'all'
++        || product.variants.some((variant) => variant.supplier === filters.supplier);
++      const matchesStatus = filters.status === 'all' || product.status === filters.status;
++      const matchesReview = filters.quick !== 'review' || product.variants.some((variant) => variant.needsReview);
+ 
+       return matchesSearch
+         && matchesOperation
+         && matchesCoverage
+         && matchesMedium
+-        && matchesSupplier;
++        && matchesSupplier
++        && matchesStatus
++        && matchesReview;
+     });
+-  }, [coverage, medium, operation, products, searchQuery, supplier]);
++  }, [filters, products, searchQuery]);
+ 
+   const totalVariants = useMemo(
+     () => products.reduce((total, product) => total + product.variants.length, 0),
+@@ -144,12 +152,28 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+     currentPage * PAGE_SIZE,
+   );
+ 
++  const selectedProduct = useMemo(() => {
++    if (!selectedProductId) return null;
++    return products.find((product) => product.id === selectedProductId) ?? null;
++  }, [products, selectedProductId]);
++
++  const handleFiltersChange = useCallback((next: CatalogFiltersState) => {
++    setFilters(next);
++    setPage(1);
++  }, []);
++
++  const handleSearchChange = useCallback(() => {
++    setPage(1);
++    setSelectedProductId(null);
++  }, []);
++
+   const bulkFilter = useMemo<BulkFilter>(() => ({
+     ...(searchQuery.trim() ? { search: searchQuery.trim() } : {}),
+-    ...(operation !== 'all' ? { operation } : {}),
+-    ...(medium !== 'all' ? { medium } : {}),
+-    ...(supplier !== 'all' ? { supplier } : {}),
+-  }), [medium, operation, searchQuery, supplier]);
++    ...(filters.operation !== 'all' ? { operation: filters.operation } : {}),
++    ...(filters.medium !== 'all' ? { medium: filters.medium } : {}),
++    ...(filters.supplier !== 'all' ? { supplier: filters.supplier } : {}),
++    ...(filters.status !== 'all' ? { status: filters.status as CatalogStatus } : {}),
++  }), [filters.medium, filters.operation, filters.status, filters.supplier, searchQuery]);
+   const openBulkPreview = () => {
+     bulkPreview.clear();
+     bulkExecute.clear();
+@@ -172,9 +196,9 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+     }).catch(() => undefined);
+   };
+ 
+-  const updateFilter = <T,>(setter: (value: T) => void, value: T) => {
+-    setter(value);
+-    setPage(1);
++  const handleReload = () => {
++    void loadProducts();
++    void queues.reload();
+   };
+ 
+   if (loading) {
+@@ -199,34 +223,65 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+   return (
+     <>
+     <section className="catalog-tab">
+-      <div className="catalog-heading-row">
+-        <div>
+-          <h2>Danh mục sản phẩm</h2>
+-          <p>{filteredProducts.length.toLocaleString('vi-VN')} sản phẩm phù hợp</p>
++      <div className="catalog-tab__header">
++        <div className="catalog-tab__header-info">
++          <span className="catalog-tab__breadcrumb">Trang chủ / Sản phẩm</span>
++          <h2>Quản lý sản phẩm</h2>
++          <p>Quản lý và kiểm soát toàn bộ sản phẩm eSIM, SIM vật lý và thiết bị.</p>
+         </div>
+-        <div className="catalog-heading-actions">
+-        <button type="button" className="catalog-secondary-button" onClick={() => setWizard({ mode: 'create' })}>
+-          <Plus size={16} /> Tạo sản phẩm
+-        </button>
+-        <button
+-          type="button"
+-          className="catalog-icon-button"
+-          onClick={() => void loadProducts()}
+-          aria-label="Làm mới danh mục"
+-          title="Làm mới"
+-        >
+-          <RefreshCw size={17} />
+-        </button>
++        <div className="catalog-tab__header-actions">
++          <button type="button" className="catalog-primary-button" onClick={() => setWizard({ mode: 'create' })}>
++            <Plus size={16} /> Thêm sản phẩm
++          </button>
++          <button type="button" className="catalog-secondary-outline-button" onClick={() => window.alert('Chức năng nhập dữ liệu đang được hoàn thiện.')}>
++            <Upload size={16} /> Nhập dữ liệu
++          </button>
++          <button type="button" className="catalog-secondary-outline-button" onClick={() => window.alert('Chức năng xuất Excel đang được hoàn thiện.')}>
++            <Download size={16} /> Xuất Excel
++          </button>
++          <button type="button" className="catalog-secondary-outline-button" onClick={() => window.alert('Vui lòng chuyển sang tab "Nguồn hàng" trong sidebar để đồng bộ provider.')}>
++            <RotateCw size={16} /> Đồng bộ nhà cung cấp
++          </button>
++          <button
++            type="button"
++            className="catalog-icon-button"
++            onClick={() => void handleReload()}
++            aria-label="Làm mới danh mục"
++            title="Làm mới"
++          >
++            <RefreshCw size={17} />
++          </button>
+         </div>
+       </div>
+ 
+-      <div className="catalog-summary" aria-label="Tổng quan danh mục">
+-        <div><span>Sản phẩm</span><strong>{products.length.toLocaleString('vi-VN')}</strong></div>
+-        <div><span>Gói bán</span><strong>{totalVariants.toLocaleString('vi-VN')}</strong></div>
+-        <div><span>Cần xác nhận nguồn</span><strong>{reviewCount.toLocaleString('vi-VN')}</strong></div>
+-        <div><span>Nguồn dữ liệu</span><strong>Legacy adapter</strong></div>
++      <div className="catalog-tab__summary" aria-label="Tổng quan danh mục">
++        <div>
++          <span>Sản phẩm</span>
++          <strong>{products.length.toLocaleString('vi-VN')}</strong>
++        </div>
++        <div>
++          <span>Gói bán</span>
++          <strong>{totalVariants.toLocaleString('vi-VN')}</strong>
++        </div>
++        <div>
++          <span>Cần xác nhận nguồn</span>
++          <strong>{reviewCount.toLocaleString('vi-VN')}</strong>
++        </div>
++        <div>
++          <span>Nguồn dữ liệu</span>
++          <strong>Legacy adapter</strong>
++        </div>
+       </div>
+ 
++      <ProductStatsCards products={products} />
++
++      <ProductFilters
++        searchQuery={searchQuery}
++        onSearchChange={handleSearchChange}
++        filters={filters}
++        onFiltersChange={handleFiltersChange}
++      />
++
+       <BulkActionBar
+         entityType={entityType}
+         operation={bulkOperation}
+@@ -240,93 +295,100 @@ const CatalogTab = ({ searchQuery }: CatalogTabProps) => {
+       />
+       {(bulkSelection.selectedIds.length > 0 || bulkSelection.isFilterSelection) && <BulkSelectionSummary count={bulkSelection.selectedIds.length} isFilterSelection={bulkSelection.isFilterSelection} onClear={bulkSelection.clear} />}
+ 
+-      <div className="catalog-filters">
+-        <label>
+-          <span>Nghiệp vụ</span>
+-          <select
+-            value={operation}
+-            onChange={(event) => updateFilter(setOperation, event.target.value as OperationFilter)}
+-          >
+-            <option value="all">Tất cả</option>
+-            <option value="new_subscription">Mua SIM mới</option>
+-            <option value="topup">Top-up</option>
+-            <option value="device_sale">Thiết bị</option>
+-          </select>
+-        </label>
+-        <label>
+-          <span>Hình thức</span>
+-          <select
+-            value={medium}
+-            onChange={(event) => updateFilter(setMedium, event.target.value as MediumFilter)}
+-          >
+-            <option value="all">Tất cả</option>
+-            <option value="esim">eSIM</option>
+-            <option value="physical_sim">SIM vật lý</option>
+-          </select>
+-        </label>
+-        <label>
+-          <span>Nguồn cấp</span>
+-          <select
+-            value={supplier}
+-            onChange={(event) => updateFilter(setSupplier, event.target.value as SupplierFilter)}
+-          >
+-            <option value="all">Tất cả</option>
+-            <option value="worldmove">Worldmove</option>
+-            <option value="local_carrier">Nhà mạng địa phương</option>
+-            <option value="hico">HICO</option>
+-            <option value="other">Chưa xác nhận</option>
+-          </select>
+-        </label>
+-        <label>
+-          <span>Vùng phủ</span>
+-          <select
+-            value={coverage}
+-            onChange={(event) => updateFilter(setCoverage, event.target.value as CoverageFilter)}
+-          >
+-            <option value="all">Tất cả</option>
+-            <option value="country">Một quốc gia</option>
+-            <option value="region">Khu vực</option>
+-            <option value="global">Toàn cầu</option>
+-            <option value="not_applicable">Không áp dụng</option>
+-          </select>
+-        </label>
+-      </div>
+-
+-      {visibleProducts.length > 0 ? (
+-        <>
+-          <ProductTable products={visibleProducts} onEdit={(productId) => setWizard({ mode: 'edit', productId })} entityType={entityType} selectedIds={bulkSelection.selectedIds} onTogglePage={bulkSelection.selectPage} />
+-          <div className="catalog-pagination">
+-            <span>
+-              Trang {currentPage.toLocaleString('vi-VN')} / {totalPages.toLocaleString('vi-VN')}
+-            </span>
+-            <div>
++      <div className="catalog-tab__split">
++        <div className="catalog-tab__list">
++          {visibleProducts.length > 0 ? (
++            <>
++              <ProductTable
++                products={visibleProducts}
++                onEdit={(productId) => setWizard({ mode: 'edit', productId })}
++                entityType={entityType}
++                selectedIds={bulkSelection.selectedIds}
++                onTogglePage={bulkSelection.selectPage}
++                selectedProductId={selectedProductId}
++                onSelect={setSelectedProductId}
++              />
++              <div className="catalog-pagination">
++                <span>
++                  Hiển thị {(filteredProducts.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1).toLocaleString('vi-VN')}
++                  {' - '}
++                  {Math.min(currentPage * PAGE_SIZE, filteredProducts.length).toLocaleString('vi-VN')}
++                  {' trong tổng số '}
++                  <strong>{filteredProducts.length.toLocaleString('vi-VN')}</strong>
++                  {' sản phẩm'}
++                </span>
++                <div>
++                  <button
++                    type="button"
++                    onClick={() => setPage((value) => Math.max(1, value - 1))}
++                    disabled={currentPage === 1}
++                    aria-label="Trang trước"
++                    title="Trang trước"
++                  >
++                    <ChevronLeft size={16} />
++                  </button>
++                  <span className="catalog-pagination__page">
++                    Trang <strong>{currentPage.toLocaleString('vi-VN')}</strong> / {totalPages.toLocaleString('vi-VN')}
++                  </span>
++                  <button
++                    type="button"
++                    onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
++                    disabled={currentPage === totalPages}
++                    aria-label="Trang sau"
++                    title="Trang sau"
++                  >
++                    <ChevronRight size={16} />
++                  </button>
++                </div>
++              </div>
++            </>
++          ) : (
++            <div className="catalog-empty">
++              <strong>Không có sản phẩm phù hợp</strong>
++              <span>Hãy đổi bộ lọc hoặc từ khóa tìm kiếm.</span>
+               <button
+                 type="button"
+-                onClick={() => setPage((value) => Math.max(1, value - 1))}
+-                disabled={currentPage === 1}
+-                aria-label="Trang trước"
+-                title="Trang trước"
++                className="catalog-text-button"
++                onClick={() => handleFiltersChange({
++                  operation: 'all',
++                  medium: 'all',
++                  supplier: 'all',
++                  coverage: 'all',
++                  status: 'all',
++                  quick: null,
++                })}
+               >
+-                <ChevronLeft size={16} />
+-              </button>
+-              <button
+-                type="button"
+-                onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+-                disabled={currentPage === totalPages}
+-                aria-label="Trang sau"
+-                title="Trang sau"
+-              >
+-                <ChevronRight size={16} />
++                Đặt lại bộ lọc
+               </button>
+             </div>
+-          </div>
+-        </>
+-      ) : (
+-        <div className="catalog-empty">
+-          <strong>Không có sản phẩm phù hợp</strong>
+-          <span>Hãy đổi bộ lọc hoặc từ khóa tìm kiếm.</span>
++          )}
+         </div>
+-      )}
++
++        <div className="catalog-tab__side">
++          {selectedProduct ? (
++            <ProductOverviewPanel
++              product={selectedProduct}
++              onClose={() => setSelectedProductId(null)}
++              onEdit={() => setWizard({ mode: 'edit', productId: selectedProduct.id })}
++            />
++          ) : (
++            <div className="catalog-overview-placeholder" aria-live="polite">
++              <Database size={28} />
++              <strong>Chọn sản phẩm để xem chi tiết</strong>
++              <span>Click vào một sản phẩm trong danh sách để mở panel preview.</span>
++            </div>
++          )}
++
++          <ProductActivityFeed
++            skuConflicts={queues.skuConflicts}
++            needsReview={queues.needsReview}
++            providerIssues={queues.providerIssues}
++            inventoryWarnings={queues.inventoryWarnings}
++            onTabChange={setQueueTab}
++          />
++        </div>
++      </div>
++
+       <section className="catalog-queues" aria-label="Hàng đợi xử lý catalog">
+         <div className="catalog-queues-heading"><div><h3>Hàng đợi cần xử lý</h3><span>Chỉ cảnh báo để Admin kiểm tra, không tự sửa dữ liệu.</span></div><button type="button" className="catalog-icon-button" onClick={() => void queues.reload()} aria-label="Làm mới hàng đợi" title="Làm mới"><RefreshCw size={16} /></button></div>
+         <div className="catalog-queue-tabs"><button type="button" className={queueTab === 'sku' ? 'is-active' : ''} onClick={() => setQueueTab('sku')}>SKU trùng <b>{queues.skuConflicts?.total ?? '—'}</b></button><button type="button" className={queueTab === 'review' ? 'is-active' : ''} onClick={() => setQueueTab('review')}>Cần review <b>{queues.needsReview?.total ?? '—'}</b></button><button type="button" className={queueTab === 'provider' ? 'is-active' : ''} onClick={() => setQueueTab('provider')}>Nguồn cấp <b>{queues.providerIssues?.total ?? '—'}</b></button><button type="button" className={queueTab === 'inventory' ? 'is-active' : ''} onClick={() => setQueueTab('inventory')}>Tồn kho <b>{queues.inventoryWarnings?.total ?? '—'}</b></button></div>
+diff --git a/src/components/Admin/Catalog/ProductActivityFeed.tsx b/src/components/Admin/Catalog/ProductActivityFeed.tsx
+new file mode 100644
+index 0000000..e325e46
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductActivityFeed.tsx
+@@ -0,0 +1,114 @@
++import { AlertTriangle, Boxes, RefreshCw, Tag } from 'lucide-react';
++import type { QueueResponse } from '../../../types/catalogQueue';
++import type {
++  InventoryWarningItem,
++  NeedsReviewItem,
++  ProviderIssueItem,
++  SkuConflictGroup,
++} from '../../../types/catalogQueue';
++
++interface ProductActivityFeedProps {
++  skuConflicts: QueueResponse<SkuConflictGroup> | null;
++  needsReview: QueueResponse<NeedsReviewItem> | null;
++  providerIssues: QueueResponse<ProviderIssueItem> | null;
++  inventoryWarnings: QueueResponse<InventoryWarningItem> | null;
++  onTabChange: (tab: 'sku' | 'review' | 'provider' | 'inventory') => void;
++}
++
++const formatRelative = (timestamp?: string) => {
++  if (!timestamp) return 'Gần đây';
++  const date = new Date(timestamp);
++  if (Number.isNaN(date.getTime())) return 'Gần đây';
++  const diffMs = Date.now() - date.getTime();
++  const minute = 60 * 1000;
++  const hour = 60 * minute;
++  const day = 24 * hour;
++  if (diffMs < minute) return 'Vừa xong';
++  if (diffMs < hour) return `${Math.floor(diffMs / minute)} phút trước`;
++  if (diffMs < day) return `${Math.floor(diffMs / hour)} giờ trước`;
++  return date.toLocaleDateString('vi-VN');
++};
++
++const ProductActivityFeed = ({
++  skuConflicts,
++  needsReview,
++  providerIssues,
++  inventoryWarnings,
++  onTabChange,
++}: ProductActivityFeedProps) => {
++  const items = [
++    {
++      id: 'sku',
++      icon: <Tag size={16} />,
++      title: 'SKU trùng',
++      description: skuConflicts && skuConflicts.total > 0
++        ? `${skuConflicts.total} nhóm SKU trùng cần xử lý`
++        : 'Không có cảnh báo SKU',
++      timestamp: skuConflicts?.items?.[0] ? formatRelative() : undefined,
++      onClick: () => onTabChange('sku'),
++      tone: skuConflicts && skuConflicts.total > 0 ? 'warning' : 'neutral',
++    },
++    {
++      id: 'review',
++      icon: <AlertTriangle size={16} />,
++      title: 'Cần review',
++      description: needsReview && needsReview.total > 0
++        ? `${needsReview.total} variant cần xác nhận nguồn`
++        : 'Không có variant cần review',
++      timestamp: needsReview?.items?.[0] ? formatRelative() : undefined,
++      onClick: () => onTabChange('review'),
++      tone: needsReview && needsReview.total > 0 ? 'warning' : 'neutral',
++    },
++    {
++      id: 'provider',
++      icon: <RefreshCw size={16} />,
++      title: 'Nguồn cấp',
++      description: providerIssues && providerIssues.total > 0
++        ? `${providerIssues.total} cảnh báo nguồn cấp`
++        : 'Provider đã đồng bộ',
++      timestamp: providerIssues?.items?.[0] ? formatRelative() : undefined,
++      onClick: () => onTabChange('provider'),
++      tone: providerIssues && providerIssues.total > 0 ? 'info' : 'neutral',
++    },
++    {
++      id: 'inventory',
++      icon: <Boxes size={16} />,
++      title: 'Tồn kho',
++      description: inventoryWarnings && inventoryWarnings.total > 0
++        ? `${inventoryWarnings.total} cảnh báo tồn kho`
++        : 'Tồn kho ổn định',
++      timestamp: inventoryWarnings?.items?.[0] ? formatRelative() : undefined,
++      onClick: () => onTabChange('inventory'),
++      tone: inventoryWarnings && inventoryWarnings.total > 0 ? 'danger' : 'neutral',
++    },
++  ] as const;
++
++  return (
++    <div className="catalog-activity-feed">
++      <div className="catalog-activity-feed__heading">
++        <h3>Hoạt động gần đây</h3>
++        <span>Cảnh báo cần xử lý trong catalog.</span>
++      </div>
++      <ul className="catalog-activity-feed__list">
++        {items.map((item) => (
++          <li key={item.id}>
++            <button
++              type="button"
++              className={`catalog-activity-feed__item catalog-activity-feed__item--${item.tone}`}
++              onClick={item.onClick}
++            >
++              <span className="catalog-activity-feed__icon" aria-hidden="true">{item.icon}</span>
++              <span className="catalog-activity-feed__body">
++                <strong>{item.title}</strong>
++                <span>{item.description}</span>
++              </span>
++              <span className="catalog-activity-feed__time">{item.timestamp || '—'}</span>
++            </button>
++          </li>
++        ))}
++      </ul>
++    </div>
++  );
++};
++
++export default ProductActivityFeed;
+\ No newline at end of file
+diff --git a/src/components/Admin/Catalog/ProductFilters.tsx b/src/components/Admin/Catalog/ProductFilters.tsx
+new file mode 100644
+index 0000000..6bd0ba1
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductFilters.tsx
+@@ -0,0 +1,173 @@
++import { useCallback } from 'react';
++import { Search } from 'lucide-react';
++import type {
++  CatalogStatus,
++  CoverageType,
++  ProductOperation,
++  SimMedium,
++  Supplier,
++} from '../../../types/catalog';
++import { COVERAGE_LABELS, STATUS_LABELS, SUPPLIER_LABELS, MEDIUM_CHIP_LABELS } from './productLabels';
++
++export type StatusFilter = CatalogStatus | 'all';
++export type OperationFilter = ProductOperation | 'all';
++export type CoverageFilter = CoverageType | 'all';
++export type MediumFilter = Exclude<SimMedium, null> | 'all';
++export type SupplierFilter = Supplier | 'all';
++export type QuickFilter = 'esim' | 'physical_sim' | 'device_sale' | 'active' | 'draft' | 'review';
++
++export interface CatalogFiltersState {
++  operation: OperationFilter;
++  medium: MediumFilter;
++  supplier: SupplierFilter;
++  coverage: CoverageFilter;
++  status: StatusFilter;
++  quick: QuickFilter | null;
++}
++
++interface ProductFiltersProps {
++  searchQuery: string;
++  onSearchChange: (value: string) => void;
++  filters: CatalogFiltersState;
++  onFiltersChange: (filters: CatalogFiltersState) => void;
++}
++
++const QUICK_CHIP_LABELS: Array<{ id: QuickFilter; label: string; group: 'medium' | 'status' | 'review' }> = [
++  { id: 'esim', label: MEDIUM_CHIP_LABELS.esim, group: 'medium' },
++  { id: 'physical_sim', label: MEDIUM_CHIP_LABELS.physical_sim, group: 'medium' },
++  { id: 'device_sale', label: 'Thiết bị', group: 'medium' },
++  { id: 'active', label: STATUS_LABELS.active, group: 'status' },
++  { id: 'draft', label: STATUS_LABELS.draft, group: 'status' },
++  { id: 'review', label: 'Cần review', group: 'review' },
++];
++
++const ProductFilters = ({ searchQuery, onSearchChange, filters, onFiltersChange }: ProductFiltersProps) => {
++  const update = useCallback((patch: Partial<CatalogFiltersState>) => {
++    onFiltersChange({ ...filters, ...patch });
++  }, [filters, onFiltersChange]);
++
++  const handleQuick = (chip: QuickFilter) => {
++    if (filters.quick === chip) {
++      update({ quick: null });
++      return;
++    }
++    const patch: Partial<CatalogFiltersState> = { quick: chip };
++    if (chip === 'esim' || chip === 'physical_sim') {
++      patch.medium = chip;
++      patch.status = 'all';
++    } else if (chip === 'device_sale') {
++      patch.operation = 'device_sale';
++      patch.status = 'all';
++    } else if (chip === 'active' || chip === 'draft') {
++      patch.status = chip;
++    } else if (chip === 'review') {
++      patch.status = 'all';
++    }
++    update(patch);
++  };
++
++  return (
++    <div className="catalog-filters-section">
++      <div className="catalog-filters-row">
++        <div className="catalog-search-wrapper">
++          <Search size={16} className="catalog-search-icon" />
++          <input
++            type="search"
++            className="catalog-search-input"
++            placeholder="Tìm sản phẩm, SKU, wmproductId..."
++            value={searchQuery}
++            onChange={(event) => onSearchChange(event.target.value)}
++            aria-label="Tìm sản phẩm"
++          />
++        </div>
++
++        <div className="catalog-filters-grid">
++          <label className="catalog-filter-label">
++            <span>Nghiệp vụ</span>
++            <select
++              value={filters.operation}
++              onChange={(event) => update({ operation: event.target.value as OperationFilter })}
++            >
++              <option value="all">Tất cả</option>
++              <option value="new_subscription">Mua SIM mới</option>
++              <option value="topup">Top-up</option>
++              <option value="device_sale">Thiết bị</option>
++            </select>
++          </label>
++          <label className="catalog-filter-label">
++            <span>Hình thức</span>
++            <select
++              value={filters.medium}
++              onChange={(event) => update({ medium: event.target.value as MediumFilter })}
++            >
++              <option value="all">Tất cả</option>
++              <option value="esim">eSIM</option>
++              <option value="physical_sim">SIM vật lý</option>
++            </select>
++          </label>
++          <label className="catalog-filter-label">
++            <span>Nguồn cấp</span>
++            <select
++              value={filters.supplier}
++              onChange={(event) => update({ supplier: event.target.value as SupplierFilter })}
++            >
++              <option value="all">Tất cả</option>
++              {(Object.keys(SUPPLIER_LABELS) as Supplier[]).map((key) => (
++                <option key={key} value={key}>{SUPPLIER_LABELS[key]}</option>
++              ))}
++            </select>
++          </label>
++          <label className="catalog-filter-label">
++            <span>Vùng phủ</span>
++            <select
++              value={filters.coverage}
++              onChange={(event) => update({ coverage: event.target.value as CoverageFilter })}
++            >
++              <option value="all">Tất cả</option>
++              {(Object.keys(COVERAGE_LABELS) as CoverageType[]).map((key) => (
++                <option key={key} value={key}>{COVERAGE_LABELS[key]}</option>
++              ))}
++            </select>
++          </label>
++          <label className="catalog-filter-label">
++            <span>Trạng thái</span>
++            <select
++              value={filters.status}
++              onChange={(event) => update({ status: event.target.value as StatusFilter })}
++            >
++              <option value="all">Tất cả</option>
++              {(Object.keys(STATUS_LABELS) as CatalogStatus[]).map((key) => (
++                <option key={key} value={key}>{STATUS_LABELS[key]}</option>
++              ))}
++            </select>
++          </label>
++        </div>
++      </div>
++
++      <div className="catalog-quick-chips" role="tablist" aria-label="Lọc nhanh">
++        {QUICK_CHIP_LABELS.map((chip) => (
++          <button
++            key={chip.id}
++            type="button"
++            className={`catalog-quick-chip catalog-quick-chip--${chip.group}${filters.quick === chip.id ? ' is-active' : ''}`}
++            onClick={() => handleQuick(chip.id)}
++            aria-pressed={filters.quick === chip.id}
++          >
++            {chip.label}
++          </button>
++        ))}
++        {filters.quick !== null && (
++          <button
++            type="button"
++            className="catalog-quick-chip catalog-quick-chip--reset"
++            onClick={() => update({ quick: null })}
++          >
++            Xoá lọc nhanh
++          </button>
++        )}
++      </div>
++    </div>
++  );
++};
++
++export default ProductFilters;
+diff --git a/src/components/Admin/Catalog/ProductFulfillmentPreview.tsx b/src/components/Admin/Catalog/ProductFulfillmentPreview.tsx
+new file mode 100644
+index 0000000..11532cc
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductFulfillmentPreview.tsx
+@@ -0,0 +1,96 @@
++import type { CatalogProductRecord } from '../../../types/catalog';
++import { FULFILLMENT_LABELS } from './productLabels';
++
++interface ProductFulfillmentPreviewProps {
++  product: CatalogProductRecord;
++}
++
++const ProductFulfillmentPreview = ({ product }: ProductFulfillmentPreviewProps) => {
++  if (product.variants.length === 0) {
++    return (
++      <div className="catalog-preview-empty">
++        <strong>Chưa có thông tin fulfillment</strong>
++        <span>Sản phẩm cần ít nhất một variant để hiển thị cấu hình fulfillment.</span>
++      </div>
++    );
++  }
++
++  return (
++    <div className="catalog-preview-fulfillment">
++      {product.variants.map((variant) => (
++        <div key={variant.id} className="catalog-preview-fulfillment__card">
++          <div className="catalog-preview-fulfillment__head">
++            <strong>{variant.sku}</strong>
++            <span className="catalog-fulfillment-method">
++              {FULFILLMENT_LABELS[variant.fulfillmentMethod]}
++            </span>
++          </div>
++
++          <dl className="catalog-preview-fulfillment__list">
++            <div>
++              <dt>Nhà cung cấp</dt>
++              <dd>
++                <span className="catalog-provider-dot__bullet" aria-hidden="true" />
++                {variant.supplier}
++              </dd>
++            </div>
++            {variant.wmproductId && (
++              <div>
++                <dt>wmproductId</dt>
++                <dd className="catalog-mono">{variant.wmproductId}</dd>
++              </div>
++            )}
++            {variant.providerOfferId && (
++              <div>
++                <dt>providerOfferId</dt>
++                <dd className="catalog-mono">{variant.providerOfferId}</dd>
++              </div>
++            )}
++            {variant.providerProductId && (
++              <div>
++                <dt>providerProductId</dt>
++                <dd className="catalog-mono">{variant.providerProductId}</dd>
++              </div>
++            )}
++            {variant.providerProductType !== null && variant.providerProductType !== undefined && (
++              <div>
++                <dt>providerProductType</dt>
++                <dd className="catalog-mono">{variant.providerProductType}</dd>
++              </div>
++            )}
++            <div>
++              <dt>leSIM</dt>
++              <dd>
++                {variant.leSIM === true
++                  ? 'Có'
++                  : variant.leSIM === false
++                    ? 'Không'
++                    : 'Không xác định'}
++              </dd>
++            </div>
++            <div>
++              <dt>Yêu cầu SIM sẵn</dt>
++              <dd>{variant.requiresExistingSim ? 'Có' : 'Không'}</dd>
++            </div>
++            <div>
++              <dt>Cần giao hàng</dt>
++              <dd>{variant.shippingRequired ? 'Có' : 'Không'}</dd>
++            </div>
++            <div>
++              <dt>Trạng thái</dt>
++              <dd>
++                {variant.active
++                  ? 'Đang hoạt động'
++                  : variant.needsReview
++                    ? 'Cần review'
++                    : 'Không hoạt động'}
++              </dd>
++            </div>
++          </dl>
++        </div>
++      ))}
++    </div>
++  );
++};
++
++export default ProductFulfillmentPreview;
+diff --git a/src/components/Admin/Catalog/ProductMediaPreview.tsx b/src/components/Admin/Catalog/ProductMediaPreview.tsx
+new file mode 100644
+index 0000000..f3a003f
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductMediaPreview.tsx
+@@ -0,0 +1,51 @@
++import { Image as ImageIcon } from 'lucide-react';
++import type { CatalogProductRecord } from '../../../types/catalog';
++
++interface ProductMediaPreviewProps {
++  product: CatalogProductRecord;
++}
++
++const ProductMediaPreview = ({ product }: ProductMediaPreviewProps) => {
++  const gallery = Array.isArray(product.gallery) ? product.gallery : [];
++
++  return (
++    <div className="catalog-preview-media">
++      <div className="catalog-preview-media__primary">
++        <span className="catalog-preview-media__label">Ảnh chính</span>
++        {product.image ? (
++          <div className="catalog-preview-media__primary-image">
++            <img src={product.image} alt={product.name} />
++          </div>
++        ) : (
++          <div className="catalog-preview-media__placeholder">
++            <ImageIcon size={28} />
++            <span>Chưa có ảnh chính</span>
++          </div>
++        )}
++      </div>
++
++      <div className="catalog-preview-media__gallery">
++        <span className="catalog-preview-media__label">Gallery</span>
++        {gallery.length > 0 ? (
++          <div className="catalog-preview-media__grid">
++            {gallery.map((item) => (
++              <div key={item.id} className="catalog-preview-media__thumb">
++                <img src={item.url} alt={item.alt ?? item.title ?? product.name} />
++              </div>
++            ))}
++          </div>
++        ) : (
++          <div className="catalog-preview-media__placeholder catalog-preview-media__placeholder--inline">
++            <span>Chưa có ảnh gallery</span>
++          </div>
++        )}
++      </div>
++
++      <div className="catalog-preview-media__hint">
++        Quản lý ảnh trong Product Wizard.
++      </div>
++    </div>
++  );
++};
++
++export default ProductMediaPreview;
+\ No newline at end of file
+diff --git a/src/components/Admin/Catalog/ProductOverviewPanel.tsx b/src/components/Admin/Catalog/ProductOverviewPanel.tsx
+new file mode 100644
+index 0000000..714ebd6
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductOverviewPanel.tsx
+@@ -0,0 +1,212 @@
++import { useState } from 'react';
++import { ExternalLink, Image as ImageIcon, Pencil, Search, SlidersHorizontal, Sparkles, Tags, X } from 'lucide-react';
++import type { CatalogProductRecord } from '../../../types/catalog';
++import {
++  COVERAGE_LABELS,
++  FULFILLMENT_LABELS,
++  OPERATION_LABELS,
++  STATUS_LABELS,
++  SUPPLIER_LABELS,
++  formatPriceWithCurrency,
++  getLowestVariantPrice,
++} from './productLabels';
++import ProductVariantsPreview from './ProductVariantsPreview';
++import ProductFulfillmentPreview from './ProductFulfillmentPreview';
++import ProductMediaPreview from './ProductMediaPreview';
++import ProductSeoPreview from './ProductSeoPreview';
++
++type PanelTab = 'overview' | 'variants' | 'fulfillment' | 'media' | 'seo';
++
++interface ProductOverviewPanelProps {
++  product: CatalogProductRecord;
++  onClose: () => void;
++  onEdit: () => void;
++}
++
++const TABS: Array<{ id: PanelTab; label: string; icon: typeof Search }> = [
++  { id: 'overview', label: 'Tổng quan', icon: Search },
++  { id: 'variants', label: 'Biến thể', icon: Tags },
++  { id: 'fulfillment', label: 'Fulfillment', icon: SlidersHorizontal },
++  { id: 'media', label: 'Media', icon: ImageIcon },
++  { id: 'seo', label: 'SEO', icon: Sparkles },
++];
++
++const ProductOverviewPanel = ({ product, onClose, onEdit }: ProductOverviewPanelProps) => {
++  const [tab, setTab] = useState<PanelTab>('overview');
++  const lowest = getLowestVariantPrice(product.variants);
++  const suppliers = [...new Set(product.variants.map((variant) => variant.supplier))];
++  const primaryMedium = product.variants.find((variant) => variant.medium)?.medium;
++  const hasPriceIssue = product.variants.length > 0 && !lowest;
++
++  return (
++    <aside className="catalog-overview-panel" aria-label={`Chi tiết sản phẩm ${product.name}`}>
++      <header className="catalog-overview-panel__head">
++        <div className="catalog-overview-panel__head-info">
++          <span className={`catalog-status catalog-status-${product.status}`}>
++            {STATUS_LABELS[product.status]}
++          </span>
++          <button
++            type="button"
++            className="catalog-overview-panel__close"
++            onClick={onClose}
++            aria-label="Đóng panel"
++            title="Đóng"
++          >
++            <X size={16} />
++          </button>
++        </div>
++        <div className="catalog-overview-panel__head-product">
++          {product.image ? (
++            <img src={product.image} alt="" className="catalog-overview-panel__avatar" />
++          ) : (
++            <span className="catalog-overview-panel__avatar catalog-overview-panel__avatar--placeholder">
++              {product.name.charAt(0).toLocaleUpperCase('vi-VN')}
++            </span>
++          )}
++          <div>
++            <strong>{product.name}</strong>
++            <span className="catalog-mono">{product.id}</span>
++          </div>
++        </div>
++        <div className="catalog-overview-panel__actions">
++          <button type="button" className="catalog-secondary-button" onClick={onEdit}>
++            <Pencil size={14} />
++            <span>Sửa</span>
++          </button>
++          <a
++            href={`/san-pham/${product.slug}`}
++            target="_blank"
++            rel="noreferrer"
++            className="catalog-text-button"
++          >
++            <ExternalLink size={14} />
++            <span>Xem trang public</span>
++          </a>
++        </div>
++      </header>
++
++      <nav className="catalog-overview-panel__tabs" role="tablist">
++        {TABS.map((entry) => {
++          const Icon = entry.icon;
++          return (
++            <button
++              key={entry.id}
++              type="button"
++              role="tab"
++              aria-selected={tab === entry.id}
++              className={`catalog-overview-panel__tab${tab === entry.id ? ' is-active' : ''}`}
++              onClick={() => setTab(entry.id)}
++            >
++              <Icon size={14} />
++              <span>{entry.label}</span>
++            </button>
++          );
++        })}
++      </nav>
++
++      <div className="catalog-overview-panel__body">
++        {tab === 'overview' && (
++          <div className="catalog-overview-panel__overview">
++            <section className="catalog-overview-panel__section">
++              <h4>Thông tin cơ bản</h4>
++              <dl className="catalog-overview-panel__list">
++                <div>
++                  <dt>Tên sản phẩm</dt>
++                  <dd>{product.name}</dd>
++                </div>
++                <div>
++                  <dt>Slug</dt>
++                  <dd className="catalog-mono">{product.slug}</dd>
++                </div>
++                <div>
++                  <dt>Nghiệp vụ</dt>
++                  <dd>{OPERATION_LABELS[product.operation]}</dd>
++                </div>
++                <div>
++                  <dt>Vùng phủ</dt>
++                  <dd>{COVERAGE_LABELS[product.coverageType]}</dd>
++                </div>
++                {product.networkLabel && (
++                  <div>
++                    <dt>Mạng</dt>
++                    <dd>{product.networkLabel}</dd>
++                  </div>
++                )}
++                {product.operation !== 'device_sale' && primaryMedium && (
++                  <div>
++                    <dt>Hình thức</dt>
++                    <dd>{primaryMedium === 'esim' ? 'eSIM' : 'SIM vật lý'}</dd>
++                  </div>
++                )}
++              </dl>
++            </section>
++
++            <section className="catalog-overview-panel__section">
++              <h4>Giá bán</h4>
++              {lowest ? (
++                <div className="catalog-overview-panel__price">
++                  <strong>{formatPriceWithCurrency(lowest.price, lowest.currency)}</strong>
++                  <span>Giá khởi điểm từ variant đang hoạt động</span>
++                </div>
++              ) : hasPriceIssue ? (
++                <div className="catalog-overview-panel__price-empty">Variant chưa có giá hợp lệ.</div>
++              ) : (
++                <div className="catalog-overview-panel__price-empty">Chưa có variant</div>
++              )}
++            </section>
++
++            <section className="catalog-overview-panel__section">
++              <h4>Provider</h4>
++              {suppliers.length > 0 ? (
++                <ul className="catalog-overview-panel__providers">
++                  {suppliers.map((supplier) => (
++                    <li key={supplier}>
++                      <span className={`catalog-provider-dot__bullet catalog-provider-dot__bullet--${supplier}`} aria-hidden="true" />
++                      <strong>{SUPPLIER_LABELS[supplier]}</strong>
++                    </li>
++                  ))}
++                </ul>
++              ) : (
++                <div className="catalog-overview-panel__price-empty">Chưa có provider</div>
++              )}
++            </section>
++
++            <section className="catalog-overview-panel__section">
++              <h4>Trạng thái phát hành</h4>
++              <ul className="catalog-overview-panel__status-list">
++                <li>
++                  <span>Product</span>
++                  <strong>{product.status === 'active' ? 'Đang hoạt động' : STATUS_LABELS[product.status]}</strong>
++                </li>
++                <li>
++                  <span>Variant active</span>
++                  <strong>{product.variants.filter((variant) => variant.active).length}</strong>
++                </li>
++                <li>
++                  <span>Cần review</span>
++                  <strong>{product.variants.filter((variant) => variant.needsReview).length}</strong>
++                </li>
++              </ul>
++              <p className="catalog-overview-panel__hint">
++                HICO không tự động publish sản phẩm chỉ vì mở form edit. Dùng nút <strong>Sửa</strong> để cập nhật qua Product Wizard.
++              </p>
++            </section>
++          </div>
++        )}
++
++        {tab === 'variants' && <ProductVariantsPreview product={product} />}
++        {tab === 'fulfillment' && <ProductFulfillmentPreview product={product} />}
++        {tab === 'media' && <ProductMediaPreview product={product} />}
++        {tab === 'seo' && <ProductSeoPreview product={product} />}
++
++        {product.variants[0] && tab !== 'fulfillment' && (
++          <p className="catalog-overview-panel__footnote">
++            Fulfillment mặc định: {FULFILLMENT_LABELS[product.variants[0].fulfillmentMethod]}
++          </p>
++        )}
++      </div>
++    </aside>
++  );
++};
++
++export default ProductOverviewPanel;
+\ No newline at end of file
+diff --git a/src/components/Admin/Catalog/ProductSeoPreview.tsx b/src/components/Admin/Catalog/ProductSeoPreview.tsx
+new file mode 100644
+index 0000000..4436a73
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductSeoPreview.tsx
+@@ -0,0 +1,51 @@
++import type { CatalogProductRecord } from '../../../types/catalog';
++
++interface ProductSeoPreviewProps {
++  product: CatalogProductRecord;
++}
++
++const ProductSeoPreview = ({ product }: ProductSeoPreviewProps) => {
++  const seoTitle = product.seoTitle?.trim() || product.name;
++  const seoDescription = product.seoDescription?.trim() || product.description?.trim() || '';
++  const seoKeywords = product.seoKeywords?.trim() || '';
++
++  return (
++    <div className="catalog-preview-seo">
++      <div className="catalog-preview-seo__row">
++        <span>Slug</span>
++        <strong className="catalog-mono">{product.slug}</strong>
++      </div>
++      <div className="catalog-preview-seo__row">
++        <span>SEO title</span>
++        <strong>{seoTitle || <em className="catalog-preview-seo__empty">Chưa cấu hình</em>}</strong>
++      </div>
++      <div className="catalog-preview-seo__row">
++        <span>SEO description</span>
++        <strong>{seoDescription || <em className="catalog-preview-seo__empty">Chưa cấu hình</em>}</strong>
++      </div>
++      <div className="catalog-preview-seo__row">
++        <span>SEO keywords</span>
++        <strong>{seoKeywords || <em className="catalog-preview-seo__empty">Chưa cấu hình</em>}</strong>
++      </div>
++
++      <div className="catalog-preview-seo__serp" aria-label="Xem trước kết quả tìm kiếm">
++        <span className="catalog-preview-seo__serp-label">Xem trước Google</span>
++        <div className="catalog-preview-seo__serp-card">
++          <span className="catalog-preview-seo__serp-url">
++            hico.vn/san-pham/{product.slug}
++          </span>
++          <strong className="catalog-preview-seo__serp-title">{seoTitle}</strong>
++          <p className="catalog-preview-seo__serp-desc">
++            {seoDescription || 'Mô tả SEO sẽ hiển thị tại đây khi được cấu hình.'}
++          </p>
++        </div>
++      </div>
++
++      <div className="catalog-preview-seo__hint">
++        Cập nhật SEO trong Product Wizard.
++      </div>
++    </div>
++  );
++};
++
++export default ProductSeoPreview;
+\ No newline at end of file
+diff --git a/src/components/Admin/Catalog/ProductStatsCards.tsx b/src/components/Admin/Catalog/ProductStatsCards.tsx
+new file mode 100644
+index 0000000..76d024f
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductStatsCards.tsx
+@@ -0,0 +1,118 @@
++import { useMemo } from 'react';
++import { AlertTriangle, Boxes, CheckCircle2, Package, RefreshCw } from 'lucide-react';
++import type { CatalogProductRecord } from '../../../types/catalog';
++
++interface ProductStatsCardsProps {
++  products: CatalogProductRecord[];
++}
++
++const formatNumber = (value: number) => new Intl.NumberFormat('vi-VN').format(value);
++
++const ProductStatsCards = ({ products }: ProductStatsCardsProps) => {
++  const stats = useMemo(() => {
++    let activeCount = 0;
++    let reviewCount = 0;
++    let providerMapped = 0;
++    let totalMappableVariants = 0;
++    let qrPoolCount = 0;
++
++    products.forEach((product) => {
++      if (product.status === 'active') activeCount += 1;
++      product.variants.forEach((variant) => {
++        if (variant.needsReview) reviewCount += 1;
++        if (variant.fulfillmentMethod) {
++          totalMappableVariants += 1;
++          if (variant.providerOfferId || variant.wmproductId) providerMapped += 1;
++        }
++        if (variant.fulfillmentMethod === 'HICO_MANUAL_QR' && typeof variant.stock === 'number') {
++          qrPoolCount += variant.stock;
++        }
++      });
++    });
++
++    const syncRatio = totalMappableVariants > 0 ? Math.round((providerMapped / totalMappableVariants) * 1000) / 10 : 0;
++
++    return {
++      total: products.length,
++      active: activeCount,
++      review: reviewCount,
++      syncRatio,
++      syncMapped: providerMapped,
++      syncTotal: totalMappableVariants,
++      qrPool: qrPoolCount,
++    };
++  }, [products]);
++
++  return (
++    <div className="catalog-kpi-grid" aria-label="Tổng quan sản phẩm">
++      <div className="catalog-kpi-card catalog-kpi-card--primary">
++        <div className="catalog-kpi-card__icon">
++          <Package size={20} />
++        </div>
++        <div className="catalog-kpi-card__body">
++          <span className="catalog-kpi-card__label">Tổng sản phẩm</span>
++          <strong className="catalog-kpi-card__value">{formatNumber(stats.total)}</strong>
++          <span className="catalog-kpi-card__sub">Toàn bộ danh mục</span>
++        </div>
++      </div>
++
++      <div className="catalog-kpi-card catalog-kpi-card--success">
++        <div className="catalog-kpi-card__icon">
++          <CheckCircle2 size={20} />
++        </div>
++        <div className="catalog-kpi-card__body">
++          <span className="catalog-kpi-card__label">Đang bán</span>
++          <strong className="catalog-kpi-card__value">{formatNumber(stats.active)}</strong>
++          <span className="catalog-kpi-card__sub">
++            {stats.total > 0
++              ? `${Math.round((stats.active / stats.total) * 100)}% tổng sản phẩm`
++              : 'Chưa có dữ liệu'}
++          </span>
++        </div>
++      </div>
++
++      <div className="catalog-kpi-card catalog-kpi-card--warning">
++        <div className="catalog-kpi-card__icon">
++          <AlertTriangle size={20} />
++        </div>
++        <div className="catalog-kpi-card__body">
++          <span className="catalog-kpi-card__label">Cần review</span>
++          <strong className="catalog-kpi-card__value">{formatNumber(stats.review)}</strong>
++          <span className="catalog-kpi-card__sub">
++            {stats.review > 0 ? 'Cần xác nhận nguồn' : 'Không có cảnh báo'}
++          </span>
++        </div>
++      </div>
++
++      <div className="catalog-kpi-card catalog-kpi-card--info">
++        <div className="catalog-kpi-card__icon">
++          <RefreshCw size={20} />
++        </div>
++        <div className="catalog-kpi-card__body">
++          <span className="catalog-kpi-card__label">Đồng bộ provider</span>
++          <strong className="catalog-kpi-card__value">{stats.syncRatio}%</strong>
++          <span className="catalog-kpi-card__sub">
++            {stats.syncTotal > 0
++              ? `${formatNumber(stats.syncMapped)} / ${formatNumber(stats.syncTotal)} variant`
++              : 'Chưa có variant'}
++          </span>
++        </div>
++      </div>
++
++      <div className="catalog-kpi-card catalog-kpi-card--neutral">
++        <div className="catalog-kpi-card__icon">
++          <Boxes size={20} />
++        </div>
++        <div className="catalog-kpi-card__body">
++          <span className="catalog-kpi-card__label">Tồn kho / QR pool</span>
++          <strong className="catalog-kpi-card__value">{formatNumber(stats.qrPool)}</strong>
++          <span className="catalog-kpi-card__sub">
++            {stats.qrPool > 0 ? 'QR khả dụng' : 'Theo provider'}
++          </span>
++        </div>
++      </div>
++    </div>
++  );
++};
++
++export default ProductStatsCards;
+diff --git a/src/components/Admin/Catalog/ProductTable.tsx b/src/components/Admin/Catalog/ProductTable.tsx
+index 9fc20dc..7e3449f 100644
+--- a/src/components/Admin/Catalog/ProductTable.tsx
++++ b/src/components/Admin/Catalog/ProductTable.tsx
+@@ -1,12 +1,22 @@
+-import { AlertTriangle, Pencil } from 'lucide-react';
++import { AlertTriangle, Eye, Pencil } from 'lucide-react';
+ import type {
+   CatalogProductRecord,
+   CatalogStatus,
+   CoverageType,
+   ProductOperation,
++  SimMedium,
+   Supplier,
+ } from '../../../types/catalog';
+ import type { BulkEntityType } from '../../../types/catalogBulk';
++import {
++  COVERAGE_LABELS,
++  MEDIUM_CHIP_LABELS,
++  OPERATION_LABELS,
++  STATUS_LABELS,
++  SUPPLIER_LABELS,
++  formatPriceWithCurrency,
++  getLowestVariantPrice,
++} from './productLabels';
+ 
+ interface ProductTableProps {
+   products: CatalogProductRecord[];
+@@ -14,68 +24,17 @@ interface ProductTableProps {
+   entityType: BulkEntityType;
+   selectedIds: string[];
+   onTogglePage: (ids: string[]) => void;
++  selectedProductId?: string | null;
++  onSelect?: (productId: string) => void;
+ }
+ 
+-const operationLabels: Record<ProductOperation, string> = {
+-  new_subscription: 'Mua SIM mới',
+-  topup: 'Top-up',
+-  device_sale: 'Thiết bị',
+-};
+-
+-const coverageLabels: Record<CoverageType, string> = {
+-  country: 'Một quốc gia',
+-  region: 'Khu vực',
+-  global: 'Toàn cầu',
+-  not_applicable: 'Không áp dụng',
+-};
+-
+-const supplierLabels: Record<Supplier, string> = {
+-  worldmove: 'Worldmove',
+-  local_carrier: 'Nhà mạng địa phương',
+-  hico: 'HICO',
+-  other: 'Chưa xác nhận',
+-};
+-
+-const statusLabels: Record<CatalogStatus, string> = {
+-  active: 'Đang bán',
+-  draft: 'Bản nháp',
+-  archived: 'Lưu trữ',
+-};
++const operationLabels: Record<ProductOperation, string> = OPERATION_LABELS;
++const coverageLabels: Record<CoverageType, string> = COVERAGE_LABELS;
++const supplierLabels: Record<Supplier, string> = SUPPLIER_LABELS;
++const statusLabels: Record<CatalogStatus, string> = STATUS_LABELS;
++const mediumLabels: Record<Exclude<SimMedium, null>, string> = MEDIUM_CHIP_LABELS;
+ 
+-const formatPrice = (product: CatalogProductRecord) => {
+-  const activeVariants = product.variants.filter((variant) => variant.active);
+-  const variants = activeVariants.length > 0 ? activeVariants : product.variants;
+-
+-  if (variants.length === 0) {
+-    return 'Chưa có giá';
+-  }
+-
+-  const lowestVariant = variants.reduce((lowest, variant) => (
+-    variant.price < lowest.price ? variant : lowest
+-  ));
+-
+-  return new Intl.NumberFormat('vi-VN', {
+-    style: 'currency',
+-    currency: lowestVariant.currency,
+-    maximumFractionDigits: 0,
+-  }).format(lowestVariant.price);
+-};
+-
+-const getSupplierSummary = (product: CatalogProductRecord) => {
+-  const suppliers = [...new Set(product.variants.map((variant) => variant.supplier))];
+-
+-  if (suppliers.length === 0) {
+-    return 'Chưa có nguồn';
+-  }
+-
+-  if (suppliers.length > 2) {
+-    return `${suppliers.length} nguồn`;
+-  }
+-
+-  return suppliers.map((supplier) => supplierLabels[supplier]).join(', ');
+-};
+-
+-const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage }: ProductTableProps) => {
++const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage, selectedProductId, onSelect }: ProductTableProps) => {
+   const pageIds = products.flatMap((product) => entityType === 'product' ? [product.id] : product.variants.map((variant) => variant.id));
+   const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+ 
+@@ -86,22 +45,29 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage
+         <tr>
+           <th className="catalog-select-cell"><input type="checkbox" checked={allSelected} onChange={() => onTogglePage(pageIds)} aria-label="Chọn toàn bộ trang" /></th>
+           <th>Sản phẩm</th>
+-          <th>Loại nghiệp vụ</th>
+-          <th>Vùng phủ</th>
+-          <th>Số gói</th>
+-          <th>Giá từ</th>
+-          <th>Nguồn</th>
++          <th>Loại</th>
++          <th>Danh mục</th>
++          <th>Giá</th>
++          <th>Tiền tệ</th>
+           <th>Trạng thái</th>
+-          <th>Thao tác</th>
++          <th>Provider</th>
++          <th>Tồn kho / QR</th>
++          <th className="catalog-actions-cell">Hành động</th>
+         </tr>
+       </thead>
+       <tbody>
+         {products.map((product) => {
+           const reviewCount = product.variants.filter((variant) => variant.needsReview).length;
++          const isSelected = selectedProductId === product.id;
++          const lowest = getLowestVariantPrice(product.variants);
+ 
+           return (
+-            <tr key={product.id}>
+-              <td className="catalog-select-cell">
++            <tr
++              key={product.id}
++              className={`${isSelected ? 'catalog-row-selected' : ''}`}
++              onClick={() => onSelect?.(product.id)}
++            >
++              <td className="catalog-select-cell" onClick={(event) => event.stopPropagation()}>
+                 <input
+                   type="checkbox"
+                   checked={(() => {
+@@ -123,7 +89,7 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage
+                   )}
+                   <div className="catalog-product-copy">
+                     <strong>{product.name}</strong>
+-                    <span>{product.id}</span>
++                    <span className="catalog-product-id">{product.id}</span>
+                     {reviewCount > 0 && (
+                       <span className="catalog-review-warning">
+                         <AlertTriangle size={12} />
+@@ -133,18 +99,70 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage
+                   </div>
+                 </div>
+               </td>
+-              <td>{operationLabels[product.operation]}</td>
+-              <td>{coverageLabels[product.coverageType]}</td>
+-              <td>{product.variants.length.toLocaleString('vi-VN')}</td>
+-              <td className="catalog-price-cell">{formatPrice(product)}</td>
+-              <td>{getSupplierSummary(product)}</td>
++              <td>
++                <div className="catalog-type-cell">
++                  <span className="catalog-medium-chip">
++                    {operationLabels[product.operation]}
++                  </span>
++                  {product.operation !== 'device_sale' && (
++                    <span className="catalog-medium-tag">
++                      {(() => {
++                        const mediums = [...new Set(product.variants.map((v) => v.medium).filter(Boolean))];
++                        if (mediums.length === 0) return '—';
++                        if (mediums.length === 1) return mediumLabels[mediums[0] as Exclude<SimMedium, null>];
++                        return `${mediums.length} loại SIM`;
++                      })()}
++                    </span>
++                  )}
++                </div>
++              </td>
++              <td>
++                <span className="catalog-coverage-tag">
++                  {coverageLabels[product.coverageType]}
++                </span>
++              </td>
++              <td className="catalog-price-cell">
++                {lowest
++                  ? formatPriceWithCurrency(lowest.price, lowest.currency)
++                  : 'Chưa có giá'}
++              </td>
++              <td>
++                {lowest ? (
++                  <span className={`catalog-currency-tag catalog-currency-tag--${lowest.currency.toLowerCase()}`}>
++                    {lowest.currency}
++                  </span>
++                ) : (
++                  <span className="catalog-currency-tag">—</span>
++                )}
++              </td>
+               <td>
+                 <span className={`catalog-status catalog-status-${product.status}`}>
+                   {statusLabels[product.status]}
+                 </span>
+               </td>
+               <td>
+-                <button type="button" className="catalog-icon-button" onClick={() => onEdit(product.id)} aria-label={`Sửa sản phẩm ${product.name}`} title="Sửa sản phẩm">
++                <ProviderCell product={product} />
++              </td>
++              <td>
++                <InventoryCell product={product} />
++              </td>
++              <td className="catalog-actions-cell" onClick={(event) => event.stopPropagation()}>
++                <button
++                  type="button"
++                  className="catalog-icon-button"
++                  onClick={() => onSelect?.(product.id)}
++                  aria-label={`Xem chi tiết ${product.name}`}
++                  title="Xem chi tiết"
++                >
++                  <Eye size={15} />
++                </button>
++                <button
++                  type="button"
++                  className="catalog-icon-button"
++                  onClick={() => onEdit(product.id)}
++                  aria-label={`Sửa sản phẩm ${product.name}`}
++                  title="Sửa sản phẩm"
++                >
+                   <Pencil size={15} />
+                 </button>
+               </td>
+@@ -157,4 +175,60 @@ const ProductTable = ({ products, onEdit, entityType, selectedIds, onTogglePage
+   );
+ };
+ 
+-export default ProductTable;
++const ProviderCell = ({ product }: { product: CatalogProductRecord }) => {
++  const suppliers = [...new Set(product.variants.map((variant) => variant.supplier))];
++  if (suppliers.length === 0) {
++    return <span className="catalog-provider-empty">Chưa có nguồn</span>;
++  }
++  if (suppliers.length > 2) {
++    return <span className="catalog-provider-multi">{suppliers.length} nguồn</span>;
++  }
++  return (
++    <span className="catalog-provider-cell">
++      {suppliers.map((supplier) => (
++        <span key={supplier} className={`catalog-provider-dot catalog-provider-dot--${supplier}`}>
++          <span className="catalog-provider-dot__bullet" aria-hidden="true" />
++          {supplierLabels[supplier]}
++        </span>
++      ))}
++    </span>
++  );
++};
++
++const InventoryCell = ({ product }: { product: CatalogProductRecord }) => {
++  if (product.variants.length === 0) {
++    return <span className="catalog-inventory-empty">—</span>;
++  }
++  const grouped = product.variants.reduce<Record<string, number>>((acc, variant) => {
++    if (variant.fulfillmentMethod === 'HICO_MANUAL_QR' && typeof variant.stock === 'number') {
++      acc.manualQr = (acc.manualQr ?? 0) + variant.stock;
++    } else if (variant.fulfillmentMethod === 'HICO_PHYSICAL_STOCK' && typeof variant.stock === 'number') {
++      acc.physical = (acc.physical ?? 0) + variant.stock;
++    } else if (variant.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER') {
++      acc.providerShip = (acc.providerShip ?? 0) + 1;
++    } else if (variant.fulfillmentMethod.startsWith('WORLDMOVE_')) {
++      acc.providerEsim = (acc.providerEsim ?? 0) + 1;
++    }
++    return acc;
++  }, {});
++
++  if (grouped.manualQr !== undefined) {
++    return (
++      <span className={`catalog-inventory-tag ${grouped.manualQr > 0 ? 'catalog-inventory-tag--ok' : 'catalog-inventory-tag--empty'}`}>
++        {grouped.manualQr > 0 ? `${grouped.manualQr} QR` : 'Hết QR'}
++      </span>
++    );
++  }
++  if (grouped.physical !== undefined) {
++    return <span className="catalog-inventory-tag">{grouped.physical} thiết bị</span>;
++  }
++  if (grouped.providerShip !== undefined) {
++    return <span className="catalog-inventory-tag catalog-inventory-tag--provider">Provider · {grouped.providerShip} SKU</span>;
++  }
++  if (grouped.providerEsim !== undefined) {
++    return <span className="catalog-inventory-tag catalog-inventory-tag--provider">Provider</span>;
++  }
++  return <span className="catalog-inventory-empty">—</span>;
++};
++
++export default ProductTable;
+\ No newline at end of file
+diff --git a/src/components/Admin/Catalog/ProductVariantsPreview.tsx b/src/components/Admin/Catalog/ProductVariantsPreview.tsx
+new file mode 100644
+index 0000000..f541a8c
+--- /dev/null
++++ b/src/components/Admin/Catalog/ProductVariantsPreview.tsx
+@@ -0,0 +1,91 @@
++import type { CatalogProductRecord } from '../../../types/catalog';
++import {
++  FULFILLMENT_LABELS,
++  STATUS_LABELS,
++  SUPPLIER_LABELS,
++  formatPriceWithCurrency,
++} from './productLabels';
++
++interface ProductVariantsPreviewProps {
++  product: CatalogProductRecord;
++}
++
++const ProductVariantsPreview = ({ product }: ProductVariantsPreviewProps) => {
++  if (product.variants.length === 0) {
++    return (
++      <div className="catalog-preview-empty">
++        <strong>Sản phẩm chưa có variant</strong>
++        <span>Hãy thêm variant trong Product Wizard.</span>
++      </div>
++    );
++  }
++
++  return (
++    <div className="catalog-preview-variants">
++      <div className="catalog-preview-variants__summary">
++        <div>
++          <span>Tổng variant</span>
++          <strong>{product.variants.length}</strong>
++        </div>
++        <div>
++          <span>Đang bán</span>
++          <strong>{product.variants.filter((v) => v.active).length}</strong>
++        </div>
++        <div>
++          <span>Cần review</span>
++          <strong>{product.variants.filter((v) => v.needsReview).length}</strong>
++        </div>
++      </div>
++
++      <div className="catalog-preview-variants__list">
++        {product.variants.map((variant) => (
++          <div key={variant.id} className="catalog-preview-variant">
++            <div className="catalog-preview-variant__head">
++              <strong>{variant.dataLimit || variant.duration || variant.sku}</strong>
++              <span className={`catalog-status catalog-status-${variant.active ? 'active' : 'draft'}`}>
++                {variant.active ? STATUS_LABELS.active : STATUS_LABELS.draft}
++              </span>
++            </div>
++            <div className="catalog-preview-variant__body">
++              <div>
++                <span>Giá</span>
++                <strong>{formatPriceWithCurrency(variant.price, variant.currency)}</strong>
++              </div>
++              <div>
++                <span>SKU</span>
++                <strong className="catalog-mono">{variant.sku}</strong>
++              </div>
++              <div>
++                <span>Nhà cung cấp</span>
++                <strong>{SUPPLIER_LABELS[variant.supplier]}</strong>
++              </div>
++              <div>
++                <span>Fulfillment</span>
++                <strong>{FULFILLMENT_LABELS[variant.fulfillmentMethod]}</strong>
++              </div>
++              {variant.wmproductId && (
++                <div>
++                  <span>wmproductId</span>
++                  <strong className="catalog-mono">{variant.wmproductId}</strong>
++                </div>
++              )}
++              {variant.providerOfferId && (
++                <div>
++                  <span>providerOfferId</span>
++                  <strong className="catalog-mono">{variant.providerOfferId}</strong>
++                </div>
++              )}
++            </div>
++            {variant.needsReview && (
++              <div className="catalog-preview-variant__warning">
++                Variant này cần xác nhận nguồn trước khi publish.
++              </div>
++            )}
++          </div>
++        ))}
++      </div>
++    </div>
++  );
++};
++
++export default ProductVariantsPreview;
+diff --git a/src/components/Admin/Catalog/ProductWizard/ProductGeneralStep.tsx b/src/components/Admin/Catalog/ProductWizard/ProductGeneralStep.tsx
+index a39ec9e..9db8670 100644
+--- a/src/components/Admin/Catalog/ProductWizard/ProductGeneralStep.tsx
++++ b/src/components/Admin/Catalog/ProductWizard/ProductGeneralStep.tsx
+@@ -1,4 +1,7 @@
+ import type { ProductDraft } from '../../../../types/productWizard';
++import type { CatalogDeviceSpecs } from '../../../../types/catalog';
++import { MediaAssetField } from '../../media/MediaAssetField';
++import { MediaGalleryField } from '../../media/MediaGalleryField';
+ 
+ interface ProductGeneralStepProps {
+   product: ProductDraft;
+@@ -6,7 +9,13 @@ interface ProductGeneralStepProps {
+   onGenerateSlug: () => void;
+ }
+ 
+-const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGeneralStepProps) => (
++const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGeneralStepProps) => {
++  const updateDeviceSpecification = <K extends keyof CatalogDeviceSpecs>(field: K, value: CatalogDeviceSpecs[K] | undefined) => {
++    const current = product.deviceSpecifications ?? {};
++    onChange({ deviceSpecifications: { ...current, [field]: value } });
++  };
++
++  return (
+   <section className="product-wizard-step-content">
+     <div className="product-wizard-section-heading">
+       <span className="product-wizard-kicker">Bước 2</span>
+@@ -23,10 +32,9 @@ const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGenera
+         <input value={product.slug} onChange={(event) => onChange({ slug: event.target.value })} placeholder="esim-nhat-ban-10gb" />
+         <button type="button" className="product-wizard-inline-button" onClick={onGenerateSlug}>Tạo slug từ tên</button>
+       </label>
+-      <label className="product-wizard-field">
+-        <span>Ảnh đại diện</span>
+-        <input value={product.image} onChange={(event) => onChange({ image: event.target.value })} placeholder="https://..." />
+-      </label>
++      <div className="product-wizard-field">
++        <MediaAssetField value={product.primaryMediaId} legacyUrl={product.image} label="Ảnh đại diện" onChange={(primaryMediaId) => onChange({ primaryMediaId })} />
++      </div>
+       <label className="product-wizard-field product-wizard-field-wide">
+         <span>Mô tả</span>
+         <textarea rows={3} value={product.description} onChange={(event) => onChange({ description: event.target.value })} placeholder="Mô tả ngắn cho Admin và khách hàng." />
+@@ -35,6 +43,9 @@ const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGenera
+         <span>Hướng dẫn sử dụng</span>
+         <textarea rows={3} value={product.guide} onChange={(event) => onChange({ guide: event.target.value })} placeholder="Các bước kích hoạt hoặc lưu ý." />
+       </label>
++      <div className="product-wizard-field product-wizard-field-wide">
++        <MediaGalleryField value={product.galleryMediaIds} legacyUrls={product.gallery.map((item) => item.url)} onChange={(galleryMediaIds) => onChange({ galleryMediaIds })} />
++      </div>
+       <label className="product-wizard-checkbox">
+         <input type="checkbox" checked={product.featured} onChange={(event) => onChange({ featured: event.target.checked })} />
+         <span>Đưa vào nhóm nổi bật</span>
+@@ -48,7 +59,33 @@ const ProductGeneralStep = ({ product, onChange, onGenerateSlug }: ProductGenera
+         <label className="product-wizard-field product-wizard-field-wide"><span>SEO description</span><textarea rows={2} value={product.seoDescription} onChange={(event) => onChange({ seoDescription: event.target.value })} /></label>
+       </div>
+     </div>
++    <div className="product-wizard-subsection">
++      <h4>Nội dung public theo sản phẩm</h4>
++      <div className="product-wizard-form-grid">
++        <label className="product-wizard-field"><span>Nhãn mạng</span><input value={product.networkLabel} onChange={(event) => onChange({ networkLabel: event.target.value })} /></label>
++        <label className="product-wizard-field"><span>Nhãn tốc độ</span><input value={product.speedLabel} onChange={(event) => onChange({ speedLabel: event.target.value })} /></label>
++        <label className="product-wizard-field product-wizard-field-wide"><span>Hướng dẫn cài đặt public</span><textarea rows={2} value={product.installationGuide} onChange={(event) => onChange({ installationGuide: event.target.value })} /></label>
++        <label className="product-wizard-field product-wizard-field-wide"><span>Tương thích</span><textarea rows={2} value={product.compatibilityContent} onChange={(event) => onChange({ compatibilityContent: event.target.value })} /></label>
++        <label className="product-wizard-field"><span>Trong hộp</span><input value={product.packageContents} onChange={(event) => onChange({ packageContents: event.target.value })} /></label>
++        <label className="product-wizard-field"><span>Ghi chú giao hàng</span><input value={product.deliveryNote} onChange={(event) => onChange({ deliveryNote: event.target.value })} /></label>
++        <label className="product-wizard-field"><span>Điều kiện đủ dùng</span><input value={product.eligibilityNote} onChange={(event) => onChange({ eligibilityNote: event.target.value })} /></label>
++        <label className="product-wizard-field"><span>Kích thước SIM</span><input value={product.simSize} onChange={(event) => onChange({ simSize: event.target.value })} /></label>
++      </div>
++    </div>
++    {product.operation === 'device_sale' && <div className="product-wizard-subsection">
++      <h4>Thông số thiết bị canonical</h4>
++      <div className="product-wizard-form-grid">
++        <label className="product-wizard-field"><span>Thương hiệu</span><input value={product.deviceSpecifications?.brand ?? ''} onChange={(event) => updateDeviceSpecification('brand', event.target.value)} /></label>
++        <label className="product-wizard-field"><span>Model</span><input value={product.deviceSpecifications?.model ?? ''} onChange={(event) => updateDeviceSpecification('model', event.target.value)} /></label>
++        <label className="product-wizard-field"><span>Thế hệ mạng</span><input value={product.deviceSpecifications?.networkGeneration ?? ''} onChange={(event) => updateDeviceSpecification('networkGeneration', event.target.value)} /></label>
++        <label className="product-wizard-field"><span>Wi-Fi</span><input value={product.deviceSpecifications?.wifiStandard ?? ''} onChange={(event) => updateDeviceSpecification('wifiStandard', event.target.value)} /></label>
++        <label className="product-wizard-field"><span>Băng tần</span><input value={product.deviceSpecifications?.supportedBands?.join(', ') ?? ''} onChange={(event) => updateDeviceSpecification('supportedBands', event.target.value.split(',').map((item) => item.trim()).filter(Boolean))} /></label>
++        <label className="product-wizard-field"><span>Pin</span><input value={product.deviceSpecifications?.batteryCapacity ?? ''} onChange={(event) => updateDeviceSpecification('batteryCapacity', event.target.value)} /></label>
++        <label className="product-wizard-field"><span>Bảo hành</span><input type="number" min="0" value={product.deviceSpecifications?.warrantyMonths ?? ''} onChange={(event) => updateDeviceSpecification('warrantyMonths', event.target.value ? Math.max(0, Number(event.target.value)) : undefined)} /></label>
++      </div>
++    </div>}
+   </section>
+-);
++  );
++};
+ 
+ export default ProductGeneralStep;
+diff --git a/src/components/Admin/Catalog/ProductWizard/ProductWizard.css b/src/components/Admin/Catalog/ProductWizard/ProductWizard.css
+index 09d672f..aa8f507 100644
+--- a/src/components/Admin/Catalog/ProductWizard/ProductWizard.css
++++ b/src/components/Admin/Catalog/ProductWizard/ProductWizard.css
+@@ -2,7 +2,8 @@
+ .product-wizard-dialog-backdrop {
+   position: fixed;
+   inset: 0;
+-  z-index: 50;
++  /* Stay above the Admin sidebar/header stacking layers. */
++  z-index: 1000;
+   display: grid;
+   place-items: center;
+   padding: 24px;
+diff --git a/src/components/Admin/Catalog/ProductWizard/ProductWizard.tsx b/src/components/Admin/Catalog/ProductWizard/ProductWizard.tsx
+index 6fb2c45..30b0398 100644
+--- a/src/components/Admin/Catalog/ProductWizard/ProductWizard.tsx
++++ b/src/components/Admin/Catalog/ProductWizard/ProductWizard.tsx
+@@ -69,13 +69,28 @@ const buildProductPayload = (product: ProductDraft) => ({
+   operation: product.operation,
+   coverageType: product.coverageType,
+   coverageIds: product.coverageIds,
+-  image: product.image.trim() || undefined,
++  image: product.primaryMediaId ? undefined : product.image.trim() || undefined,
++  primaryMediaId: product.primaryMediaId || undefined,
++  gallery: product.galleryMediaIds.length ? undefined : product.gallery.length ? product.gallery : undefined,
++  galleryMediaIds: product.galleryMediaIds.length ? product.galleryMediaIds : undefined,
+   description: product.description.trim() || undefined,
+   guide: product.guide.trim() || undefined,
+   featured: product.featured,
+   seoTitle: product.seoTitle.trim() || undefined,
+   seoDescription: product.seoDescription.trim() || undefined,
+   seoKeywords: product.seoKeywords.trim() || undefined,
++  deviceSpecifications: product.deviceSpecifications,
++  networkLabel: product.networkLabel.trim() || undefined,
++  coverageLabel: product.coverageLabel.trim() || undefined,
++  speedLabel: product.speedLabel.trim() || undefined,
++  installationGuide: product.installationGuide.trim() || undefined,
++  compatibilityContent: product.compatibilityContent.trim() || undefined,
++  instructions: product.instructions.trim() || undefined,
++  eligibilityNote: product.eligibilityNote.trim() || undefined,
++  packageContents: product.packageContents.trim() || undefined,
++  deliveryNote: product.deliveryNote.trim() || undefined,
++  simSize: product.simSize.trim() || undefined,
++  faqItems: product.faqItems.length ? product.faqItems : undefined,
+ });
+ 
+ const buildVariantPayload = (variant: VariantDraft) => {
+@@ -96,6 +111,18 @@ const buildVariantPayload = (variant: VariantDraft) => {
+     providerProductType: source?.providerProductType ?? variant.providerProductType ?? null,
+     leSIM: source?.leSIM ?? variant.leSIM ?? null,
+     requiresExistingSim: source?.requiresExistingSim ?? variant.requiresExistingSim,
++    shippingRequired: source?.fulfillmentMethod === 'WORLDMOVE_PHYSICAL_ORDER' || variant.shippingRequired,
++    networkLabel: variant.networkLabel,
++    coverageLabel: variant.coverageLabel,
++    speedLabel: variant.speedLabel,
++    installationGuide: variant.installationGuide,
++    compatibilityContent: variant.compatibilityContent,
++    instructions: variant.instructions,
++    eligibilityNote: variant.eligibilityNote,
++    packageContents: variant.packageContents,
++    deliveryNote: variant.deliveryNote,
++    simSize: variant.simSize,
++    deviceSpecifications: variant.deviceSpecifications,
+     stock: source?.fulfillmentMethod === 'HICO_PHYSICAL_STOCK' ? Number(variant.stock) : null,
+     active: source?.fulfillmentMethod === 'MANUAL_PROCESSING' ? false : variant.active,
+     needsReview: source?.fulfillmentMethod === 'MANUAL_PROCESSING' ? true : variant.needsReview,
+diff --git a/src/components/Admin/Catalog/productLabels.ts b/src/components/Admin/Catalog/productLabels.ts
+new file mode 100644
+index 0000000..4d3ca77
+--- /dev/null
++++ b/src/components/Admin/Catalog/productLabels.ts
+@@ -0,0 +1,85 @@
++import type {
++  CatalogStatus,
++  CoverageType,
++  FulfillmentMethod,
++  ProductOperation,
++  SimMedium,
++  Supplier,
++} from '../../../types/catalog';
++
++export const OPERATION_LABELS: Record<ProductOperation, string> = {
++  new_subscription: 'Mua SIM mới',
++  topup: 'Top-up',
++  device_sale: 'Thiết bị',
++};
++
++export const OPERATION_SHORT_LABELS: Record<ProductOperation, string> = {
++  new_subscription: 'eSIM',
++  topup: 'Top-up',
++  device_sale: 'Thiết bị',
++};
++
++export const COVERAGE_LABELS: Record<CoverageType, string> = {
++  country: 'Một quốc gia',
++  region: 'Khu vực',
++  global: 'Toàn cầu',
++  not_applicable: 'Không áp dụng',
++};
++
++export const STATUS_LABELS: Record<CatalogStatus, string> = {
++  active: 'Đang bán',
++  draft: 'Bản nháp',
++  archived: 'Lưu trữ',
++};
++
++export const SUPPLIER_LABELS: Record<Supplier, string> = {
++  worldmove: 'Worldmove',
++  local_carrier: 'Nhà mạng địa phương',
++  hico: 'HICO',
++  other: 'Chưa xác nhận',
++};
++
++export const MEDIUM_LABELS: Record<Exclude<SimMedium, null>, string> = {
++  esim: 'eSIM',
++  physical_sim: 'SIM vật lý',
++};
++
++export const MEDIUM_CHIP_LABELS: Record<Exclude<SimMedium, null>, string> = {
++  esim: 'eSIM',
++  physical_sim: 'SIM vật lý',
++};
++
++export const FULFILLMENT_LABELS: Record<FulfillmentMethod, string> = {
++  WORLDMOVE_ESIM_REDEEM: 'Worldmove — Redeem',
++  WORLDMOVE_ESIM_ORDER_THEN_REDEEM: 'Worldmove — Order → Redeem',
++  WORLDMOVE_PHYSICAL_ORDER: 'Worldmove — Physical Order',
++  WORLDMOVE_TOPUP: 'Worldmove — Top-up',
++  HICO_MANUAL_QR: 'HICO — Manual QR',
++  HICO_PHYSICAL_STOCK: 'HICO — Physical Stock',
++  EXTERNAL_PROVIDER_API: 'External API',
++  MANUAL_PROCESSING: 'Manual Processing',
++};
++
++export const CURRENCY_LABELS = {
++  VND: 'VND',
++  USD: 'USD',
++} as const;
++
++export const formatVariantPrice = (price: number, currency: 'VND' | 'USD') => {
++  const fractionDigits = currency === 'USD' ? 2 : 0;
++  return new Intl.NumberFormat('vi-VN', {
++    minimumFractionDigits: fractionDigits,
++    maximumFractionDigits: fractionDigits,
++  }).format(price);
++};
++
++export const formatPriceWithCurrency = (price: number, currency: 'VND' | 'USD') => (
++  `${formatVariantPrice(price, currency)} ${currency}`
++);
++
++export const getLowestVariantPrice = (variants: Array<{ price: number; currency: 'VND' | 'USD'; active: boolean }>) => {
++  const activeVariants = variants.filter((variant) => variant.active);
++  const candidates = activeVariants.length > 0 ? activeVariants : variants;
++  if (candidates.length === 0) return null;
++  return candidates.reduce((lowest, variant) => (variant.price < lowest.price ? variant : lowest));
++};
+\ No newline at end of file
+diff --git a/src/components/Admin/media/MediaAssetField.tsx b/src/components/Admin/media/MediaAssetField.tsx
+new file mode 100644
+index 0000000..faa68f7
+--- /dev/null
++++ b/src/components/Admin/media/MediaAssetField.tsx
+@@ -0,0 +1,23 @@
++import { Images, Trash2 } from 'lucide-react';
++import { useEffect, useState } from 'react';
++import { listAdminMedia } from '../../../services/adminMediaApi';
++import type { MediaAsset } from '../../../types/media';
++import { MediaAssetPreview } from './MediaAssetPreview';
++import { MediaLibraryPicker } from './MediaLibraryPicker';
++
++interface MediaAssetFieldProps {
++  value: string | null;
++  onChange: (mediaId: string | null) => void;
++  label: string;
++  required?: boolean;
++  allowedMimeTypes?: string[];
++  disabled?: boolean;
++  legacyUrl?: string;
++}
++
++export const MediaAssetField = ({ value, onChange, label, required = false, disabled = false, legacyUrl }: MediaAssetFieldProps) => {
++  const [open, setOpen] = useState(false);
++  const [asset, setAsset] = useState<MediaAsset | null>(null);
++  useEffect(() => { if (!value) return undefined; let active = true; listAdminMedia().then((items) => { if (active) setAsset(items.find((item) => item.id === value) ?? null); }).catch(() => { if (active) setAsset(null); }); return () => { active = false; }; }, [value]);
++  return <div className="admin-media-field"><div className="admin-media-field-label"><span>{label}{required && <b> *</b>}</span><div><button type="button" className="admin-media-select-button" disabled={disabled} onClick={() => setOpen(true)}><Images size={15} /> {value ? 'Thay đổi' : 'Chọn từ thư viện'}</button>{value && <button type="button" className="admin-media-remove-button" disabled={disabled} onClick={() => { setAsset(null); onChange(null); }} title="Bỏ ảnh khỏi đối tượng"><Trash2 size={15} /></button>}</div></div><MediaAssetPreview asset={value ? asset : null} legacyUrl={!value ? legacyUrl : undefined} /><MediaLibraryPicker open={open} selectedIds={value ? [value] : []} onSelect={(items) => { const next = items[0]; setAsset(next ?? null); onChange(next?.id ?? null); }} onClose={() => setOpen(false)} /></div>;
++};
+diff --git a/src/components/Admin/media/MediaAssetPreview.tsx b/src/components/Admin/media/MediaAssetPreview.tsx
+new file mode 100644
+index 0000000..e7ae8e4
+--- /dev/null
++++ b/src/components/Admin/media/MediaAssetPreview.tsx
+@@ -0,0 +1,14 @@
++import type { MediaAsset } from '../../../types/media';
++
++interface MediaAssetPreviewProps {
++  asset?: MediaAsset | null;
++  legacyUrl?: string;
++  alt?: string;
++  compact?: boolean;
++}
++
++export const MediaAssetPreview = ({ asset, legacyUrl, alt = '', compact = false }: MediaAssetPreviewProps) => {
++  const url = asset?.publicUrl ?? legacyUrl;
++  if (!url) return <div className={`admin-media-empty-preview${compact ? ' compact' : ''}`}>Chưa chọn ảnh</div>;
++  return <div className={`admin-media-preview${compact ? ' compact' : ''}`}><img src={url} alt={asset?.altText || alt} /><span>{asset?.originalName ?? 'Ảnh legacy'}</span></div>;
++};
+diff --git a/src/components/Admin/media/MediaGalleryField.tsx b/src/components/Admin/media/MediaGalleryField.tsx
+new file mode 100644
+index 0000000..01887c8
+--- /dev/null
++++ b/src/components/Admin/media/MediaGalleryField.tsx
+@@ -0,0 +1,22 @@
++import { Images, Trash2 } from 'lucide-react';
++import { useEffect, useState } from 'react';
++import { listAdminMedia } from '../../../services/adminMediaApi';
++import type { MediaAsset } from '../../../types/media';
++import { MediaLibraryPicker } from './MediaLibraryPicker';
++
++interface MediaGalleryFieldProps {
++  value: string[];
++  onChange: (mediaIds: string[]) => void;
++  maxItems?: number;
++  allowReorder?: boolean;
++  label?: string;
++  legacyUrls?: string[];
++}
++
++export const MediaGalleryField = ({ value, onChange, maxItems = 50, allowReorder = true, label = 'Thư viện ảnh', legacyUrls = [] }: MediaGalleryFieldProps) => {
++  const [open, setOpen] = useState(false);
++  const [assets, setAssets] = useState<MediaAsset[]>([]);
++  useEffect(() => { let active = true; listAdminMedia().then((items) => { if (active) setAssets(items.filter((item) => value.includes(item.id))); }).catch(() => setAssets([])); return () => { active = false; }; }, [value]);
++  const move = (index: number, direction: -1 | 1) => { const nextIndex = index + direction; if (nextIndex < 0 || nextIndex >= value.length) return; const next = [...value]; [next[index], next[nextIndex]] = [next[nextIndex], next[index]]; onChange(next); };
++  return <div className="admin-media-field"><div className="admin-media-field-label"><span>{label}</span><button type="button" className="admin-media-select-button" onClick={() => setOpen(true)}><Images size={15} /> Chọn nhiều ảnh</button></div><div className="admin-media-gallery-list">{value.map((id, index) => { const asset = assets.find((item) => item.id === id); return <div className="admin-media-gallery-item" key={id}><img src={asset?.publicUrl} alt={asset?.altText || asset?.originalName || ''} /><span>{asset?.title || asset?.originalName || id}</span>{allowReorder && <><button type="button" onClick={() => move(index, -1)} disabled={index === 0} aria-label="Đưa ảnh lên">↑</button><button type="button" onClick={() => move(index, 1)} disabled={index === value.length - 1} aria-label="Đưa ảnh xuống">↓</button></>}<button type="button" onClick={() => onChange(value.filter((item) => item !== id))} aria-label="Bỏ ảnh"><Trash2 size={14} /></button></div>; })}{value.length === 0 && legacyUrls.map((url) => <div className="admin-media-gallery-item legacy" key={url}><img src={url} alt="" /><span>Ảnh legacy, chọn lại để chuẩn hóa</span></div>)}{value.length === 0 && legacyUrls.length === 0 && <p className="admin-media-empty-inline">Chưa chọn ảnh.</p>}</div><MediaLibraryPicker open={open} multiple selectedIds={value} maxItems={maxItems} onSelect={(items) => onChange([...new Set(items.map((item) => item.id))])} onClose={() => setOpen(false)} /></div>;
++};
+diff --git a/src/components/Admin/media/MediaLibraryPicker.tsx b/src/components/Admin/media/MediaLibraryPicker.tsx
+new file mode 100644
+index 0000000..d09ed97
+--- /dev/null
++++ b/src/components/Admin/media/MediaLibraryPicker.tsx
+@@ -0,0 +1,84 @@
++import { Check, ImagePlus, LoaderCircle, Search, X } from 'lucide-react';
++import { useEffect, useRef, useState, type ChangeEvent } from 'react';
++import { createPortal } from 'react-dom';
++import { listAdminMedia, uploadAdminMedia } from '../../../services/adminMediaApi';
++import type { MediaAsset } from '../../../types/media';
++import './media.css';
++
++interface MediaLibraryPickerProps {
++  open: boolean;
++  multiple?: boolean;
++  selectedIds: string[];
++  maxItems?: number;
++  onSelect: (assets: MediaAsset[]) => void;
++  onClose: () => void;
++}
++
++export const MediaLibraryPicker = ({ open, multiple = false, selectedIds, maxItems = 50, onSelect, onClose }: MediaLibraryPickerProps) => {
++  const [assets, setAssets] = useState<MediaAsset[]>([]);
++  const [chosenIds, setChosenIds] = useState<string[]>(selectedIds);
++  const [search, setSearch] = useState('');
++  const [mimeType, setMimeType] = useState('');
++  const [loading, setLoading] = useState(false);
++  const [uploading, setUploading] = useState(false);
++  const closeButtonRef = useRef<HTMLButtonElement>(null);
++  const openerRef = useRef<HTMLElement | null>(null);
++
++  useEffect(() => {
++    if (!open) return undefined;
++    openerRef.current = document.activeElement as HTMLElement | null;
++    // The picker is reopened with the field's latest selection.
++    // eslint-disable-next-line react-hooks/set-state-in-effect
++    setChosenIds(selectedIds);
++    closeButtonRef.current?.focus();
++    const previousOverflow = document.body.style.overflow;
++    document.body.style.overflow = 'hidden';
++    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
++    document.addEventListener('keydown', onKeyDown);
++    return () => {
++      document.body.style.overflow = previousOverflow;
++      document.removeEventListener('keydown', onKeyDown);
++      openerRef.current?.focus();
++    };
++  }, [open, onClose, selectedIds]);
++
++  useEffect(() => {
++    if (!open) return undefined;
++    let active = true;
++    // eslint-disable-next-line react-hooks/set-state-in-effect
++    setLoading(true);
++    listAdminMedia({ search, mimeType }).then((result) => { if (active) setAssets(result); }).catch(() => { if (active) setAssets([]); }).finally(() => { if (active) setLoading(false); });
++    return () => { active = false; };
++  }, [open, search, mimeType]);
++
++  if (!open) return null;
++  const toggle = (asset: MediaAsset) => {
++    if (!multiple) { onSelect([asset]); onClose(); return; }
++    setChosenIds((current) => current.includes(asset.id) ? current.filter((id) => id !== asset.id) : current.length >= maxItems ? current : [...current, asset.id]);
++  };
++  const confirmSelection = () => onSelect(assets.filter((asset) => chosenIds.includes(asset.id)));
++  const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
++    const file = event.target.files?.[0];
++    event.target.value = '';
++    if (!file) return;
++    setUploading(true);
++    try {
++      const asset = await uploadAdminMedia(file);
++      setAssets((current) => [asset, ...current.filter((item) => item.id !== asset.id)]);
++      if (!multiple) { onSelect([asset]); onClose(); }
++      else setChosenIds((current) => current.includes(asset.id) ? current : [...current, asset.id].slice(0, maxItems));
++    } finally { setUploading(false); }
++  };
++  return createPortal(
++    <div className="admin-media-picker-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
++      <section className="admin-media-picker" role="dialog" aria-modal="true" aria-labelledby="admin-media-picker-title">
++        <header className="admin-media-picker-header"><div><span className="admin-media-kicker">Media Library</span><h2 id="admin-media-picker-title">Chọn ảnh từ thư viện</h2></div><button type="button" className="admin-media-icon-button" ref={closeButtonRef} onClick={onClose} aria-label="Đóng"><X size={18} /></button></header>
++        <div className="admin-media-picker-toolbar"><label className="admin-media-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm theo tên ảnh" /></label><select value={mimeType} onChange={(event) => setMimeType(event.target.value)} aria-label="Lọc loại ảnh"><option value="">Tất cả loại ảnh</option><option value="image/jpeg">JPEG</option><option value="image/png">PNG</option><option value="image/webp">WebP</option><option value="image/gif">GIF</option></select><label className="admin-media-upload-button"><ImagePlus size={15} /> Tải ảnh mới<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleUpload} /></label></div>
++        {uploading && <p className="admin-media-status"><LoaderCircle size={15} className="admin-media-spin" /> Đang tải ảnh lên Media Library...</p>}
++        <div className="admin-media-picker-body">{loading ? <p className="admin-media-status">Đang tải thư viện...</p> : assets.length === 0 ? <p className="admin-media-status">Chưa có ảnh phù hợp.</p> : <div className="admin-media-grid">{assets.map((asset) => { const selected = chosenIds.includes(asset.id); return <button type="button" key={asset.id} className={`admin-media-card${selected ? ' selected' : ''}`} onClick={() => toggle(asset)}><img src={asset.publicUrl} alt={asset.altText || asset.originalName} /><span className="admin-media-card-name">{asset.title || asset.originalName}</span>{selected && <span className="admin-media-selected"><Check size={14} /></span>}</button>; })}</div>}</div>
++        <footer className="admin-media-picker-footer"><span>{multiple ? `${chosenIds.length}/${maxItems} ảnh đã chọn` : 'Chọn một ảnh để tiếp tục'}</span><div><button type="button" className="admin-media-secondary-button" onClick={onClose}>Hủy</button>{multiple && <button type="button" className="admin-media-primary-button" onClick={confirmSelection}>Chọn ảnh</button>}</div></footer>
++      </section>
++    </div>,
++    document.body,
++  );
++};
+diff --git a/src/components/Admin/media/media.css b/src/components/Admin/media/media.css
+new file mode 100644
+index 0000000..5f94c90
+--- /dev/null
++++ b/src/components/Admin/media/media.css
+@@ -0,0 +1 @@
++.admin-media-field{display:grid;gap:10px}.admin-media-field-label{display:flex;align-items:center;justify-content:space-between;gap:12px}.admin-media-field-label>span{font-weight:600}.admin-media-field-label>div{display:flex;gap:6px}.admin-media-select-button,.admin-media-primary-button,.admin-media-secondary-button,.admin-media-upload-button{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #d7dee8;border-radius:6px;background:#fff;color:#1f2937;padding:8px 11px;font:inherit;font-size:12px;cursor:pointer}.admin-media-primary-button{border-color:#f97316;background:#f97316;color:#fff}.admin-media-secondary-button{background:#f8fafc}.admin-media-remove-button,.admin-media-icon-button{display:inline-flex;align-items:center;justify-content:center;border:1px solid #d7dee8;border-radius:6px;background:#fff;color:#64748b;padding:8px;cursor:pointer}.admin-media-preview{display:flex;align-items:center;gap:10px;border:1px solid #e2e8f0;border-radius:6px;padding:8px;background:#f8fafc}.admin-media-preview img{width:72px;height:52px;object-fit:cover;border-radius:4px}.admin-media-preview span{font-size:12px;color:#475569;overflow:hidden;text-overflow:ellipsis}.admin-media-empty-preview{border:1px dashed #cbd5e1;border-radius:6px;padding:18px;color:#94a3b8;font-size:12px}.admin-media-gallery-list{display:grid;gap:6px}.admin-media-gallery-item{display:grid;grid-template-columns:48px minmax(0,1fr) auto auto auto;align-items:center;gap:8px;border:1px solid #e2e8f0;border-radius:6px;padding:6px}.admin-media-gallery-item img{width:48px;height:36px;object-fit:cover;border-radius:4px}.admin-media-gallery-item span{overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#475569}.admin-media-gallery-item button{border:0;background:transparent;color:#64748b;cursor:pointer}.admin-media-gallery-item.legacy{grid-template-columns:48px minmax(0,1fr)}.admin-media-empty-inline{margin:0;color:#94a3b8;font-size:12px}.admin-media-picker-backdrop{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;background:rgba(15,23,42,.54);padding:20px}.admin-media-picker{width:min(820px,100%);max-height:min(760px,calc(100vh - 40px));display:grid;grid-template-rows:auto auto 1fr auto;background:#fff;border-radius:8px;box-shadow:0 24px 80px rgba(15,23,42,.28);overflow:hidden}.admin-media-picker-header,.admin-media-picker-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;border-bottom:1px solid #e2e8f0}.admin-media-picker-footer{border-top:1px solid #e2e8f0;border-bottom:0;font-size:12px;color:#64748b}.admin-media-picker-header h2{margin:3px 0 0;font-size:18px}.admin-media-kicker{font-size:11px;color:#f97316;font-weight:700}.admin-media-picker-toolbar{display:flex;align-items:center;gap:8px;padding:12px 20px;border-bottom:1px solid #e2e8f0;flex-wrap:wrap}.admin-media-search{display:flex;align-items:center;gap:6px;flex:1;min-width:180px;border:1px solid #d7dee8;border-radius:6px;padding:8px 10px;color:#64748b}.admin-media-search input{min-width:0;flex:1;border:0;outline:0;font:inherit}.admin-media-picker-toolbar select{border:1px solid #d7dee8;border-radius:6px;padding:8px;background:#fff}.admin-media-upload-button{background:#fff7ed;border-color:#fed7aa;color:#c2410c}.admin-media-upload-button input{display:none}.admin-media-picker-body{overflow:auto;padding:18px 20px}.admin-media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}.admin-media-card{position:relative;display:grid;gap:7px;min-width:0;border:1px solid #e2e8f0;border-radius:6px;background:#fff;padding:7px;text-align:left;cursor:pointer}.admin-media-card:hover,.admin-media-card.selected{border-color:#f97316;box-shadow:0 0 0 1px #f97316}.admin-media-card img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:4px;background:#f1f5f9}.admin-media-card-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:#475569}.admin-media-selected{position:absolute;right:10px;top:10px;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#f97316;color:#fff}.admin-media-status{display:flex;align-items:center;justify-content:center;gap:7px;min-height:120px;color:#64748b;font-size:13px}.admin-media-spin{animation:admin-media-spin 1s linear infinite}@keyframes admin-media-spin{to{transform:rotate(360deg)}}@media(max-width:640px){.admin-media-picker-backdrop{padding:0}.admin-media-picker{max-height:100vh;height:100vh;border-radius:0}.admin-media-picker-toolbar{padding:10px 14px}.admin-media-picker-body{padding:14px}.admin-media-picker-header,.admin-media-picker-footer{padding:14px}.admin-media-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+diff --git a/src/hooks/catalog/useProductDraft.ts b/src/hooks/catalog/useProductDraft.ts
+index 1d61a74..6536e2b 100644
+--- a/src/hooks/catalog/useProductDraft.ts
++++ b/src/hooks/catalog/useProductDraft.ts
+@@ -9,12 +9,27 @@ export const createProductDraft = (product?: CatalogProductRecord): ProductDraft
+   coverageType: product?.coverageType ?? 'country',
+   coverageIds: product?.coverageIds ?? [],
+   image: product?.image ?? '',
++  primaryMediaId: product?.primaryMediaId ?? null,
++  gallery: product?.gallery ?? product?.images ?? [],
++  galleryMediaIds: product?.galleryMediaIds ?? [],
+   description: product?.description ?? '',
+   guide: product?.guide ?? '',
+   featured: product?.featured ?? false,
+   seoTitle: product?.seoTitle ?? '',
+   seoDescription: product?.seoDescription ?? '',
+   seoKeywords: product?.seoKeywords ?? '',
++  deviceSpecifications: product?.deviceSpecifications ?? product?.deviceSpecs,
++  networkLabel: product?.networkLabel ?? '',
++  coverageLabel: product?.coverageLabel ?? '',
++  speedLabel: product?.speedLabel ?? '',
++  installationGuide: product?.installationGuide ?? '',
++  compatibilityContent: product?.compatibilityContent ?? '',
++  instructions: product?.instructions ?? '',
++  eligibilityNote: product?.eligibilityNote ?? '',
++  packageContents: product?.packageContents ?? '',
++  deliveryNote: product?.deliveryNote ?? '',
++  simSize: product?.simSize ?? '',
++  faqItems: product?.faqItems ?? [],
+ });
+ 
+ export const useProductDraft = (product?: CatalogProductRecord) => (
+diff --git a/src/hooks/catalog/useProductWizard.ts b/src/hooks/catalog/useProductWizard.ts
+index 4307d65..28198b6 100644
+--- a/src/hooks/catalog/useProductWizard.ts
++++ b/src/hooks/catalog/useProductWizard.ts
+@@ -41,6 +41,18 @@ export const variantToDraft = (variant: CatalogVariant): VariantDraft => ({
+   supplier: variant.supplier,
+   fulfillmentMethod: variant.fulfillmentMethod,
+   requiresExistingSim: variant.requiresExistingSim,
++  shippingRequired: variant.shippingRequired,
++  networkLabel: variant.networkLabel,
++  coverageLabel: variant.coverageLabel,
++  speedLabel: variant.speedLabel,
++  installationGuide: variant.installationGuide,
++  compatibilityContent: variant.compatibilityContent,
++  instructions: variant.instructions,
++  eligibilityNote: variant.eligibilityNote,
++  packageContents: variant.packageContents,
++  deliveryNote: variant.deliveryNote,
++  simSize: variant.simSize,
++  deviceSpecifications: variant.deviceSpecifications ?? variant.deviceSpecs,
+   stock: variant.stock === null || variant.stock === undefined ? '' : String(variant.stock),
+   active: variant.active,
+   needsReview: variant.needsReview ?? false,
+diff --git a/src/services/adminMediaApi.ts b/src/services/adminMediaApi.ts
+new file mode 100644
+index 0000000..f0363d9
+--- /dev/null
++++ b/src/services/adminMediaApi.ts
+@@ -0,0 +1,38 @@
++import type { MediaAsset } from '../types/media';
++
++const readError = async (response: Response) => {
++  const payload = await response.json().catch(() => null) as { error?: string } | null;
++  return new Error(payload?.error || 'Không thể xử lý Media Library.');
++};
++
++const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
++  const response = await fetch(url, { ...init, credentials: 'include' });
++  if (!response.ok) throw await readError(response);
++  return response.json() as Promise<T>;
++};
++
++export const listAdminMedia = (query: { search?: string; mimeType?: string } = {}) => {
++  const params = new URLSearchParams();
++  if (query.search) params.set('search', query.search);
++  if (query.mimeType) params.set('mimeType', query.mimeType);
++  return request<MediaAsset[]>(`/api/admin/media${params.toString() ? `?${params}` : ''}`);
++};
++
++export const uploadAdminMedia = async (file: File) => {
++  const base64Data = await new Promise<string>((resolve, reject) => {
++    const reader = new FileReader();
++    reader.onerror = () => reject(new Error('Không thể đọc file ảnh.'));
++    reader.onload = () => resolve(String(reader.result));
++    reader.readAsDataURL(file);
++  });
++  return request<MediaAsset>('/api/admin/media/upload', {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify({ filename: file.name, base64Data }),
++  });
++};
++
++export const updateAdminMedia = (id: string, changes: Pick<MediaAsset, 'altText' | 'title'>) => request<MediaAsset>(
++  `/api/admin/media/${encodeURIComponent(id)}`,
++  { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(changes) },
++);
+diff --git a/src/services/catalogApi.ts b/src/services/catalogApi.ts
+index 4c2281e..8c54491 100644
+--- a/src/services/catalogApi.ts
++++ b/src/services/catalogApi.ts
+@@ -14,7 +14,7 @@ const getErrorMessage = (payload: unknown) => {
+ };
+ 
+ const requestJson = async <T>(url: string, signal?: AbortSignal): Promise<T> => {
+-  const response = await fetch(url, { signal });
++  const response = await fetch(url, { signal, credentials: 'include' });
+   const payload: unknown = await response.json();
+ 
+   if (!response.ok) {
+diff --git a/src/services/catalogWriteApi.ts b/src/services/catalogWriteApi.ts
+index c48c13e..7b8c433 100644
+--- a/src/services/catalogWriteApi.ts
++++ b/src/services/catalogWriteApi.ts
+@@ -40,7 +40,11 @@ export const requestJson = async <T>(url: string, init: RequestInit = {}): Promi
+   const controller = new AbortController();
+   const timeout = window.setTimeout(() => controller.abort(), 15000);
+   try {
+-    const response = await fetch(url, { ...init, signal: init.signal ?? controller.signal });
++    const response = await fetch(url, {
++      ...init,
++      credentials: 'include',
++      signal: init.signal ?? controller.signal,
++    });
+     const payload: unknown = await response.json().catch(() => null);
+     if (!response.ok) {
+       const meta = getErrorMeta(payload);
+diff --git a/src/types/catalog.ts b/src/types/catalog.ts
+index 38dfff9..fa5d462 100644
+--- a/src/types/catalog.ts
++++ b/src/types/catalog.ts
+@@ -58,6 +58,10 @@ export interface CatalogProduct {
+   coverageType: CoverageType;
+   coverageIds: string[];
+   image?: string;
++  primaryMediaId?: string | null;
++  images?: Array<{ id: string; url: string; alt?: string; title?: string; sortOrder?: number }>;
++  gallery?: Array<{ id: string; url: string; alt?: string; title?: string; sortOrder?: number }>;
++  galleryMediaIds?: string[];
+   description?: string;
+   guide?: string;
+   featured: boolean;
+@@ -65,6 +69,25 @@ export interface CatalogProduct {
+   seoTitle?: string;
+   seoDescription?: string;
+   seoKeywords?: string;
++  deviceSpecifications?: CatalogDeviceSpecs;
++  deviceSpecs?: CatalogDeviceSpecs;
++  networkLabel?: string;
++  publicNote?: string;
++  coverageLabel?: string;
++  speedLabel?: string;
++  hotspotSupport?: string;
++  activationPolicy?: string;
++  installationGuide?: string;
++  compatibilityContent?: string;
++  apnGuidance?: string;
++  instantDeliveryLabel?: string;
++  instructions?: string;
++  eligibilityNote?: string;
++  packageContents?: string;
++  deliveryNote?: string;
++  simSize?: string;
++  faqItems?: Array<{ question: string; answer: string; sortOrder?: number }>;
++  publishedAt?: string;
+   legacySource?: 'destination' | 'package' | 'mysql';
+   legacyId?: string | number;
+   version?: number;
+@@ -90,6 +113,23 @@ export interface CatalogVariant {
+   leSIM?: boolean | null;
+   providerProductType?: 0 | 1 | 2 | null;
+   requiresExistingSim: boolean;
++  shippingRequired?: boolean;
++  networkLabel?: string;
++  coverageLabel?: string;
++  speedLabel?: string;
++  hotspotSupport?: string;
++  activationPolicy?: string;
++  installationGuide?: string;
++  compatibilityContent?: string;
++  apnGuidance?: string;
++  instantDeliveryLabel?: string;
++  instructions?: string;
++  eligibilityNote?: string;
++  packageContents?: string;
++  deliveryNote?: string;
++  simSize?: string;
++  deviceSpecifications?: CatalogDeviceSpecs;
++  deviceSpecs?: CatalogDeviceSpecs;
+   stock?: number | null;
+   active: boolean;
+   needsReview?: boolean;
+@@ -106,6 +146,24 @@ export interface CatalogVariant {
+   updatedAt?: string;
+ }
+ 
++export interface CatalogDeviceSpecs {
++  brand?: string;
++  model?: string;
++  networkGeneration?: string;
++  formFactor?: string;
++  supportedBands?: string[];
++  wifiStandard?: string;
++  maxConnectedDevices?: number;
++  batteryCapacity?: string;
++  ethernetPorts?: number;
++  usbPorts?: number;
++  simCompatibility?: string;
++  dimensions?: string;
++  weight?: string;
++  color?: string;
++  warrantyMonths?: number;
++}
++
+ export interface CatalogProductRecord extends CatalogProduct {
+   variants: CatalogVariant[];
+ }
+diff --git a/src/types/media.ts b/src/types/media.ts
+new file mode 100644
+index 0000000..cfda29c
+--- /dev/null
++++ b/src/types/media.ts
+@@ -0,0 +1,22 @@
++export type MediaAssetStatus = 'ACTIVE' | 'ARCHIVED';
++
++export interface MediaAsset {
++  id: string;
++  storagePath: string;
++  publicUrl: string;
++  originalName: string;
++  mimeType: string;
++  extension: string;
++  size: number;
++  width?: number;
++  height?: number;
++  altText?: string;
++  title?: string;
++  status: MediaAssetStatus;
++  createdAt: string;
++  updatedAt: string;
++  createdBy?: string;
++  filename?: string;
++  url?: string;
++  date?: string;
++}
+diff --git a/src/types/productWizard.ts b/src/types/productWizard.ts
+index dfd73ec..9b9dc51 100644
+--- a/src/types/productWizard.ts
++++ b/src/types/productWizard.ts
+@@ -1,4 +1,5 @@
+ import type {
++  CatalogDeviceSpecs,
+   CatalogProduct,
+   CatalogProductRecord,
+   CatalogVariant,
+@@ -32,12 +33,27 @@ export interface ProductDraft {
+   coverageType: CoverageType;
+   coverageIds: string[];
+   image: string;
++  primaryMediaId: string | null;
++  gallery: NonNullable<CatalogProduct['gallery']>;
++  galleryMediaIds: string[];
+   description: string;
+   guide: string;
+   featured: boolean;
+   seoTitle: string;
+   seoDescription: string;
+   seoKeywords: string;
++  deviceSpecifications?: CatalogDeviceSpecs;
++  networkLabel: string;
++  coverageLabel: string;
++  speedLabel: string;
++  installationGuide: string;
++  compatibilityContent: string;
++  instructions: string;
++  eligibilityNote: string;
++  packageContents: string;
++  deliveryNote: string;
++  simSize: string;
++  faqItems: NonNullable<CatalogProduct['faqItems']>;
+ }
+ 
+ export interface VariantDraft {
+@@ -60,6 +76,18 @@ export interface VariantDraft {
+   supplier?: 'worldmove' | 'local_carrier' | 'hico' | 'other';
+   fulfillmentMethod?: CatalogVariant['fulfillmentMethod'];
+   requiresExistingSim: boolean;
++  shippingRequired?: boolean;
++  networkLabel?: string;
++  coverageLabel?: string;
++  speedLabel?: string;
++  installationGuide?: string;
++  compatibilityContent?: string;
++  instructions?: string;
++  eligibilityNote?: string;
++  packageContents?: string;
++  deliveryNote?: string;
++  simSize?: string;
++  deviceSpecifications?: CatalogDeviceSpecs;
+   stock: string;
+   active: boolean;
+   needsReview: boolean;
+-- 
+2.48.1.windows.1
+

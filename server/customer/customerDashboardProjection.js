@@ -14,7 +14,7 @@ const maskPhone = (phone) => {
 };
 const itemsOf = (order) => Array.isArray(order?.items) ? order.items : [];
 
-const safeItem = (item = {}) => ({
+const safeItem = (item = {}, status = 'PENDING') => ({
   productName: String(item.productName ?? item.name ?? 'Product'),
   productId: item.productId ?? null,
   variantId: item.variantId ?? null,
@@ -23,6 +23,8 @@ const safeItem = (item = {}) => ({
   quantity: Math.max(1, numberOrZero(item.quantity ?? 1)),
   unitPrice: numberOrZero(item.unitPrice ?? item.price),
   currency: String(item.currency ?? 'VND').toUpperCase(),
+  ...(Number.isInteger(item.soldDurationDays) && item.soldDurationDays > 0 ? { soldDurationDays: item.soldDurationDays } : {}),
+  ...(COMPLETED.has(status) && Number.isInteger(item.providerDurationDays) && item.providerDurationDays > 0 ? { providerDurationDays: item.providerDurationDays, upgradeDays: Math.max(0, Number(item.upgradeDays) || 0) } : {}),
 });
 
 const currencyTotals = (order) => itemsOf(order).reduce((totals, item) => {
@@ -59,7 +61,7 @@ export const projectCustomerOrder = (order) => {
     currency: String(order.currency ?? Object.keys(totalsByCurrency)[0] ?? 'VND').toUpperCase(),
     subtotal: numberOrZero(order.subtotal ?? totalsByCurrency.VND),
     totalsByCurrency,
-    items: itemsOf(order).map(safeItem),
+    items: itemsOf(order).map((item) => safeItem(item, status)),
     shipping: maskedShipping(order.shipping ?? order.shippingAddress),
     fulfillment: fulfillmentSummary(status),
     nextAction: PENDING.has(status) ? 'WAIT_FOR_FULFILLMENT' : 'NONE',

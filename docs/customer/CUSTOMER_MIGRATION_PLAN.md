@@ -93,3 +93,40 @@ tests.
 PR15.1 through PR15.3 must prove verified customer auth, transaction-safe order
 ownership/claims, and a non-mock owner-scoped dashboard. PR15.7 must record the
 legal order/audit retention decision. Local Docker QA cannot waive these gates.
+
+## PR15.8 cutover sequence
+
+PR15.8 adds migration `012_customer_platform_cutover.sql` and the
+`customer_data_quarantine` table. The table stores safe references and reason
+codes for demo profiles, mock assets, unresolved legacy orders, and other
+conflicts. It forbids sensitive metadata keys such as email, phone, address,
+QR, LPA, PIN, PUK, ICCID, and tokens.
+
+The controlled sequence is:
+
+1. Run the read-only inventory and record aggregate counts.
+2. Validate migration head, required tables, ownership constraints, and safe
+   quarantine metadata.
+3. Run a dry-run report and review blockers with the owner.
+4. Create and verify an encrypted backup, then complete an isolated restore
+   drill.
+5. Execute only with real mode and explicit migration/backup approval flags.
+6. Insert quarantine rows transactionally; never import demo or mock data.
+7. Verify real mode, health, readiness, legacy API deprecation, and aggregate
+   parity on both backend instances.
+8. Keep loyalty and referral disabled and retain all five
+   `LEGACY_UNRESOLVED` orders.
+
+The real-mode backend does not read legacy customer/order/ticket demo maps for
+customer runtime. `/api/user/*` is disabled with HTTP 410 and a deprecation
+sunset; it is not a write redirect. Rollback preserves real mode and uses the
+approved backup/restore process described in
+`docs/customer/CUSTOMER_PLATFORM_ROLLBACK_RUNBOOK.md`.
+
+## PR15.8 evidence snapshot
+
+The isolated QA snapshot reported two demo profiles, one mock eSIM, two mock
+manual QR records, five unresolved legacy orders, no email auto-links, and ten
+quarantine rows after the execute step. The target database had no owned or
+guest order records and no persisted fulfillment/inventory records. Counts must
+be refreshed before any staging or production action.

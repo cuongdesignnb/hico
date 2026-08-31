@@ -20,6 +20,24 @@ import {
 import { createCatalogBulkRouter } from './catalog/bulk/catalogBulkRouter.js';
 import { createCatalogQueueRouter } from './catalog/queues/catalogQueueRouter.js';
 import { createCatalogPublishRouter } from './catalog/publish/catalogPublishRouter.js';
+import { createSheetSyncRouter } from './catalog/sheetSync/sheetSyncRouter.js';
+import { createSheetSyncService } from './catalog/sheetSync/sheetSyncService.js';
+import { createSheetSyncRepository } from './catalog/sheetSync/sheetSyncRepository.js';
+import { createVariantAliasRepository } from './catalog/variantAliases/variantAliasRepository.js';
+import { createVariantAliasService } from './catalog/variantAliases/variantAliasService.js';
+import { createVariantAliasRouter } from './catalog/variantAliases/variantAliasRouter.js';
+import { createFulfillmentBindingRepository } from './catalog/fulfillment/fulfillmentBindingRepository.js';
+import { createFulfillmentBindingService } from './catalog/fulfillment/fulfillmentBindingService.js';
+import { createFulfillmentBindingRouter } from './catalog/fulfillment/fulfillmentBindingRouter.js';
+import { createFulfillmentProfileRepository } from './catalog/fulfillment/fulfillmentProfileRepository.js';
+import { createFulfillmentProfileService } from './catalog/fulfillment/fulfillmentProfileService.js';
+import { createFulfillmentProfileRouter } from './catalog/fulfillment/fulfillmentProfileRouter.js';
+import { createProviderOfferRepository } from './providers/providerOfferRepository.js';
+import { createGoogleSheetSettingsRepository, createUnavailableGoogleSheetSettingsRepository } from './integrations/googleSheets/googleSheetSettingsRepository.js';
+import { createGoogleSheetCredentialRepository } from './integrations/googleSheets/googleSheetCredentialRepository.js';
+import { createGoogleSheetClientFactory } from './integrations/googleSheets/googleSheetClientFactory.js';
+import { createGoogleSheetConnectionService } from './integrations/googleSheets/googleSheetConnectionService.js';
+import { createGoogleSheetSettingsRouter } from './integrations/googleSheets/googleSheetSettingsRouter.js';
 import { createCatalogBulkService } from './catalog/bulk/catalogBulkService.js';
 import { createCatalogQueueService } from './catalog/queues/catalogQueueService.js';
 import { createCatalogPublishService } from './catalog/publish/catalogPublishService.js';
@@ -104,6 +122,7 @@ import { createSupportRouter } from './support/supportRouter.js';
 import { createSupportAdminRouter } from './support/supportAdminRouter.js';
 import { createSupportAttachmentService } from './support/supportAttachmentService.js';
 import { createSupportHealthService } from './support/supportHealthService.js';
+import { createCustomerPlatformHealthService } from './customer/customerPlatformHealthService.js';
 import { createRequestId } from './security/requestId.js';
 import { createAdminRequestAudit, createSecurityAudit } from './security/securityAudit.js';
 import { createCorsPolicy } from './security/corsPolicy.js';
@@ -117,6 +136,8 @@ import { createProductionReadinessChecks } from './production/productionReadines
 import { createProductionReadinessService } from './production/productionReadinessService.js';
 import { createProductionWriteGuard } from './production/productionWriteGuard.js';
 import { createProductionReadinessRouter } from './production/productionReadinessRouter.js';
+import { createMediaAssetRepository } from './media/mediaAssetRepository.js';
+import { createMediaReferenceService } from './media/mediaReferenceService.js';
 import { createLogger } from './logging/logger.js';
 import { createRequestContextLogger } from './logging/requestContext.js';
 import { createMetrics } from './monitoring/metrics.js';
@@ -132,6 +153,25 @@ const checkoutBodyLimitMb = Number(process.env.CHECKOUT_BODY_LIMIT_MB ?? 10);
 const webhookBodyLimitKb = Number(process.env.WEBHOOK_BODY_LIMIT_KB ?? 256);
 const checkoutRateLimitPerMinute = Number(process.env.CHECKOUT_RATE_LIMIT_PER_MINUTE ?? 120);
 const catalogUploadsDirectory = path.join(__dirname, 'uploads');
+const canonicalCatalogRepository = createCanonicalCatalogRepository({ uploadsDirectory: catalogUploadsDirectory });
+const mediaReferenceService = createMediaReferenceService({
+  uploadsDirectory: catalogUploadsDirectory,
+  canonicalRepository: canonicalCatalogRepository,
+});
+const mediaAssetRepository = createMediaAssetRepository({
+  uploadsDirectory: catalogUploadsDirectory,
+  referenceProvider: (asset) => mediaReferenceService.findReferences(asset),
+});
+const providerOfferRepository = createProviderOfferRepository({
+  offersFile: path.join(catalogUploadsDirectory, 'provider_offers.json'),
+});
+const resolvePublicMediaInput = async (input = {}) => {
+  if (!Object.prototype.hasOwnProperty.call(input, 'imageMediaId')) return input;
+  if (input.imageMediaId === null || input.imageMediaId === '') return { ...input, image: '' };
+  const asset = await mediaAssetRepository.getById(input.imageMediaId);
+  if (!asset) throw Object.assign(new Error('MediaAsset không tồn tại hoặc đã archive.'), { code: 'MEDIA_REFERENCE_INVALID', status: 400 });
+  return { ...input, image: asset.publicUrl };
+};
 const catalogHealthService = createCatalogHealthService({
   env: process.env,
   uploadsDirectory: catalogUploadsDirectory,
@@ -145,6 +185,7 @@ const catalogCommandService = createCatalogCommandService({ env: process.env });
 const catalogWriteService = createCatalogWriteService({
   env: process.env,
   uploadsDirectory: catalogUploadsDirectory,
+  mediaAssetRepository,
   commandService: catalogCommandService,
   commitService: catalogCommitService,
 });
@@ -168,6 +209,53 @@ const securityAudit = createSecurityAudit({ logger, onEvent: (event) => {
 const authStoreDriver = sessionStoreDriver(process.env);
 const authPool = authStoreDriver === 'postgres' ? createPostgresPool({ env: process.env }) : null;
 if (authPool && process.env.AUTH_RUN_MIGRATIONS_ON_START === 'true') await migrateDatabase({ pool: authPool });
+const googleSheetSettingsRepository = authPool ? createGoogleSheetSettingsRepository({ pool: authPool }) : createUnavailableGoogleSheetSettingsRepository();
+const googleSheetCredentialRepository = createGoogleSheetCredentialRepository({ settingsRepository: googleSheetSettingsRepository, env: process.env });
+const googleSheetConnectionService = createGoogleSheetConnectionService({
+  settingsRepository: googleSheetSettingsRepository,
+  credentialRepository: googleSheetCredentialRepository,
+  clientFactory: createGoogleSheetClientFactory(),
+  env: process.env,
+  audit: securityAudit,
+});
+const sheetSyncRepository = createSheetSyncRepository({ pool: authPool });
+const variantAliasRepository = createVariantAliasRepository({ pool: authPool });
+const fulfillmentBindingRepository = createFulfillmentBindingRepository({ pool: authPool });
+const fulfillmentProfileRepository = createFulfillmentProfileRepository({ pool: authPool });
+const variantAliasService = createVariantAliasService({
+  aliasRepository: variantAliasRepository,
+  sheetSyncRepository,
+  canonicalRepository: canonicalCatalogRepository,
+  providerRepository: providerOfferRepository,
+  audit: securityAudit,
+});
+const fulfillmentBindingService = createFulfillmentBindingService({
+  catalogReader: createCanonicalCatalogReader({
+    env: process.env,
+    canonicalRepository: canonicalCatalogRepository,
+  }),
+  providerRepository: providerOfferRepository,
+  bindingRepository: fulfillmentBindingRepository,
+  profileRepository: fulfillmentProfileRepository,
+  audit: securityAudit,
+});
+const fulfillmentProfileService = createFulfillmentProfileService({
+  catalogReader: createCanonicalCatalogReader({
+    env: process.env,
+    canonicalRepository: canonicalCatalogRepository,
+  }),
+  profileRepository: fulfillmentProfileRepository,
+  audit: securityAudit,
+});
+const sheetSyncService = createSheetSyncService({
+  repository: sheetSyncRepository,
+  referenceClient: { readRows: () => googleSheetConnectionService.readRows() },
+  canonicalRepository: canonicalCatalogRepository,
+  providerRepository: providerOfferRepository,
+  fulfillmentProfileRepository,
+  commitService: catalogCommitService,
+  variantAliasRepository,
+});
 const { repository: userRepository } = createAdminUserRepository({ env: process.env, uploadsDirectory: catalogUploadsDirectory, pool: authPool });
 const { repository: sessionRepository, driver: sessionDriver, shared: sessionShared } = createSessionStore({ env: process.env, uploadsDirectory: catalogUploadsDirectory, pool: authPool });
 const sessionCleanupService = createSessionCleanupService({ sessionRepository, env: process.env, logger });
@@ -364,6 +452,10 @@ app.get('/api/health/support', async (_req, res) => {
   const healthy = auth.status === 'healthy' && (support.status === 'healthy' || support.status === 'disabled');
   return res.status(healthy ? 200 : 503).json({ status: healthy ? 'healthy' : 'not_ready', auth: auth.status, support });
 });
+app.get('/api/health/customer-platform', async (_req, res) => {
+  const health = await customerPlatformHealthService.health();
+  return res.status(health.status === 'healthy' ? 200 : 503).set('Cache-Control', 'no-store').json(health);
+});
 app.get('/api/health/customer-orders', async (_req, res) => {
   const auth = await customerAuthReadiness.evaluate();
   const orders = customerOrderRepository ? await customerOrderRepository.health() : { status: 'unavailable', persistence: 'none' };
@@ -430,8 +522,13 @@ app.use('/api/admin',
   createAdminRequestAudit({ securityAudit }),
 );
 app.use('/api/admin/auth', createAdminSecurityRouter({ sessionService, securityAudit }));
+app.use('/api/admin', createGoogleSheetSettingsRouter({ settingsService: googleSheetConnectionService, sheetSyncService, securityAudit }));
+app.use('/api/admin', createVariantAliasRouter({ service: variantAliasService }));
+app.use('/api/admin', createFulfillmentProfileRouter({ service: fulfillmentProfileService }));
+app.use('/api/admin', createFulfillmentBindingRouter({ service: fulfillmentBindingService }));
 app.use('/api', createCatalogHealthRouter({ catalogHealthService }));
-app.use('/api', createCatalogRouter({ catalogGuard }));
+app.use('/api', createCatalogRouter({ catalogGuard, mediaAssetRepository, providerRepository: providerOfferRepository }));
+app.use('/api', createSheetSyncRouter({ sheetSyncService, catalogGuard }));
 app.use('/api', createProviderRouter());
 app.use('/api', createReconciliationRouter());
 app.use('/api', createCatalogMigrationRouter());
@@ -447,7 +544,7 @@ if (!fs.existsSync('uploads')) {
 
 // In-memory data store
 // Persistent Map Helper with auto-save Proxy
-function createPersistentMap(filename, seedFn) {
+function createPersistentMap(filename, seedFn, { loadExisting = true } = {}) {
   const map = new Map();
   
   const save = () => {
@@ -461,7 +558,7 @@ function createPersistentMap(filename, seedFn) {
 
   const load = () => {
     const filePath = path.join(__dirname, 'uploads', filename);
-    if (fs.existsSync(filePath)) {
+    if (loadExisting && fs.existsSync(filePath)) {
       try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
         if (Array.isArray(data)) {
@@ -477,7 +574,7 @@ function createPersistentMap(filename, seedFn) {
       }
     }
     // Fallback to seed
-    if (seedFn) {
+    if (loadExisting && seedFn) {
       seedFn(map);
       save();
     }
@@ -518,6 +615,8 @@ function createPersistentMap(filename, seedFn) {
 }
 
 // In-memory data store with auto-persistence
+const customerAccountMode = String(process.env.CUSTOMER_ACCOUNT_MODE ?? 'demo').toLowerCase();
+const customerDemoFixturesEnabled = customerAccountMode === 'demo' && process.env.NODE_ENV !== 'production';
 const manualQrsDb = createPersistentMap('manual_qrs.json', (m) => {
   m.set('qr-mock-1', {
     id: 'qr-mock-1',
@@ -533,7 +632,7 @@ const manualQrsDb = createPersistentMap('manual_qrs.json', (m) => {
     assignedOrderId: null,
     createdAt: '01/06/2026 12:01'
   });
-});
+}, { loadExisting: customerDemoFixturesEnabled });
 
 const esimsDb = createPersistentMap('esims.json', (m) => {
   const defaultIccid = '898520400001234567';
@@ -553,7 +652,7 @@ const esimsDb = createPersistentMap('esims.json', (m) => {
     puk1: '33334444',
     apnExplain: 'Carrier NTT Docomo APN: spmode.ne.jp'
   });
-});
+}, { loadExisting: customerDemoFixturesEnabled });
 
 const ordersDb = createPersistentMap('orders.json', (m) => {
   m.set('#HICO-240512-0123', {
@@ -601,11 +700,11 @@ const ordersDb = createPersistentMap('orders.json', (m) => {
     createdAt: '15/05/2024 09:44',
     items: [{ iccid: '898520400001234999', productName: 'eSIM Châu Âu 10GB - 15 Ngày', redemptionCode: 'RC_EU_MOCK' }]
   });
-});
+}, { loadExisting: customerDemoFixturesEnabled });
 
-const legacyOrderRepository = createOrderRepository({
-  filePath: path.join(__dirname, 'uploads', 'orders.json'),
-});
+const legacyOrderRepository = customerAccountMode === 'real' && customerOrderRepository
+  ? null
+  : createOrderRepository({ filePath: path.join(__dirname, 'uploads', 'orders.json') });
 const canonicalOrderRepository = customerOrderRepository ?? legacyOrderRepository;
 const canonicalFulfillmentRepository = createFulfillmentRepository();
 const canonicalFulfillmentIdempotencyRepository = createFulfillmentIdempotencyRepository();
@@ -667,6 +766,19 @@ referralService = referralRepository && referralCodeService && loyaltyLedgerRepo
 }) : null;
 if (customerDashboardService && customerNotificationService) customerDashboardService.setNotificationService(customerNotificationService);
 if (customerDashboardService && referralService) customerDashboardService.setReferralService(referralService);
+const customerPlatformHealthService = createCustomerPlatformHealthService({
+  env: process.env,
+  pool: authPool,
+  customerAuthReadiness,
+  customerOrderRepository,
+  customerDashboardService,
+  customerAssetRepository,
+  loyaltyService,
+  referralService,
+  customerNotificationService,
+  customerProfileService,
+  supportHealthService,
+});
 const loyaltyEventProcessor = loyaltyService || referralService || notificationEventProcessor
   ? createLoyaltyEventProcessor({ loyaltyService, referralService, notificationEventProcessor, logger })
   : null;
@@ -696,6 +808,8 @@ const canonicalCheckoutService = createCheckoutService({
   catalogReader: canonicalCatalogReader,
   orderService: canonicalOrderService,
   idempotencyRepository: createCheckoutIdempotencyRepository(),
+  fulfillmentBindingRepository,
+  fulfillmentProfileRepository,
 });
 const canonicalCheckoutHealthService = createCheckoutHealthService({
   env: process.env,
@@ -729,6 +843,7 @@ productionReadinessService = createProductionReadinessService({
     loyaltyHealthService: loyaltyService,
     referralHealthService: createReferralHealthService({ referralService }),
     notificationHealthService: createCustomerNotificationHealthService({ notificationService: customerNotificationService }),
+    customerPlatformHealthService,
     pool: authPool,
   }),
 });
@@ -786,7 +901,7 @@ app.use('/api', createFulfillmentRouter({ orderRepository: canonicalOrderReposit
 app.use('/api/user', (_req, res) => {
   res.set('Deprecation', 'true');
   res.set('Sunset', 'Thu, 31 Dec 2026 23:59:59 GMT');
-  return res.status(410).json({ error: 'This endpoint is no longer available.', code: 'LEGACY_USER_API_DEPRECATED' });
+  return res.status(410).json({ error: 'API cũ đã ngừng hỗ trợ.', code: 'LEGACY_CUSTOMER_API_DISABLED' });
 });
 
 const devicesDb = createPersistentMap('devices.json', (m) => {
@@ -1058,7 +1173,7 @@ const ticketsDb = createPersistentMap('tickets.json', (m) => {
       { sender: 'customer', text: 'Tôi quét mã QR trên iPhone 14 Pro nhưng máy báo lỗi không thể kích hoạt di động.', time: '12/05/2024 14:20' }
     ]
   });
-});
+}, { loadExisting: customerDemoFixturesEnabled });
 
 const usersDb = createPersistentMap('users.json', (m) => {
   m.set('admin@hico.vn', { email: 'admin@hico.vn', role: 'Admin', status: 'Online', lastLogin: '15/05/2024 09:44', avatar: '/images/avatar_admin.png' });
@@ -1071,7 +1186,7 @@ const usersDb = createPersistentMap('users.json', (m) => {
 const customersDb = createPersistentMap('customers.json', (m) => {
   m.set('son.nguyen@gmail.com', { name: 'Nguyễn Sơn', phone: '+84 912 345 678', email: 'son.nguyen@gmail.com', status: 'Hoạt động', createdAt: '10/05/2026' });
   m.set('minhanh@gmail.com', { name: 'Nguyễn Minh Anh', phone: '+84 987 654 321', email: 'minhanh@gmail.com', status: 'Hoạt động', createdAt: '11/05/2026' });
-});
+}, { loadExisting: customerDemoFixturesEnabled });
 
 const promosDb = createPersistentMap('promos.json', (m) => {
   m.set('HICO50', { code: 'HICO50', discount: 50, description: 'Giảm giá 50% cho toàn bộ sản phẩm', expiry: '31/12/2026', status: 'Hoạt động' });
@@ -1149,44 +1264,54 @@ app.get('/api/admin/devices', (req, res) => {
   res.json(Array.from(devicesDb.values()));
 });
 
-app.post('/api/admin/devices', (req, res) => {
-  const { id, sku, name, category, specs, price, compareAtPrice, stock, description, image, badge, bestSeller } = req.body;
-  const newId = id || 'device-' + Date.now();
-  const device = {
-    id: newId,
-    sku: sku || 'HW-' + newId.toUpperCase(),
-    name,
-    category,
-    specs: Array.isArray(specs) ? specs : (specs ? specs.split('\n') : []),
-    price: parseInt(price),
-    compareAtPrice: compareAtPrice ? parseInt(compareAtPrice) : null,
-    stock: stock !== undefined ? parseInt(stock) : 50,
-    description: description || '',
-    badge,
-    bestSeller: !!bestSeller,
-    image
-  };
-  devicesDb.set(newId, device);
-  res.json(device);
+app.post('/api/admin/devices', async (req, res) => {
+  try {
+    const { id, sku, name, category, specs, price, compareAtPrice, stock, description, image, imageMediaId, badge, bestSeller } = await resolvePublicMediaInput(req.body);
+    const newId = id || 'device-' + Date.now();
+    const device = {
+      id: newId,
+      sku: sku || 'HW-' + newId.toUpperCase(),
+      name,
+      category,
+      specs: Array.isArray(specs) ? specs : (specs ? specs.split('\n') : []),
+      price: parseInt(price),
+      compareAtPrice: compareAtPrice ? parseInt(compareAtPrice) : null,
+      stock: stock !== undefined ? parseInt(stock) : 50,
+      description: description || '',
+      badge,
+      bestSeller: !!bestSeller,
+      image,
+      imageMediaId: imageMediaId || null,
+    };
+    devicesDb.set(newId, device);
+    return res.json(device);
+  } catch (error) {
+    return res.status(error.status ?? 500).json({ error: error.status === 400 ? error.message : 'Không thể lưu hình ảnh thiết bị.', code: error.code ?? 'DEVICE_WRITE_FAILED' });
+  }
 });
 
-app.put('/api/admin/devices/:id', (req, res) => {
-  const { id } = req.params;
-  const dev = devicesDb.get(id);
-  if (dev) {
-    const specsInput = req.body.specs;
-    const updatedDev = {
-      ...dev,
-      ...req.body,
-      price: req.body.price ? parseInt(req.body.price) : dev.price,
-      compareAtPrice: req.body.compareAtPrice !== undefined ? (req.body.compareAtPrice ? parseInt(req.body.compareAtPrice) : null) : dev.compareAtPrice,
-      stock: req.body.stock !== undefined ? parseInt(req.body.stock) : dev.stock,
-      specs: Array.isArray(specsInput) ? specsInput : (specsInput ? specsInput.split('\n') : dev.specs)
-    };
-    devicesDb.set(id, updatedDev);
-    return res.json(updatedDev);
+app.put('/api/admin/devices/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const dev = devicesDb.get(id);
+    if (dev) {
+      const resolvedInput = await resolvePublicMediaInput(req.body);
+      const specsInput = resolvedInput.specs;
+      const updatedDev = {
+        ...dev,
+        ...resolvedInput,
+        price: resolvedInput.price ? parseInt(resolvedInput.price) : dev.price,
+        compareAtPrice: resolvedInput.compareAtPrice !== undefined ? (resolvedInput.compareAtPrice ? parseInt(resolvedInput.compareAtPrice) : null) : dev.compareAtPrice,
+        stock: resolvedInput.stock !== undefined ? parseInt(resolvedInput.stock) : dev.stock,
+        specs: Array.isArray(specsInput) ? specsInput : (specsInput ? specsInput.split('\n') : dev.specs)
+      };
+      devicesDb.set(id, updatedDev);
+      return res.json(updatedDev);
+    }
+    return res.status(404).json({ error: 'Device not found', code: 'DEVICE_NOT_FOUND' });
+  } catch (error) {
+    return res.status(error.status ?? 500).json({ error: error.status === 400 ? error.message : 'Không thể lưu hình ảnh thiết bị.', code: error.code ?? 'DEVICE_WRITE_FAILED' });
   }
-  res.status(404).json({ error: 'Device not found' });
 });
 
 app.delete('/api/admin/devices/:id', (req, res) => {
@@ -1199,6 +1324,7 @@ app.use('/api', createLegacyCatalogRouter({
   destinationsStore: destinationsDb,
   packagesStore: packagesDb,
   catalogGuard,
+  mediaAssetRepository,
 }));
 
 // 5. Articles
@@ -1318,24 +1444,26 @@ The response must be a valid JSON object with the following structure:
 
     // 3. Download image locally
     let localImagePath = '/images/art_esim_intro.png';
+    let generatedImageMediaId = null;
     if (imageUrl) {
       try {
         const downloadRes = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 30000 });
-        const filename = `ai_image_${Date.now()}.png`;
-        const filepath = path.join('uploads', filename);
-        fs.writeFileSync(filepath, downloadRes.data);
-        localImagePath = `/uploads/${filename}`;
+        const asset = await mediaAssetRepository.createFromUpload({
+          upload: { buffer: Buffer.from(downloadRes.data), filename: `ai_image_${Date.now()}.png`, type: 'image/png' },
+          originalName: `${title.slice(0, 180)}.png`,
+          createdBy: req.auth?.user?.id,
+        });
+        generatedImageMediaId = asset.id;
+        localImagePath = asset.publicUrl;
       } catch (e) {
         console.error("Failed to download generated image:", e.message);
-        if (imageUrl.startsWith('http')) {
-          localImagePath = imageUrl;
-        }
       }
     }
 
     res.json({
       content: responseJson.content,
       image: localImagePath,
+      imageMediaId: generatedImageMediaId,
       seoTitle: responseJson.seoTitle || '',
       seoDescription: responseJson.seoDescription || '',
       seoKeywords: responseJson.seoKeywords || ''
@@ -1347,23 +1475,28 @@ The response must be a valid JSON object with the following structure:
   }
 });
 
-app.post('/api/admin/articles', (req, res) => {
-  const { title, image, date, content, seoTitle, seoDescription, seoKeywords, status, scheduledDate } = req.body;
-  const id = 'art-' + Date.now();
-  const art = {
-    id,
-    title,
-    image: image || '/images/art_esim_intro.png',
-    date: date || new Date().toLocaleDateString('vi-VN'),
-    content: content || '',
-    seoTitle: seoTitle || '',
-    seoDescription: seoDescription || '',
-    seoKeywords: seoKeywords || '',
-    status: status || 'published',
-    scheduledDate: scheduledDate || ''
-  };
-  articlesDb.set(id, art);
-  res.json(art);
+app.post('/api/admin/articles', async (req, res) => {
+  try {
+    const { title, image, imageMediaId, date, content, seoTitle, seoDescription, seoKeywords, status, scheduledDate } = await resolvePublicMediaInput(req.body);
+    const id = 'art-' + Date.now();
+    const art = {
+      id,
+      title,
+      image: image || '/images/art_esim_intro.png',
+      imageMediaId: imageMediaId || null,
+      date: date || new Date().toLocaleDateString('vi-VN'),
+      content: content || '',
+      seoTitle: seoTitle || '',
+      seoDescription: seoDescription || '',
+      seoKeywords: seoKeywords || '',
+      status: status || 'published',
+      scheduledDate: scheduledDate || ''
+    };
+    articlesDb.set(id, art);
+    return res.json(art);
+  } catch (error) {
+    return res.status(error.status ?? 500).json({ error: error.status === 400 ? error.message : 'Không thể lưu hình ảnh bài viết.', code: error.code ?? 'ARTICLE_WRITE_FAILED' });
+  }
 });
 
 app.delete('/api/admin/articles/:id', (req, res) => {
@@ -1371,18 +1504,22 @@ app.delete('/api/admin/articles/:id', (req, res) => {
   res.json({ success: true });
 });
 
-app.put('/api/admin/articles/:id', (req, res) => {
-  const { id } = req.params;
-  const art = articlesDb.get(id);
-  if (art) {
-    const updated = {
-      ...art,
-      ...req.body
-    };
-    articlesDb.set(id, updated);
-    return res.json(updated);
+app.put('/api/admin/articles/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const art = articlesDb.get(id);
+    if (art) {
+      const updated = {
+        ...art,
+        ...(await resolvePublicMediaInput(req.body)),
+      };
+      articlesDb.set(id, updated);
+      return res.json(updated);
+    }
+    return res.status(404).json({ error: 'Article not found', code: 'ARTICLE_NOT_FOUND' });
+  } catch (error) {
+    return res.status(error.status ?? 500).json({ error: error.status === 400 ? error.message : 'Không thể lưu hình ảnh bài viết.', code: error.code ?? 'ARTICLE_WRITE_FAILED' });
   }
-  res.status(404).json({ error: 'Article not found' });
 });
 
 // 6. Support Tickets
@@ -2315,7 +2452,7 @@ app.post('/api/esim-activation-notify', handleActivationNotification);
 app.post('/api/webhooks/worldmove/esim-activation-notify', handleActivationNotification);
 
 // 5. Query usage stats (Fetches data directly from Worldmove using rcode)
-app.get('/api/user/esim/:iccid', async (req, res) => {
+app.get('/api/legacy-customer/esim/:iccid', async (req, res) => {
   const { iccid } = req.params;
   const esim = esimsDb.get(iccid);
 
@@ -2352,13 +2489,13 @@ app.get('/api/user/esim/:iccid', async (req, res) => {
 });
 
 // 6. Query User orders list
-app.get('/api/user/orders', (req, res) => {
+app.get('/api/legacy-customer/orders', (req, res) => {
   const orders = Array.from(ordersDb.values());
   res.json(orders);
 });
 
 // 7. Simulates User Top-up
-app.post('/api/user/topup', (req, res) => {
+app.post('/api/legacy-customer/topup', (req, res) => {
   const { iccid, days } = req.body;
   const esim = esimsDb.get(iccid);
   
@@ -2384,75 +2521,54 @@ function triggerNotificationSimulated(message) {
 
 // === MEDIA LIBRARY API ENDPOINTS ===
 
-// 1. Get List of Media Files
-app.get('/api/admin/media', (req, res) => {
+// Media Library canonical endpoints. Legacy filename/url aliases remain read-compatible.
+app.get('/api/admin/media', async (req, res) => {
   try {
-    const directoryPath = 'uploads';
-    fs.readdir(directoryPath, (err, files) => {
-      if (err) {
-        return res.status(500).json({ error: 'Unable to scan directory: ' + err.message });
-      }
-      const fileList = [];
-      files.forEach(file => {
-        try {
-          const filePath = path.join(directoryPath, file);
-          const stat = fs.statSync(filePath);
-          if (stat.isFile()) {
-            fileList.push({
-              filename: file,
-              url: `/uploads/${file}`,
-              size: stat.size,
-              date: stat.mtime
-            });
-          }
-        } catch (e) {
-          console.error('Error scanning file stats:', e);
-        }
-      });
-      // Sort by date descending (newest first)
-      fileList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      res.json(fileList);
+    const assets = await mediaAssetRepository.list({
+      search: typeof req.query.search === 'string' ? req.query.search : '',
+      mimeType: typeof req.query.mimeType === 'string' ? req.query.mimeType : undefined,
     });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.json(assets.map((asset) => ({ ...asset, filename: path.basename(asset.storagePath), url: asset.publicUrl, date: asset.updatedAt })));
+  } catch (error) {
+    console.error('[media] list failed');
+    res.status(500).json({ error: 'KhÃ´ng thá»ƒ táº£i Media Library.', code: 'MEDIA_LIST_FAILED' });
   }
 });
 
-// 2. Upload Image (Base64 Decoder)
-app.post('/api/admin/media/upload', (req, res) => {
+app.post('/api/admin/media/upload', async (req, res) => {
   try {
-    const { base64Data } = req.body;
-    if (!base64Data) {
-      return res.status(400).json({ error: 'Missing image data', code: 'UPLOAD_INVALID' });
-    }
+    const { base64Data, filename } = req.body ?? {};
+    if (!base64Data) return res.status(400).json({ error: 'Thiáº¿u dá»¯ liá»‡u áº£nh.', code: 'UPLOAD_INVALID' });
     const upload = parseImageUpload({ base64Data, maxBytes: Number(process.env.UPLOAD_MAX_BYTES ?? 5 * 1024 * 1024) });
-    const uniqueName = upload.filename;
-    const destPath = safeUploadPath(path.join(__dirname, 'uploads'), uniqueName);
-    fs.writeFileSync(destPath, upload.buffer, { flag: 'wx', mode: 0o640 });
-    res.json({ success: true, url: `/uploads/${uniqueName}`, filename: uniqueName });
-  } catch (e) {
+    const asset = await mediaAssetRepository.createFromUpload({ upload, originalName: typeof filename === 'string' ? filename.slice(0, 240) : upload.filename, createdBy: req.auth?.user?.id });
+    res.status(201).json({ ...asset, filename: path.basename(asset.storagePath), url: asset.publicUrl, date: asset.updatedAt });
+  } catch (error) {
     console.error('[upload] Media rejected');
-    res.status(e.code?.startsWith('UPLOAD_') ? 400 : 500).json({ error: 'Unable to upload image.', code: e.code ?? 'UPLOAD_FAILED' });
+    res.status(error.code?.startsWith('UPLOAD_') || error.message === 'MEDIA_UNSUPPORTED_TYPE' ? 400 : 500).json({ error: 'Không thể tải ảnh lên Media Library.', code: error.code ?? 'UPLOAD_FAILED' });
   }
 });
 
-// 3. Delete Media File
-app.delete('/api/admin/media/:filename', (req, res) => {
+app.patch('/api/admin/media/:id', async (req, res) => {
   try {
-    const { filename } = req.params;
-    const safeFilename = path.basename(filename); // Prevent path traversal
-    const filePath = path.join('uploads', safeFilename);
-    
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log(`[HICO MEDIA] File deleted: ${safeFilename}`);
-      res.json({ success: true });
-    } else {
-      res.status(404).json({ error: 'File not found' });
-    }
-  } catch (e) {
-    console.error('Delete failed:', e);
-    res.status(500).json({ error: e.message });
+    const changes = {};
+    if (req.body?.altText !== undefined) changes.altText = String(req.body.altText).slice(0, 500);
+    if (req.body?.title !== undefined) changes.title = String(req.body.title).slice(0, 240);
+    const asset = await mediaAssetRepository.update(req.params.id, changes);
+    if (!asset) return res.status(404).json({ error: 'Không tìm thấy MediaAsset.', code: 'MEDIA_NOT_FOUND' });
+    res.json(asset);
+  } catch {
+    res.status(500).json({ error: 'Không thể cập nhật MediaAsset.', code: 'MEDIA_UPDATE_FAILED' });
+  }
+});
+
+app.delete('/api/admin/media/:id', async (req, res) => {
+  try {
+    const result = await mediaAssetRepository.archiveOrDelete(req.params.id);
+    if (result.status === 404) return res.status(404).json({ error: 'Không tìm thấy MediaAsset.', code: 'MEDIA_NOT_FOUND' });
+    if (result.status === 409) return res.status(409).json({ error: 'MediaAsset đang được tham chiếu và không thể xóa.', code: 'MEDIA_REFERENCED', references: result.references });
+    return res.json({ success: true, id: result.asset.id });
+  } catch {
+    return res.status(500).json({ error: 'Không thể xóa MediaAsset.', code: 'MEDIA_DELETE_FAILED' });
   }
 });
 

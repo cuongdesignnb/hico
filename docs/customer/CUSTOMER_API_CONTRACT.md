@@ -177,3 +177,22 @@ existing admin session, CSRF, permission middleware, real actor id, and write
 audit. Read, reply, assign, and status operations map to separate support
 permissions. Status changes require a reason. Internal notes have separate
 visibility and are never returned to customers.
+
+## PR15.8 legacy cutover behavior
+
+The customer compatibility surface is now `/api/customer/*`. Requests to
+`/api/user/*` return HTTP 410 with this safe body:
+
+```json
+{"error":"API cũ đã ngừng hỗ trợ.","code":"LEGACY_CUSTOMER_API_DISABLED"}
+```
+
+They include `Deprecation: true` and a `Sunset` header. The legacy path does
+not redirect writes or expose a fallback response. Legacy fulfillment handlers
+are outside the customer contract and are not public customer APIs.
+
+`GET /api/health/customer-platform` returns a no-store readiness document with
+mode, migration, dependency, flag, and blocker status. It contains aggregate
+counts only. A healthy response requires real mode, current migration head
+`012_customer_platform_cutover.sql`, disabled demo fallback, disabled legacy
+API, and a healthy quarantine table.

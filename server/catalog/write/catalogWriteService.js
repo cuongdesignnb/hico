@@ -131,6 +131,7 @@ export const createCatalogWriteService = ({
   slugHistoryRepository = createCatalogSlugHistoryRepository(),
   referenceService = createCatalogReferenceService(),
   uploadsDirectory = defaultUploadsDirectory,
+  mediaAssetRepository = null,
   now = () => new Date(),
   idFactory = (prefix) => `${prefix}-${randomUUID()}`,
   versionIdFactory = () => (
@@ -149,6 +150,25 @@ export const createCatalogWriteService = ({
   const requireBaseVersion = (request, manifest) => {
     const expected = requireCatalogVersionId(request.catalogVersionId);
     assertCatalogBaseVersion(expected, currentVersionId(manifest));
+  };
+
+  const assertMediaReferences = async (input = {}) => {
+    if (!mediaAssetRepository) return;
+    const ids = [
+      input.primaryMediaId,
+      ...(Array.isArray(input.galleryMediaIds) ? input.galleryMediaIds : []),
+    ].filter((id) => typeof id === 'string' && id.trim());
+    if (ids.length === 0) return;
+    const assets = await mediaAssetRepository.getByIds(ids);
+    const known = new Set(assets.map((asset) => asset.id));
+    const missing = [...new Set(ids)].filter((id) => !known.has(id));
+    if (missing.length > 0) {
+      throw new CatalogWriteError('Media reference khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ archive.', {
+        status: 400,
+        code: 'MEDIA_REFERENCE_INVALID',
+        details: { fields: missing.map((id) => id.slice(0, 80)) },
+      });
+    }
   };
 
   const commit = async ({
@@ -294,6 +314,7 @@ export const createCatalogWriteService = ({
         handler: async ({ commandId, requestHash: hash }) => {
           const context = await readContext();
           requireBaseVersion(request, context.manifest);
+          await assertMediaReferences(request.product);
           const input = normalizeProductInput(request.product);
           const timestamp = now().toISOString();
           const product = {
@@ -362,6 +383,7 @@ export const createCatalogWriteService = ({
           if (request.changes?.id !== undefined) {
             throw new CatalogWriteError('Không được thay đổi product ID.');
           }
+          await assertMediaReferences(request.changes);
           const changes = normalizeProductInput(request.changes, {
             partial: true,
           });

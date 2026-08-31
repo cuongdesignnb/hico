@@ -15,9 +15,9 @@ const plainText = (value) => String(value ?? '').replace(/<[^>]*>/g, ' ').replac
 const absoluteUrl = (value) => /^https?:\/\//i.test(value) ? value : `${siteUrl}${value?.startsWith('/') ? value : `/${value ?? ''}`}`;
 
 const metadataFor = ({ title, description, image, path: route, type = 'website' }) => ({
-  title: title || 'HICO eSIM | Travel connectivity',
-  description: description || 'Travel eSIM and mobile connectivity from HICO.',
-  image: absoluteUrl(image || '/images/dest_japan.png'),
+  title: title || 'HICO eSIM - Kết nối toàn cầu không giới hạn',
+  description: description || 'Nhanh chóng, dễ dàng và tin cậy tại 200+ quốc gia. Không cần SIM vật lý, không roaming, chỉ cần quét và kết nối.',
+  image: absoluteUrl(image || '/images/art_travel_tips.png'),
   canonical: `${siteUrl}${route === '/' ? '' : route}`,
   type,
 });

@@ -116,3 +116,17 @@ from customer detail responses. Attachments use a random private storage key,
 safe basename, MIME allowlist and content signature, checksum, no public
 static route, and no malware-scanning claim when the scanner is absent.
 Download responses are authenticated and no-store.
+
+## PR15.8 real-mode boundary
+
+The cutover requires `CUSTOMER_ACCOUNT_MODE=real`,
+`CUSTOMER_DEMO_FALLBACK_ENABLED=false`, and
+`LEGACY_CUSTOMER_API_ENABLED=false`. The backend does not load customer-facing
+legacy JSON fixtures in real mode. `/api/user/*` is a 410 deprecation boundary;
+it cannot transfer authority or redirect writes.
+
+Customer platform health and migration reports contain only statuses, counts,
+safe references, and blocker codes. Quarantine metadata is constrained at the
+database layer to reject PII, secrets, QR/LPA/PIN/PUK, ICCID, and token fields.
+Sensitive reveal responses remain owner-scoped, CSRF-protected, audited,
+re-authenticated when required, and `Cache-Control: no-store`.
