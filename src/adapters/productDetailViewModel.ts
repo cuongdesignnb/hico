@@ -177,8 +177,8 @@ const pickField = (productValue: string | undefined, variantValue: string | unde
 export const featureNetworkLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined =>
   pickField(product.networkLabel, variant?.networkLabel);
 
-export const featureActivationLabel = (product: PublicProduct): string | undefined =>
-  pickField(product.activationPolicy, undefined);
+export const featureActivationLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined =>
+  pickField(product.activationPolicy, variant?.activationPolicy);
 
 // hotspotSupport is string: 'true' = "Có hỗ trợ", 'false' = "Không hỗ trợ", undefined = hide card
 export const featureHotspotLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined => {

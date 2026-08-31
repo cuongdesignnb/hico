@@ -32,7 +32,7 @@ const buildFeatureCells = (
   const network = featureNetworkLabel(product, variant);
   if (network) cells.push({ icon: Globe, label: 'Mạng', value: network });
 
-  const activation = featureActivationLabel(product);
+  const activation = featureActivationLabel(product, variant);
   if (activation) cells.push({ icon: Zap, label: 'Kích hoạt', value: activation });
 
   const hotspot = featureHotspotLabel(product, variant);

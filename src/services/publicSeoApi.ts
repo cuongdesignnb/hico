@@ -23,9 +23,11 @@ export interface PublicArticle {
   updatedAt?: string;
 }
 
-const getError = async (response: Response): Promise<Error> => {
+const getError = async (response: Response): Promise<Error & { status?: number }> => {
   const payload = await response.json().catch(() => null) as { error?: string } | null;
-  return new Error(payload?.error || 'Content is unavailable.');
+  const error = new Error(payload?.error || 'Content is unavailable.') as Error & { status?: number };
+  error.status = response.status;
+  return error;
 };
 
 const request = async <T>(url: string, signal?: AbortSignal): Promise<T> => {

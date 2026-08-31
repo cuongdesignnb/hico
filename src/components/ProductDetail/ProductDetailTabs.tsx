@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ProductReview } from '../../types/legacy';
 import type { PublicProduct, PublicVariant } from '../../types/publicCatalog';
+import { featureHotspotLabel } from '../../adapters/productDetailViewModel';
 import { sanitizeHtml } from '../../utils/sanitizeHtml';
 import { Database, Globe, HardDrive, Radio, Settings, ShieldCheck, Zap } from 'lucide-react';
 
@@ -11,7 +12,7 @@ interface ProductSpecsTabProps {
   variant: PublicVariant | null;
 }
 
-const Star = ({ filled }: { filled: boolean }) => (
+const StarIcon = ({ filled }: { filled: boolean }) => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? '#FF9F00' : 'none'} stroke="#FF9F00" strokeWidth="1.5">
     <polygon points="12 2 15 9 22 9.5 17 14.5 18.5 21 12 17.8 5.5 21 7 14.5 2 9.5 9 9 12 2" />
   </svg>
@@ -35,7 +36,8 @@ const buildRows = (product: PublicProduct, variant: PublicVariant | null): SpecR
     rows.push({ icon: Radio, label: 'Loại SIM', value: lbl });
   }
   if (variant?.networkLabel || product.networkLabel) rows.push({ icon: Globe, label: 'Mạng', value: variant?.networkLabel ?? product.networkLabel ?? '-' });
-  if (variant?.hotspotSupport || product.hotspotSupport) rows.push({ icon: Settings, label: 'Hotspot', value: variant?.hotspotSupport ?? product.hotspotSupport ?? '-' });
+  const hotspot = featureHotspotLabel(product, variant);
+  if (hotspot) rows.push({ icon: Settings, label: 'Hotspot', value: hotspot });
   rows.push({ icon: ShieldCheck, label: 'Fulfillment', value: variant?.fulfillmentMethod || '-' });
   return rows;
 };
@@ -58,11 +60,11 @@ export const ProductSpecsTab = ({ product, variant }: ProductSpecsTabProps) => {
         </div>
       </div>
       <div className="pdp-specs-aside">
-        <h4 className="pdp-section-heading">Variant dang chon</h4>
+        <h4 className="pdp-section-heading">Variant đang chọn</h4>
         {variant ? (
           <div className="pdp-specs-card">
             <strong className="pdp-specs-card-title">{variant.dataLimit ?? variant.deviceSpecifications?.model ?? variant.sku}</strong>
-            <span className="pdp-specs-card-meta">{variant.duration ?? 'Theo goi'} - {variant.medium === 'physical_sim' ? 'SIM vật lý' : 'eSIM'}</span>
+            <span className="pdp-specs-card-meta">{variant.duration ?? 'Theo gói'} - {variant.medium === 'physical_sim' ? 'SIM vật lý' : 'eSIM'}</span>
             <span className="pdp-specs-card-price">{variant.price.toLocaleString('vi-VN')} {variant.currency}</span>
           </div>
         ) : (
@@ -90,7 +92,7 @@ export const ProductCompatTab = ({ product }: ProductCompatTabProps) => {
   return (
     <div className="pdp-tab-panel">
       <h4 className="pdp-section-heading">Thiết bị tương thích</h4>
-      {html ? <div className="pdp-rich-content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} /> : <p className="pdp-empty">{fallback ?? 'Can ho tro eSIM.'}</p>}
+      {html ? <div className="pdp-rich-content" dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }} /> : <p className="pdp-empty">{fallback ?? 'Cần hỗ trợ eSIM.'}</p>}
     </div>
   );
 };
@@ -130,21 +132,26 @@ export const ProductReviewsTab = ({ product, reviews }: ProductReviewsTabProps) 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [content, setContent] = useState('');
+  const [rating, setRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (rating < 1 || rating > 5) {
+      setSubmitError('Vui lòng chọn đánh giá từ 1 đến 5 sao.');
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
       const response = await fetch(`/api/products/${product.id}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rating: 5, userName: name, userEmail: email, content, images: [] }),
+        body: JSON.stringify({ rating, userName: name, userEmail: email, content, images: [] }),
       });
       if (!response.ok) throw new Error('Cannot submit');
-      setName(''); setEmail(''); setContent(''); setIsFormOpen(false);
+      setName(''); setEmail(''); setContent(''); setRating(0); setIsFormOpen(false);
     } catch { setSubmitError('Không thể gửi đánh giá.'); }
     finally { setSubmitting(false); }
   };
@@ -154,7 +161,7 @@ export const ProductReviewsTab = ({ product, reviews }: ProductReviewsTabProps) 
       <div className="pdp-reviews-header">
         <div>
           <h4 className="pdp-section-heading">Đánh giá sản phẩm</h4>
-          <span className="pdp-reviews-count">{reviews.length.toLocaleString('vi-VN')} danh gia da duyet</span>
+          <span className="pdp-reviews-count">{reviews.length.toLocaleString('vi-VN')} đánh giá đã duyệt</span>
         </div>
         <button type="button" className="pdp-write-review-btn" onClick={() => setIsFormOpen(v => !v)}>Viết đánh giá</button>
       </div>
@@ -162,8 +169,24 @@ export const ProductReviewsTab = ({ product, reviews }: ProductReviewsTabProps) 
         <form className="pdp-review-form" onSubmit={handleSubmit}>
           <h5 className="pdp-review-form-title">Đánh giá của bạn</h5>
           <div className="pdp-review-form-grid">
+            <div className="pdp-review-form-group">
+              <span>Đánh giá</span>
+              <div className="pdp-rating-selector" role="group" aria-label="Chọn số sao">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    className={`pdp-star-btn${rating >= star ? ' is-selected' : ''}`}
+                    onClick={() => setRating(star)}
+                    aria-label={`${star} sao`}
+                  >
+                    <StarIcon filled={rating >= star} />
+                  </button>
+                ))}
+              </div>
+            </div>
             <label className="pdp-review-form-group">
-              <span>Ten</span>
+              <span>Tên</span>
               <input value={name} onChange={e => setName(e.target.value)} required />
             </label>
             <label className="pdp-review-form-group">
@@ -171,7 +194,7 @@ export const ProductReviewsTab = ({ product, reviews }: ProductReviewsTabProps) 
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
             </label>
             <label className="pdp-review-form-group pdp-review-form-group--full">
-              <span>Noi dung</span>
+              <span>Nội dung</span>
               <textarea rows={4} value={content} onChange={e => setContent(e.target.value)} required />
             </label>
           </div>
@@ -192,7 +215,7 @@ export const ProductReviewsTab = ({ product, reviews }: ProductReviewsTabProps) 
                   <span className="pdp-review-avatar" aria-hidden="true">{review.userName.substring(0, 1).toUpperCase()}</span>
                   <div><strong>{review.userName}</strong><span>{review.createdAt}</span></div>
                 </div>
-                <div className="pdp-review-stars">{[1,2,3,4,5].map(p => <Star key={p} filled={p <= review.rating} />)}</div>
+                <div className="pdp-review-stars">{[1,2,3,4,5].map(p => <StarIcon key={p} filled={p <= review.rating} />)}</div>
               </div>
               <p className="pdp-review-content">{review.content}</p>
             </div>
