@@ -1,4 +1,5 @@
 import type { CatalogProductRecord } from '../types/catalog';
+import type { PublicProduct } from '../types/publicCatalog';
 
 export interface CoveragePage {
   slug: string;
@@ -38,3 +39,8 @@ export const getProductBySlug = (slug: string, signal?: AbortSignal) => request<
 export const getCoverageBySlug = (slug: string, signal?: AbortSignal) => request<CoveragePage>(`/api/catalog/coverage/by-slug/${encodeURIComponent(slug)}`, signal);
 export const getPublicArticles = (signal?: AbortSignal) => request<PublicArticle[]>('/api/articles', signal);
 export const getArticleBySlug = (slug: string, signal?: AbortSignal) => request<PublicArticle>(`/api/articles/by-slug/${encodeURIComponent(slug)}`, signal);
+
+// PDP-specific API
+export const getPublicProductBySlug = (slug: string, signal?: AbortSignal) => (
+  request<PublicProduct | { redirect: string; permanent: true }>(`/api/catalog/products/by-slug/${encodeURIComponent(slug)}`, signal)
+);

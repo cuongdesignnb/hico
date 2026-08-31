@@ -3,6 +3,7 @@ import {
   requireNonEmptyString,
   requireObject,
 } from './catalogWriteValidation.js';
+import { normalizePublicContent } from './catalogContractFields.js';
 
 const CURRENCIES = new Set(['VND', 'USD']);
 const MEDIUMS = new Set(['esim', 'physical_sim', null]);
@@ -38,6 +39,10 @@ const VARIANT_FIELDS = new Set([
   'stock',
   'active',
   'needsReview',
+  // PDP feature card fields
+  'networkLabel',
+  'activationPolicy',
+  'hotspotSupport',
 ]);
 
 const optionalString = (value, fieldName) => {
@@ -142,6 +147,8 @@ export const normalizeVariantInput = (input, { partial = false } = {}) => {
       result[field] = input[field];
     }
   }
+  // PDP feature card fields
+  Object.assign(result, normalizePublicContent(input, 'variant'));
   if (input.stock !== undefined) {
     if (
       input.stock !== null
@@ -218,6 +225,9 @@ export const validateVariantRecord = ({
       providerProductType: variant.providerProductType,
       leSIM: variant.leSIM,
       requiresExistingSim: variant.requiresExistingSim,
+      networkLabel: variant.networkLabel,
+      activationPolicy: variant.activationPolicy,
+      hotspotSupport: variant.hotspotSupport,
       stock: variant.stock,
       active: variant.active,
       needsReview: variant.needsReview,
@@ -368,4 +378,3 @@ export const validateVariantRecord = ({
 
   return { valid: errors.length === 0, errors, warnings };
 };
-

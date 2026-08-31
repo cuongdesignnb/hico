@@ -104,6 +104,10 @@ export interface CatalogVariant {
   version?: number;
   createdAt?: string;
   updatedAt?: string;
+  // Public content metadata (maps to PDP feature cards)
+  networkLabel?: string;
+  activationPolicy?: string;
+  hotspotSupport?: string; // 'true'=yes, 'false'=no
 }
 
 export interface CatalogProductRecord extends CatalogProduct {

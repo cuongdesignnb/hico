@@ -1,4 +1,4 @@
-import type { CatalogProductRecord } from '../types/catalog';
+import type { PublicProduct } from '../types/publicCatalog';
 import type { PublicArticle } from '../services/publicSeoApi';
 import { seoConfig } from './seoConfig';
 
@@ -18,7 +18,7 @@ export const defaultMetadata = (): Metadata => ({
   indexable: true,
 });
 
-export const productMetadata = (product: CatalogProductRecord): Metadata => ({
+export const productMetadata = (product: PublicProduct): Metadata => ({
   title: product.seoTitle || `${product.name} | ${seoConfig.siteName}`,
   description: product.seoDescription || plainText(product.description || product.guide) || `Explore ${product.name} with ${seoConfig.siteName}.`,
   image: product.image || seoConfig.defaultImage,

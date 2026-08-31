@@ -46,6 +46,10 @@ export const variantToDraft = (variant: CatalogVariant): VariantDraft => ({
   needsReview: variant.needsReview ?? false,
   archived: Boolean(variant.archived),
   saved: true,
+  // Public content metadata
+  networkLabel: variant.networkLabel,
+  activationPolicy: variant.activationPolicy,
+  hotspotSupport: variant.hotspotSupport,
 });
 
 const createInitialState = ({ mode, catalogVersionId, product }: ProductWizardInput): ProductWizardState => ({

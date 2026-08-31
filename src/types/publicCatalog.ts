@@ -1,0 +1,149 @@
+export type PublicOperation = 'new_subscription' | 'topup' | 'device_sale';
+export type PublicCoverageType = 'country' | 'region' | 'global' | 'not_applicable';
+export type PublicMedium = 'esim' | 'physical_sim' | null;
+export type PublicCurrency = 'VND' | 'USD';
+
+export interface PublicDeviceSpecs {
+  brand?: string;
+  model?: string;
+  networkGeneration?: string;
+  formFactor?: string;
+  supportedBands?: string[];
+  wifiStandard?: string;
+  maxConnectedDevices?: number;
+  batteryCapacity?: string;
+  ethernetPorts?: number;
+  usbPorts?: number;
+  simCompatibility?: string;
+  dimensions?: string;
+  weight?: string;
+  color?: string;
+  warrantyMonths?: number;
+}
+
+export interface PublicProductMedia {
+  id: string;
+  url: string;
+  alt: string;
+  title?: string;
+  sortOrder: number;
+}
+
+export interface PublicFaqItem {
+  question: string;
+  answer: string;
+  sortOrder: number;
+}
+
+export interface PublicVariantAvailability {
+  inStock: boolean;
+  stockKnown: boolean;
+}
+
+export interface PublicVariant {
+  id: string;
+  productId: string;
+  sku: string;
+  price: number;
+  compareAtPrice: number | null;
+  currency: PublicCurrency;
+  active: boolean;
+  dataLimit: string | null;
+  duration: string | null;
+  medium: PublicMedium;
+  supplier: string;
+  fulfillmentMethod: string;
+  requiresExistingSim: boolean;
+  shippingRequired: boolean;
+  stock: number | null;
+  availability: PublicVariantAvailability;
+  networkLabel?: string;
+  apn?: string;
+  publicNote?: string;
+  coverageLabel?: string;
+  speedLabel?: string;
+  hotspotSupport?: string;
+  activationPolicy?: string;
+  installationGuide?: string;
+  compatibilityContent?: string;
+  apnGuidance?: string;
+  instantDeliveryLabel?: string;
+  instructions?: string;
+  eligibilityNote?: string;
+  packageContents?: string;
+  deliveryNote?: string;
+  simSize?: string;
+  deviceSpecifications?: PublicDeviceSpecs;
+  deviceSpecs?: PublicDeviceSpecs;
+}
+
+export interface PublicProductSeo {
+  title?: string;
+  description?: string;
+  keywords?: string;
+}
+
+export interface PublicProduct {
+  id: string;
+  slug: string;
+  name: string;
+  operation: PublicOperation;
+  status: 'active';
+  coverageType: PublicCoverageType;
+  coverageIds: string[];
+  primaryImage: string | null;
+  primaryMedia?: PublicProductMedia | null;
+  image?: string;
+  images: string[];
+  gallery: PublicProductMedia[];
+  description?: string;
+  guide?: string;
+  networkLabel?: string;
+  coverageLabel?: string;
+  speedLabel?: string;
+  hotspotSupport?: string;
+  activationPolicy?: string;
+  installationGuide?: string;
+  compatibilityContent?: string;
+  apnGuidance?: string;
+  instantDeliveryLabel?: string;
+  instructions?: string;
+  eligibilityNote?: string;
+  packageContents?: string;
+  deliveryNote?: string;
+  simSize?: string;
+  faqItems: PublicFaqItem[];
+  featured: boolean;
+  seo: PublicProductSeo;
+  seoTitle?: string;
+  seoDescription?: string;
+  seoKeywords?: string;
+  deviceSpecs?: PublicDeviceSpecs;
+  deviceSpecifications?: PublicDeviceSpecs;
+  variantCount: number;
+  variants: PublicVariant[];
+}
+
+export interface PublicCatalogListResponse {
+  items: PublicProduct[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface PublicCatalogFilters {
+  operation?: PublicOperation;
+  medium?: Exclude<PublicMedium, null>;
+  coverage?: string;
+  supplier?: string;
+  currency?: PublicCurrency;
+  inStock?: boolean;
+  deviceGeneration?: string;
+  page?: number;
+  pageSize?: number;
+  sort?: 'featured' | 'name' | 'price_asc' | 'price_desc';
+  search?: string;
+}

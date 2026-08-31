@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useApp } from '../context/useApp';
 import { ProductDetail } from '../components/ProductDetail/ProductDetail';
 import { getArticlePath, getCanonicalProductPath } from '../routing/canonicalRoute';
-import { getArticleBySlug, getCoverageBySlug, getProductBySlug, getPublicArticles, getPublicProducts, type PublicArticle } from '../services/publicSeoApi';
+import { getArticleBySlug, getCoverageBySlug, getPublicArticles, getPublicProducts, getPublicProductBySlug, type PublicArticle } from '../services/publicSeoApi';
 import type { CatalogProductRecord } from '../types/catalog';
+import type { PublicProduct } from '../types/publicCatalog';
 import { SeoHead } from '../seo/SeoHead';
 import { articleMetadata, defaultMetadata, productMetadata } from '../seo/buildMetadata';
 import { buildCanonicalUrl } from '../seo/buildCanonicalUrl';
@@ -12,8 +13,8 @@ import { seoConfig } from '../seo/seoConfig';
 import './publicPages.css';
 
 const breadcrumbSchema = (items: { name: string; path: string }[]) => ({ '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: items.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.name, item: buildCanonicalUrl(item.path) })) });
-const productSchema = (product: CatalogProductRecord, path: string) => {
-  const visible = product.variants.filter((variant) => variant.active && !variant.needsReview && !variant.archived && !variant.skuConflict);
+const productSchema = (product: PublicProduct, path: string) => {
+  const visible = product.variants.filter((variant) => variant.active);
   const currencies = [...new Set(visible.map((variant) => variant.currency))];
   const prices = visible.map((variant) => variant.price).filter(Number.isFinite);
   const offers = currencies.length === 1 && prices.length ? { '@type': 'AggregateOffer', priceCurrency: currencies[0], lowPrice: Math.min(...prices), highPrice: Math.max(...prices), offerCount: prices.length } : undefined;
@@ -47,10 +48,10 @@ export const ProductListPage = ({ operation }: { operation?: CatalogProductRecor
 export const ProductPage = () => {
   const { slug = '' } = useParams();
   const navigate = useNavigate();
-  const [product, setProduct] = useState<CatalogProductRecord | null | undefined>(undefined);
+  const [product, setProduct] = useState<PublicProduct | null | undefined>(undefined);
   useEffect(() => {
     const controller = new AbortController();
-    getProductBySlug(slug, controller.signal).then((result) => {
+    getPublicProductBySlug(slug, controller.signal).then((result) => {
       if ('redirect' in result) navigate(result.redirect, { replace: true });
       else setProduct(result);
     }).catch(() => setProduct(null));
@@ -59,7 +60,7 @@ export const ProductPage = () => {
   if (product === undefined) return <Loading />;
   if (!product) return <NotFound />;
   const path = getCanonicalProductPath(product);
-  return <main id="main-content" tabIndex={-1}><SeoHead path={path} metadata={productMetadata(product)} schema={{ '@context': 'https://schema.org', '@graph': [breadcrumbSchema([{ name: 'Home', path: '/' }, { name: 'Products', path: '/san-pham' }, { name: product.name, path }]), productSchema(product, path)] }} /><ProductDetail productId={product.id} /></main>;
+  return <main id="main-content" tabIndex={-1}><SeoHead path={path} metadata={productMetadata(product)} schema={{ '@context': 'https://schema.org', '@graph': [breadcrumbSchema([{ name: 'Home', path: '/' }, { name: 'Products', path: '/san-pham' }, { name: product.name, path }]), productSchema(product, path)] }} /><ProductDetail product={product} /></main>;
 };
 
 export const CoverageListPage = () => {

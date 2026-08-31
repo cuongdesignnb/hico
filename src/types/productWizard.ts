@@ -65,6 +65,10 @@ export interface VariantDraft {
   needsReview: boolean;
   archived?: boolean;
   saved?: boolean;
+  // Public content metadata for feature cards
+  networkLabel?: string;
+  activationPolicy?: string;
+  hotspotSupport?: string; // 'true'=yes, 'false'=no, undefined=unset
 }
 
 export interface WizardValidationError {
