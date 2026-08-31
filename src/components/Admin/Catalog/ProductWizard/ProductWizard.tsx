@@ -87,18 +87,28 @@ const buildVariantPayload = (variant: VariantDraft) => {
     price: Number(variant.price),
     compareAtPrice: variant.compareAtPrice.trim() === '' ? null : Number(variant.compareAtPrice),
     currency: variant.currency,
+
     medium: source?.medium ?? variant.medium ?? null,
     supplier: source?.supplier ?? variant.supplier ?? 'other',
     fulfillmentMethod: source?.fulfillmentMethod ?? variant.fulfillmentMethod,
+
     providerOfferId: variant.providerOfferId,
     wmproductId: variant.wmproductId,
     providerProductId: variant.providerProductId,
     providerProductType: source?.providerProductType ?? variant.providerProductType ?? null,
+
     leSIM: source?.leSIM ?? variant.leSIM ?? null,
     requiresExistingSim: source?.requiresExistingSim ?? variant.requiresExistingSim,
+
     stock: source?.fulfillmentMethod === 'HICO_PHYSICAL_STOCK' ? Number(variant.stock) : null,
+
     active: source?.fulfillmentMethod === 'MANUAL_PROCESSING' ? false : variant.active,
     needsReview: source?.fulfillmentMethod === 'MANUAL_PROCESSING' ? true : variant.needsReview,
+
+    // PDP metadata - explicit null when empty so backend can clear field
+    networkLabel: variant.networkLabel?.trim() ? variant.networkLabel.trim() : null,
+    activationPolicy: variant.activationPolicy?.trim() ? variant.activationPolicy.trim() : null,
+    hotspotSupport: variant.hotspotSupport ?? null,
   };
 };
 

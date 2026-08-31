@@ -164,32 +164,32 @@ export const productCategoryLabel = (product: PublicProduct) => {
 };
 
 /**
- * Resolve a feature-card value with Product > Variant fallback.
+ * Resolve a feature-card value with Variant > Product fallback.
  * Returns `undefined` (not a string) when nothing is set so the UI can hide
  * the card entirely instead of showing a placeholder.
  */
-const pickField = (productValue: string | undefined, variantValue: string | undefined): string | undefined => {
-  if (productValue && productValue.trim()) return productValue.trim();
+const pickField = (variantValue: string | undefined, productValue: string | undefined): string | undefined => {
   if (variantValue && variantValue.trim()) return variantValue.trim();
+  if (productValue && productValue.trim()) return productValue.trim();
   return undefined;
 };
 
 export const featureNetworkLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined =>
-  pickField(product.networkLabel, variant?.networkLabel);
+  pickField(variant?.networkLabel, product.networkLabel);
 
 export const featureActivationLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined =>
-  pickField(product.activationPolicy, variant?.activationPolicy);
+  pickField(variant?.activationPolicy, product.activationPolicy);
 
 // hotspotSupport is string: 'true' = "Có hỗ trợ", 'false' = "Không hỗ trợ", undefined = hide card
 export const featureHotspotLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined => {
-  const value = product.hotspotSupport ?? variant?.hotspotSupport;
+  const value = variant?.hotspotSupport ?? product.hotspotSupport;
   if (value === 'true') return 'Có hỗ trợ';
   if (value === 'false') return 'Không hỗ trợ';
   return undefined;
 };
 
 export const featureSpeedLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined =>
-  pickField(product.speedLabel, variant?.speedLabel);
+  pickField(variant?.speedLabel, product.speedLabel);
 
 export const discountPercent = (variant: PublicVariant | null): number | null => {
   if (!variant?.compareAtPrice || variant.compareAtPrice <= variant.price) return null;
