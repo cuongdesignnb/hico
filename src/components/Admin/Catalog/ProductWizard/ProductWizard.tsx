@@ -80,6 +80,24 @@ const buildProductPayload = (product: ProductDraft) => ({
 
 const buildVariantPayload = (variant: VariantDraft) => {
   const source = variant.sourceMode ? sourceTechnicalFields(variant.sourceMode) : null;
+
+  const fulfillmentMethod =
+    source?.fulfillmentMethod
+    ?? variant.fulfillmentMethod;
+
+  // Legacy existing variants may have stock=null (unknown). Preserve it by not
+  // sending stock in the payload when the existing stock is null.
+  const stockChanges =
+    fulfillmentMethod === 'HICO_PHYSICAL_STOCK'
+      ? (
+          variant.stock.trim() === ''
+            ? variant.id
+              ? {} // existing variant with unknown stock → don't send stock
+              : { stock: null } // new variant with unknown stock → allow null
+            : { stock: Number(variant.stock) }
+        )
+      : { stock: null };
+
   return {
     sku: variant.sku.trim(),
     dataLimit: variant.dataLimit.trim() || undefined,
@@ -90,7 +108,7 @@ const buildVariantPayload = (variant: VariantDraft) => {
 
     medium: source?.medium ?? variant.medium ?? null,
     supplier: source?.supplier ?? variant.supplier ?? 'other',
-    fulfillmentMethod: source?.fulfillmentMethod ?? variant.fulfillmentMethod,
+    fulfillmentMethod,
 
     providerOfferId: variant.providerOfferId,
     wmproductId: variant.wmproductId,
@@ -100,10 +118,10 @@ const buildVariantPayload = (variant: VariantDraft) => {
     leSIM: source?.leSIM ?? variant.leSIM ?? null,
     requiresExistingSim: source?.requiresExistingSim ?? variant.requiresExistingSim,
 
-    stock: source?.fulfillmentMethod === 'HICO_PHYSICAL_STOCK' ? Number(variant.stock) : null,
+    ...stockChanges,
 
-    active: source?.fulfillmentMethod === 'MANUAL_PROCESSING' ? false : variant.active,
-    needsReview: source?.fulfillmentMethod === 'MANUAL_PROCESSING' ? true : variant.needsReview,
+    active: fulfillmentMethod === 'MANUAL_PROCESSING' ? false : variant.active,
+    needsReview: fulfillmentMethod === 'MANUAL_PROCESSING' ? true : variant.needsReview,
 
     // PDP metadata - explicit null when empty so backend can clear field
     networkLabel: variant.networkLabel?.trim() ? variant.networkLabel.trim() : null,
@@ -129,7 +147,16 @@ const validateWizard = (product: ProductDraft, variants: VariantDraft[]) => {
     skuSet.add(variant.sku.trim());
     if (variant.price.trim() === '' || Number.isNaN(Number(variant.price)) || Number(variant.price) < 0) errors.push({ step: 3, message: `Giá bán của gói ${row} không hợp lệ.` });
     if (!variant.sourceMode) errors.push({ step: 4, message: `Gói ${row} chưa chọn nguồn cấp.` });
-    if (variant.sourceMode === 'hico_physical' && (!/^\d+$/.test(variant.stock) || Number(variant.stock) < 0)) errors.push({ step: 4, message: `Tồn kho của gói ${row} phải là số nguyên không âm.` });
+    if (
+      variant.sourceMode === 'hico_physical'
+      && (
+        !variant.id // new variant must have integer stock
+        ? !/^\d+$/.test(variant.stock) || Number(variant.stock) < 0
+        : variant.stock.trim() !== '' && (!/^\d+$/.test(variant.stock) || Number(variant.stock) < 0)
+      )
+    ) {
+      errors.push({ step: 4, message: `Tồn kho của gói ${row} phải là số nguyên không âm.` });
+    }
     if (variant.sourceMode && ['worldmove_esim', 'local_esim', 'worldmove_physical', 'worldmove_topup'].includes(variant.sourceMode) && !variant.providerOfferId) errors.push({ step: 4, message: `Gói ${row} cần chọn Provider Offer active.` });
     if (variant.compareAtPrice && Number(variant.compareAtPrice) < Number(variant.price)) warnings.push({ step: 3, message: `Giá so sánh của gói ${row} thấp hơn giá bán.` });
     if (variant.sourceMode === 'manual_processing') warnings.push({ step: 4, message: `Gói ${row} là xử lý thủ công và sẽ không publishable.` });

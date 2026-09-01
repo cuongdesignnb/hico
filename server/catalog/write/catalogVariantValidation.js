@@ -204,6 +204,7 @@ export const validateVariantRecord = ({
   variant,
   product,
   providerOffers = [],
+  allowLegacyUnknownPhysicalStock = false,
 }) => {
   const errors = [];
   const warnings = [];
@@ -352,13 +353,35 @@ export const validateVariantRecord = ({
         variant.medium !== 'physical_sim'
         || variant.supplier !== 'hico'
         || variant.requiresExistingSim !== false
-        || !Number.isInteger(variant.stock)
-        || variant.stock < 0
       ) {
         errors.push(providerError(
           'INVALID_HICO_PHYSICAL_STOCK',
           'Cấu hình kho SIM vật lý HICO không hợp lệ.',
         ));
+      } else {
+        // Legacy unknown stock (stock=null) is allowed only when:
+        // 1. This is an update of an existing variant with stock=null
+        // 2. The update does not include stock in the changes
+        const isLegacyUnknownStock =
+          allowLegacyUnknownPhysicalStock
+          && variant.stock === null;
+        const invalidStock =
+          !isLegacyUnknownStock
+          && (
+            !Number.isInteger(variant.stock)
+            || variant.stock < 0
+          );
+        if (invalidStock) {
+          errors.push(providerError(
+            'INVALID_HICO_PHYSICAL_STOCK',
+            'Cấu hình kho SIM vật lý HICO không hợp lệ.',
+          ));
+        } else if (isLegacyUnknownStock) {
+          warnings.push({
+            code: 'UNKNOWN_PHYSICAL_STOCK',
+            message: 'Stock của kho SIM vật lý HICO đang là unknown (null).',
+          });
+        }
       }
       break;
     case 'MANUAL_PROCESSING':
