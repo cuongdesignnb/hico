@@ -679,12 +679,13 @@ export const createCatalogWriteService = ({
             existing.fulfillmentMethod === 'HICO_PHYSICAL_STOCK'
             && existing.stock === null
             && request.changes?.stock === undefined;
-          assertValidEntity(validateVariantRecord({
+          const validation = validateVariantRecord({
             variant: updated,
             product,
             providerOffers: context.providerOffers,
             allowLegacyUnknownPhysicalStock,
-          }));
+          });
+          assertValidEntity(validation);
           const candidateVariants = applySkuConflictMetadata(
             context.variants.map(
               (variant) => variant.id === variantId ? updated : variant,
@@ -736,7 +737,10 @@ export const createCatalogWriteService = ({
             body: {
               variant: findById(committed.variants, variantId),
               catalogVersionId: committed.versionId,
-              warnings: committed.warnings,
+              warnings: [
+                ...committed.warnings,
+                ...(validation.warnings ?? []),
+              ],
             },
           };
         },

@@ -458,62 +458,142 @@ test('audit persistence failure leaves pointer and version list unchanged', asyn
 });
 
 // ─── Legacy unknown physical stock tests ────────────────────────────────────────
+// These tests verify that existing variants with stock=null (legacy unknown stock)
+// can be updated without the stock being changed, while new variants still require
+// an integer stock value.
 
-test('update existing physical variant with stock=null preserves null (metadata-only update)', async (t) => {
-  const fixture = await setup(t);
+const withLegacyNullStockVariant = async (t, testFn) => {
+  // Build a base catalog with a pre-existing variant that has stock=null
+  const uploadsDirectory = await mkdtemp(path.join(os.tmpdir(), 'hico-legacy-stock-'));
+  t.after(() => rm(uploadsDirectory, { recursive: true, force: true }));
 
-  // Create a product first
-  const productResult = await fixture.service.createProduct(
-    productRequest(await currentId(fixture), {
+  const commitService = createCatalogVersionCommitService({
+    uploadsDirectory,
+    logger: { warn() {} },
+  });
+  // Pre-seed a product and a physical variant with stock=null (simulates legacy data)
+  await commitService.commit({
+    versionId: 'catalog-legacy',
+    parentVersionId: null,
+    products: [{
       id: 'product-legacy-stock',
-      slug: 'product-legacy-stock',
-    }),
-    { id: 'admin-1', role: 'catalog_admin' },
-  );
-
-  // Create variant with stock=10 (valid integer) then we'll simulate the legacy null state
-  // by directly testing the update path. The create step for HICO_PHYSICAL_STOCK always
-  // requires integer stock.
-  const createResult = await fixture.service.createVariant(
-    'product-legacy-stock',
-    physicalVariantRequest(productResult.body.catalogVersionId, {
-      id: 'variant-legacy-unknown',
-      sku: 'LEGACY-UNKNOWN',
-      stock: 10,
-    }),
-    { id: 'admin-1', role: 'catalog_admin' },
-  );
-  assert.equal(createResult.body.variant.stock, 10);
-
-  // Simulate the legacy-null scenario: update with metadata but no stock change.
-  // The allowLegacyUnknownPhysicalStock flag allows this for existing variants
-  // where the existing stock was null. Since we created with stock=10, we test the
-  // metadata-only update path where stock is preserved.
-  const updateResult = await fixture.service.updateVariant(
-    'product-legacy-stock',
-    'variant-legacy-unknown',
-    {
-      idempotencyKey: 'metadata-update-key',
-      catalogVersionId: createResult.body.catalogVersionId,
+      name: 'Legacy Stock Product',
+      slug: 'legacy-stock',
+      operation: 'new_subscription',
+      coverageType: 'country',
+      coverageIds: ['vn'],
+      image: '/images/legacy.png',
+      featured: false,
+      status: 'active',
       version: 1,
-      changes: {
-        networkLabel: 'ETL 4G/LTE',
-        activationPolicy: 'Tự động',
-        hotspotSupport: 'true',
-        // stock is intentionally omitted
-      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }],
+    variants: [{
+      id: 'variant-legacy-null',
+      productId: 'product-legacy-stock',
+      sku: 'LEGACY-NULL-STOCK',
+      dataLimit: '3 GB',
+      duration: '7 Ngày',
+      price: 150000,
+      currency: 'VND',
+      medium: 'physical_sim',
+      supplier: 'hico',
+      fulfillmentMethod: 'HICO_PHYSICAL_STOCK',
+      requiresExistingSim: false,
+      stock: null, // legacy unknown stock
+      active: true,
+      needsReview: false,
+      version: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }],
+    commandType: 'MIGRATE',
+    commandId: 'legacy-migration',
+    requestHash: 'legacy',
+    createdAt: timestamp,
+  });
+
+  const canonicalRepository = createCanonicalCatalogRepository({ uploadsDirectory });
+  const auditRepository = createCatalogAuditRepository({
+    recordsFile: path.join(uploadsDirectory, 'catalog_audit.json'),
+  });
+  const slugHistoryRepository = createCatalogSlugHistoryRepository({
+    recordsFile: path.join(uploadsDirectory, 'catalog_slug_history.json'),
+  });
+  const idempotencyRepository = createCatalogIdempotencyRepository({
+    recordsFile: path.join(uploadsDirectory, 'catalog_idempotency.json'),
+    now: () => new Date(timestamp),
+  });
+  let versionSequence = 0;
+  const makeService = (overrides = {}) => createCatalogWriteService({
+    env: {},
+    uploadsDirectory,
+    canonicalRepository,
+    providerRepository: { listOffers: async () => [] },
+    commandService: createCatalogCommandService({
+      env: {},
+      idempotencyRepository,
+    }),
+    commitService,
+    auditRepository,
+    slugHistoryRepository,
+    referenceService: {
+      productReferences: async () => [],
+      variantReferences: async () => [],
     },
-    { id: 'admin-1', role: 'catalog_admin' },
-  );
-  assert.equal(updateResult.body.variant.stock, 10, 'stock must be preserved');
-  assert.equal(updateResult.body.variant.networkLabel, 'ETL 4G/LTE');
-  assert.equal(updateResult.body.variant.activationPolicy, 'Tự động');
-  assert.equal(updateResult.body.variant.hotspotSupport, 'true');
+    now: () => new Date(timestamp),
+    idFactory: (prefix) => `${prefix}-${Math.random().toString(36).slice(2)}`,
+    versionIdFactory: () => `catalog-legacy-write-${++versionSequence}`,
+    ...overrides,
+  });
+
+  await testFn({
+    service: makeService(),
+    canonicalRepository,
+    commitService,
+  });
+};
+
+test('update existing physical variant with stock=null preserves null on metadata-only update', async (t) => {
+  await withLegacyNullStockVariant(t, async (fixture) => {
+    // Read current manifest to get the version ID
+    const manifest = await fixture.canonicalRepository.readCurrentManifest();
+    assert.equal(manifest.versionId, 'catalog-legacy');
+
+    // Metadata-only update: do NOT send stock in the changes
+    const result = await fixture.service.updateVariant(
+      'product-legacy-stock',
+      'variant-legacy-null',
+      {
+        idempotencyKey: 'legacy-metadata-update',
+        catalogVersionId: manifest.versionId,
+        version: 1,
+        changes: {
+          networkLabel: 'ETL 4G/LTE',
+          activationPolicy: 'Tự động',
+          hotspotSupport: 'true',
+          // stock is intentionally omitted — this is the key scenario
+        },
+      },
+      { id: 'admin-1', role: 'catalog_admin' },
+    );
+    assert.equal(result.body.variant.stock, null, 'stock must remain null');
+    assert.equal(result.body.variant.networkLabel, 'ETL 4G/LTE');
+    assert.equal(result.body.variant.activationPolicy, 'Tự động');
+    assert.equal(result.body.variant.hotspotSupport, 'true');
+    assert.equal(result.body.variant.version, 2);
+    // UNKNOWN_PHYSICAL_STOCK warning expected when stock=null is preserved
+    const warnings = result.body.warnings ?? [];
+    assert.ok(
+      warnings.some((w) => w.code === 'UNKNOWN_PHYSICAL_STOCK'),
+      'Expected UNKNOWN_PHYSICAL_STOCK warning',
+    );
+  });
 });
 
 test('create new physical variant with stock=null fails validation', async (t) => {
   const fixture = await setup(t);
-
   const productResult = await fixture.service.createProduct(
     productRequest(await currentId(fixture), {
       id: 'product-new-physical',
@@ -532,15 +612,12 @@ test('create new physical variant with stock=null fails validation', async (t) =
       }),
       { id: 'admin-1', role: 'catalog_admin' },
     ),
-    (error) => {
-      return error.code === 'INVALID_HICO_PHYSICAL_STOCK';
-    },
+    (error) => error.code === 'INVALID_HICO_PHYSICAL_STOCK',
   );
 });
 
-test('update existing physical variant with stock=12 preserves stock on metadata update', async (t) => {
+test('update existing physical variant with stock=12 preserves stock on metadata-only update', async (t) => {
   const fixture = await setup(t);
-
   const productResult = await fixture.service.createProduct(
     productRequest(await currentId(fixture), {
       id: 'product-known-stock',
@@ -560,7 +637,6 @@ test('update existing physical variant with stock=12 preserves stock on metadata
   );
   assert.equal(createResult.body.variant.stock, 12);
 
-  // Metadata-only update without stock change
   const updateResult = await fixture.service.updateVariant(
     'product-known-stock',
     'variant-known-stock',
@@ -570,7 +646,6 @@ test('update existing physical variant with stock=12 preserves stock on metadata
       version: 1,
       changes: {
         networkLabel: 'Viettel 4G',
-        // stock intentionally omitted
       },
     },
     { id: 'admin-1', role: 'catalog_admin' },
@@ -580,43 +655,33 @@ test('update existing physical variant with stock=12 preserves stock on metadata
 });
 
 test('update existing physical variant with stock=null can set stock to a value', async (t) => {
-  const fixture = await setup(t);
+  await withLegacyNullStockVariant(t, async (fixture) => {
+    const manifest = await fixture.canonicalRepository.readCurrentManifest();
 
-  const productResult = await fixture.service.createProduct(
-    productRequest(await currentId(fixture), {
-      id: 'product-set-stock',
-      slug: 'product-set-stock',
-    }),
-    { id: 'admin-1', role: 'catalog_admin' },
-  );
-
-  // Create with stock=0 (valid integer for HICO_PHYSICAL_STOCK)
-  const createResult = await fixture.service.createVariant(
-    'product-set-stock',
-    physicalVariantRequest(productResult.body.catalogVersionId, {
-      id: 'variant-null-to-set',
-      sku: 'NULL-TO-SET',
-      stock: 0,
-    }),
-    { id: 'admin-1', role: 'catalog_admin' },
-  );
-  assert.equal(createResult.body.variant.stock, 0);
-
-  // Update: send explicit stock value
-  const updateResult = await fixture.service.updateVariant(
-    'product-set-stock',
-    'variant-null-to-set',
-    {
-      idempotencyKey: 'set-stock-key',
-      catalogVersionId: createResult.body.catalogVersionId,
-      version: 1,
-      changes: {
-        stock: 5,
-        networkLabel: 'Mobifone 3G',
+    // Update: explicitly set stock to a value while also updating metadata
+    const result = await fixture.service.updateVariant(
+      'product-legacy-stock',
+      'variant-legacy-null',
+      {
+        idempotencyKey: 'legacy-set-stock',
+        catalogVersionId: manifest.versionId,
+        version: 1,
+        changes: {
+          stock: 5,
+          networkLabel: 'Mobifone 3G',
+        },
       },
-    },
-    { id: 'admin-1', role: 'catalog_admin' },
-  );
-  assert.equal(updateResult.body.variant.stock, 5, 'stock must be set to 5');
-  assert.equal(updateResult.body.variant.networkLabel, 'Mobifone 3G');
+      { id: 'admin-1', role: 'catalog_admin' },
+    );
+    assert.equal(result.body.variant.stock, 5, 'stock must be set to 5');
+    assert.equal(result.body.variant.networkLabel, 'Mobifone 3G');
+    assert.equal(result.body.variant.version, 2);
+
+    // No UNKNOWN_PHYSICAL_STOCK warning since stock is now known
+    const warnings = result.body.warnings ?? [];
+    assert.ok(
+      !warnings.some((w) => w.code === 'UNKNOWN_PHYSICAL_STOCK'),
+      'No UNKNOWN_PHYSICAL_STOCK warning when stock is set',
+    );
+  });
 });
