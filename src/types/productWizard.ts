@@ -94,6 +94,8 @@ export interface VariantDraft {
   needsReview: boolean;
   archived?: boolean;
   saved?: boolean;
+  hotspotSupport?: string; // 'true'=yes, 'false'=no, undefined=unset
+  activationPolicy?: string;
 }
 
 export interface WizardValidationError {

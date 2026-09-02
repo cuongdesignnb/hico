@@ -6,22 +6,22 @@ import {
   createProduct,
   createVariant,
   getProduct,
-  getAdminCategories,
   updateProduct,
   updateVariant,
 } from '../../../../services/catalogWriteApi';
 import type { ProviderOffer } from '../../../../types/provider';
-import type { CatalogCategory, CatalogProductRecord } from '../../../../types/catalog';
+import type { CatalogProductRecord } from '../../../../types/catalog';
 import type { CoverageOption, ProductDraft, ProductReadinessResult, VariantDraft } from '../../../../types/productWizard';
 import { getCatalogSourceStatus } from '../../../../services/catalogWriteApi';
 import { getWorldmoveOffers } from '../../../../services/providerApi';
 import { useProductReadiness } from '../../../../hooks/catalog/useProductReadiness';
-import { getCompatibleSources, sourceTechnicalFields } from './productWizardLabels';
+import { sourceTechnicalFields } from './productWizardLabels';
 import ConflictAlert from './ConflictAlert';
 import ProductCoverageStep from './ProductCoverageStep';
 import ProductGeneralStep from './ProductGeneralStep';
 import ProductReviewStep from './ProductReviewStep';
-import ProductCategoryStep from './ProductCategoryStep';
+import ProductSourcesStep from './ProductSourcesStep';
+import ProductTypeStep from './ProductTypeStep';
 import ProductVariantsStep from './ProductVariantsStep';
 import ProductWizardFooter from './ProductWizardFooter';
 import ProductWizardHeader from './ProductWizardHeader';
@@ -43,7 +43,6 @@ interface ProductWizardProps {
 interface LoadedWizardData {
   catalogVersionId: string;
   product?: CatalogProductRecord;
-  categories: CatalogCategory[];
 }
 
 const makeSlug = (value: string) => value
@@ -69,37 +68,38 @@ const makeIdempotencyKey = (sessionId: string, operation: string, entityId: stri
 const buildProductPayload = (product: ProductDraft) => ({
   name: product.name.trim(),
   slug: product.slug.trim(),
-  categoryId: product.categoryId,
-  categoryNeedsReview: false,
   operation: product.operation,
   coverageType: product.coverageType,
   coverageIds: product.coverageIds,
-  image: product.primaryMediaId ? undefined : product.image.trim() || undefined,
-  primaryMediaId: product.primaryMediaId || undefined,
-  gallery: product.galleryMediaIds.length ? undefined : product.gallery.length ? product.gallery : undefined,
-  galleryMediaIds: product.galleryMediaIds.length ? product.galleryMediaIds : undefined,
+  image: product.image.trim() || undefined,
   description: product.description.trim() || undefined,
   guide: product.guide.trim() || undefined,
   featured: product.featured,
   seoTitle: product.seoTitle.trim() || undefined,
   seoDescription: product.seoDescription.trim() || undefined,
   seoKeywords: product.seoKeywords.trim() || undefined,
-  deviceSpecifications: product.deviceSpecifications,
-  networkLabel: product.networkLabel.trim() || undefined,
-  coverageLabel: product.coverageLabel.trim() || undefined,
-  speedLabel: product.speedLabel.trim() || undefined,
-  installationGuide: product.installationGuide.trim() || undefined,
-  compatibilityContent: product.compatibilityContent.trim() || undefined,
-  instructions: product.instructions.trim() || undefined,
-  eligibilityNote: product.eligibilityNote.trim() || undefined,
-  packageContents: product.packageContents.trim() || undefined,
-  deliveryNote: product.deliveryNote.trim() || undefined,
-  simSize: product.simSize.trim() || undefined,
-  faqItems: product.faqItems.length ? product.faqItems : undefined,
 });
 
-const buildVariantPayload = (variant: VariantDraft, operation: ProductDraft['operation']) => {
+const buildVariantPayload = (variant: VariantDraft) => {
   const source = variant.sourceMode ? sourceTechnicalFields(variant.sourceMode) : null;
+
+  const fulfillmentMethod =
+    source?.fulfillmentMethod
+    ?? variant.fulfillmentMethod;
+
+  // Legacy existing variants may have stock=null (unknown). Preserve it by not
+  // sending stock in the payload when the existing stock is null.
+  const stockChanges =
+    fulfillmentMethod === 'HICO_PHYSICAL_STOCK'
+      ? (
+          variant.stock.trim() === ''
+            ? variant.id
+              ? {} // existing variant with unknown stock → don't send stock
+              : { stock: null } // new variant with unknown stock → allow null
+            : { stock: Number(variant.stock) }
+        )
+      : { stock: null };
+
   return {
     sku: variant.sku.trim(),
     dataLimit: variant.dataLimit.trim() || undefined,
@@ -107,37 +107,34 @@ const buildVariantPayload = (variant: VariantDraft, operation: ProductDraft['ope
     price: Number(variant.price),
     compareAtPrice: variant.compareAtPrice.trim() === '' ? null : Number(variant.compareAtPrice),
     currency: variant.currency,
+
     medium: source?.medium ?? variant.medium ?? null,
     supplier: source?.supplier ?? variant.supplier ?? 'other',
-    fulfillmentMethod: source?.fulfillmentMethod ?? variant.fulfillmentMethod,
+    fulfillmentMethod,
+
     providerOfferId: variant.providerOfferId,
     wmproductId: variant.wmproductId,
     providerProductId: variant.providerProductId,
     providerProductType: source?.providerProductType ?? variant.providerProductType ?? null,
+
     leSIM: source?.leSIM ?? variant.leSIM ?? null,
     requiresExistingSim: source?.requiresExistingSim ?? variant.requiresExistingSim,
-    shippingRequired: operation === 'device_sale' || (operation === 'new_subscription' && (source?.medium ?? variant.medium) === 'physical_sim'),
-    networkLabel: variant.networkLabel,
-    coverageLabel: variant.coverageLabel,
-    speedLabel: variant.speedLabel,
-    installationGuide: variant.installationGuide,
-    compatibilityContent: variant.compatibilityContent,
-    instructions: variant.instructions,
-    eligibilityNote: variant.eligibilityNote,
-    packageContents: variant.packageContents,
-    deliveryNote: variant.deliveryNote,
-    simSize: variant.simSize,
-    deviceSpecifications: variant.deviceSpecifications,
-    stock: source?.fulfillmentMethod === 'HICO_PHYSICAL_STOCK' ? Number(variant.stock) : null,
-    active: source?.fulfillmentMethod === 'MANUAL_PROCESSING' ? false : variant.active,
-    needsReview: source?.fulfillmentMethod === 'MANUAL_PROCESSING' ? true : variant.needsReview,
+
+    ...stockChanges,
+
+    active: fulfillmentMethod === 'MANUAL_PROCESSING' ? false : variant.active,
+    needsReview: fulfillmentMethod === 'MANUAL_PROCESSING' ? true : variant.needsReview,
+
+    // PDP metadata - explicit null when empty so backend can clear field
+    networkLabel: variant.networkLabel?.trim() ? variant.networkLabel.trim() : null,
+    activationPolicy: variant.activationPolicy?.trim() ? variant.activationPolicy.trim() : null,
+    hotspotSupport: variant.hotspotSupport ?? null,
   };
 };
 
-const validateWizard = (product: ProductDraft, variants: VariantDraft[], categoryKind?: CatalogCategory['kind']) => {
+const validateWizard = (product: ProductDraft, variants: VariantDraft[]) => {
   const errors: Array<{ step: number; field?: string; message: string }> = [];
   const warnings: Array<{ step: number; field?: string; message: string }> = [];
-  if (!product.categoryId) errors.push({ step: 1, field: 'categoryId', message: 'Hãy chọn một danh mục con.' });
   if (!product.name.trim()) errors.push({ step: 2, field: 'name', message: 'Tên sản phẩm là bắt buộc.' });
   if (!product.slug.trim() || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(product.slug.trim())) errors.push({ step: 2, field: 'slug', message: 'Slug chỉ dùng chữ thường, số và dấu gạch ngang.' });
   if (product.coverageType === 'country' && product.coverageIds.length !== 1) errors.push({ step: 2, field: 'coverageIds', message: 'Coverage quốc gia phải chọn đúng một quốc gia.' });
@@ -151,18 +148,26 @@ const validateWizard = (product: ProductDraft, variants: VariantDraft[], categor
     if (skuSet.has(variant.sku.trim())) errors.push({ step: 3, field: `variant-${variant.tempId}-sku`, message: `SKU của gói ${row} bị trùng trong wizard.` });
     skuSet.add(variant.sku.trim());
     if (variant.price.trim() === '' || Number.isNaN(Number(variant.price)) || Number(variant.price) < 0) errors.push({ step: 3, message: `Giá bán của gói ${row} không hợp lệ.` });
-    if (!variant.sourceMode) errors.push({ step: 3, message: `Gói ${row} chưa chọn nguồn cấp.` });
-    if (variant.sourceMode && !getCompatibleSources(product.operation, categoryKind).includes(variant.sourceMode)) errors.push({ step: 3, message: `Nguồn cấp của gói ${row} không khớp danh mục đã chọn.` });
-    if (variant.sourceMode === 'hico_physical' && (!/^\d+$/.test(variant.stock) || Number(variant.stock) < 0)) errors.push({ step: 3, message: `Tồn kho của gói ${row} phải là số nguyên không âm.` });
-    if (variant.sourceMode && ['worldmove_esim', 'local_esim', 'worldmove_physical', 'worldmove_topup'].includes(variant.sourceMode) && !variant.providerOfferId) errors.push({ step: 3, message: `Gói ${row} cần chọn Provider Offer active.` });
+    if (!variant.sourceMode) errors.push({ step: 4, message: `Gói ${row} chưa chọn nguồn cấp.` });
+    if (
+      variant.sourceMode === 'hico_physical'
+      && (
+        !variant.id // new variant must have integer stock
+        ? !/^\d+$/.test(variant.stock) || Number(variant.stock) < 0
+        : variant.stock.trim() !== '' && (!/^\d+$/.test(variant.stock) || Number(variant.stock) < 0)
+      )
+    ) {
+      errors.push({ step: 4, message: `Tồn kho của gói ${row} phải là số nguyên không âm.` });
+    }
+    if (variant.sourceMode && ['worldmove_esim', 'local_esim', 'worldmove_physical', 'worldmove_topup'].includes(variant.sourceMode) && !variant.providerOfferId) errors.push({ step: 4, message: `Gói ${row} cần chọn Provider Offer active.` });
     if (variant.compareAtPrice && Number(variant.compareAtPrice) < Number(variant.price)) warnings.push({ step: 3, message: `Giá so sánh của gói ${row} thấp hơn giá bán.` });
-    if (variant.sourceMode === 'manual_processing') warnings.push({ step: 3, message: `Gói ${row} là xử lý thủ công và sẽ không publishable.` });
+    if (variant.sourceMode === 'manual_processing') warnings.push({ step: 4, message: `Gói ${row} là xử lý thủ công và sẽ không publishable.` });
   });
   return { errors, warnings };
 };
 
-const ProductWizardBody = ({ data, mode, initialCategoryId, onClose, onSaved }: { data: LoadedWizardData; mode: 'create' | 'edit'; initialCategoryId?: string; onClose: () => void; onSaved: () => void }) => {
-  const wizard = useProductWizard({ mode, catalogVersionId: data.catalogVersionId, product: data.product, initialCategoryId });
+const ProductWizardBody = ({ data, mode, onClose, onSaved }: { data: LoadedWizardData; mode: 'create' | 'edit'; onClose: () => void; onSaved: () => void }) => {
+  const wizard = useProductWizard({ mode, catalogVersionId: data.catalogVersionId, product: data.product });
   const [offers, setOffers] = useState<ProviderOffer[]>([]);
   const [offersLoading, setOffersLoading] = useState(true);
   const [coverageOptions, setCoverageOptions] = useState<CoverageOption[]>([]);
@@ -170,7 +175,6 @@ const ProductWizardBody = ({ data, mode, initialCategoryId, onClose, onSaved }: 
   const [showUnsaved, setShowUnsaved] = useState(false);
   const [conflictMessage, setConflictMessage] = useState('');
   const { readiness, loading: readinessLoading, checkReadiness } = useProductReadiness();
-  const selectedCategory = data.categories.find((category) => category.id === wizard.state.product.categoryId);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -191,14 +195,14 @@ const ProductWizardBody = ({ data, mode, initialCategoryId, onClose, onSaved }: 
       return;
     }
 
-    const validation = validateWizard(wizard.state.product, wizard.state.variants, selectedCategory?.kind);
+    const validation = validateWizard(wizard.state.product, wizard.state.variants);
     wizard.setValidation(validation.errors, validation.warnings);
     const blocked = validation.errors.some((error) => error.step <= wizard.state.step);
     if (!blocked) wizard.setStep(targetStep);
   };
 
   const save = async () => {
-    const validation = validateWizard(wizard.state.product, wizard.state.variants, selectedCategory?.kind);
+    const validation = validateWizard(wizard.state.product, wizard.state.variants);
     wizard.setValidation(validation.errors, validation.warnings);
     if (validation.errors.length > 0 || !wizard.state.catalogVersionId) return;
     wizard.markSaving(true);
@@ -220,7 +224,7 @@ const ProductWizardBody = ({ data, mode, initialCategoryId, onClose, onSaved }: 
       if (!productId) throw new Error('Backend chưa trả về product ID.');
       wizard.applySaveResult({ productId, productVersion, catalogVersionId, dirty: false, lastError: '' });
       for (const variant of wizard.state.variants) {
-        const variantPayload = buildVariantPayload(variant, wizard.state.product.operation);
+        const variantPayload = buildVariantPayload(variant);
         if (variant.id && variant.version !== undefined) {
           const response = await updateVariant(productId, variant.id, { idempotencyKey: makeIdempotencyKey(wizard.state.sessionId, 'update-variant', variant.id, variantPayload), catalogVersionId, version: variant.version, changes: variantPayload });
           catalogVersionId = response.catalogVersionId;
@@ -252,20 +256,15 @@ const ProductWizardBody = ({ data, mode, initialCategoryId, onClose, onSaved }: 
     }
   };
 
-  const applySourceToAll = (sourceMode: VariantDraft['sourceMode']) => {
-    if (!sourceMode) return;
-    for (const variant of wizard.state.variants) {
-      wizard.updateVariant(variant.tempId, { sourceMode, providerOfferId: undefined, wmproductId: undefined, providerProductId: undefined, providerProductType: undefined, leSIM: undefined });
-    }
-  };
-
   const content = wizard.state.step === 1
-    ? <ProductCategoryStep categories={data.categories} categoryId={wizard.state.product.categoryId} onChange={(categoryId, operation) => wizard.updateProduct({ categoryId, operation })} />
+    ? <ProductTypeStep value={wizard.state.product.operation} onChange={(operation) => wizard.updateProduct({ operation })} />
     : wizard.state.step === 2
       ? <><ProductGeneralStep product={wizard.state.product} onChange={wizard.updateProduct} onGenerateSlug={() => wizard.updateProduct({ slug: makeSlug(wizard.state.product.name) })} /><ProductCoverageStep product={wizard.state.product} options={coverageOptions} loading={coverageLoading} onChange={wizard.updateProduct} /></>
       : wizard.state.step === 3
-        ? <ProductVariantsStep operation={wizard.state.product.operation} categoryKind={selectedCategory?.kind} variants={wizard.state.variants} offers={offers} offersLoading={offersLoading} onAdd={wizard.addVariant} onAddProviderOffers={wizard.addProviderOffers} onApplySource={applySourceToAll} onUpdate={wizard.updateVariant} onDuplicate={wizard.duplicateVariant} onRemove={wizard.removeVariant} />
-        : <ProductReviewStep state={wizard.state} readiness={readiness as ProductReadinessResult | null} readinessLoading={readinessLoading} onCheckReadiness={() => { if (wizard.state.productId) void checkReadiness(wizard.state.productId); }} />;
+        ? <ProductVariantsStep operation={wizard.state.product.operation} variants={wizard.state.variants} offers={offers} offersLoading={offersLoading} onAdd={wizard.addVariant} onUpdate={wizard.updateVariant} onDuplicate={wizard.duplicateVariant} onRemove={wizard.removeVariant} onAddProviderOffers={() => {}} onApplySource={() => {}} />
+        : wizard.state.step === 4
+          ? <ProductSourcesStep operation={wizard.state.product.operation} variants={wizard.state.variants} offers={offers} offersLoading={offersLoading} onUpdate={wizard.updateVariant} />
+          : <ProductReviewStep state={wizard.state} readiness={readiness as ProductReadinessResult | null} readinessLoading={readinessLoading} onCheckReadiness={() => { if (wizard.state.productId) void checkReadiness(wizard.state.productId); }} />;
 
   return (
     <div className="product-wizard-backdrop" role="presentation">
@@ -292,21 +291,27 @@ const ProductWizard = ({ mode, productId, cloneProductId, initialCategoryId, onC
     const controller = new AbortController();
     Promise.all([
       getCatalogSourceStatus(),
-      getAdminCategories(controller.signal),
-      (mode === 'edit' && productId) || cloneProductId ? getProduct((mode === 'edit' ? productId : cloneProductId) as string, controller.signal) : Promise.resolve(null),
-    ]).then(([sourceStatus, categoryResponse, productResponse]) => {
+      (mode === 'edit' && productId) ? getProduct(productId, controller.signal)
+        : (mode === 'create' && cloneProductId) ? getProduct(cloneProductId, controller.signal)
+        : Promise.resolve(null),
+    ]).then(([sourceStatus, productResponse]) => {
       if (!sourceStatus.canonicalVersion) throw new Error('Canonical catalog chưa sẵn sàng để ghi.');
-      const product = productResponse ? { ...productResponse.product, variants: productResponse.variants } : undefined;
-      setData({ catalogVersionId: sourceStatus.canonicalVersion, product, categories: categoryResponse.items });
+      let product = productResponse ? { ...productResponse.product, variants: productResponse.variants } : undefined;
+      if (product && cloneProductId) {
+        product = { ...product, id: '', name: product.name + ' (Bản sao)', slug: '', categoryId: initialCategoryId || product.categoryId };
+      } else if (!product && initialCategoryId) {
+        product = { categoryId: initialCategoryId } as unknown as CatalogProductRecord;
+      }
+      setData({ catalogVersionId: sourceStatus.canonicalVersion, product });
     }).catch((loadError: unknown) => {
       if (!controller.signal.aborted) setError(loadError instanceof Error ? loadError.message : 'Không thể mở Product Wizard.');
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [cloneProductId, mode, productId]);
+  }, [mode, productId, cloneProductId, initialCategoryId]);
 
   if (loading) return <div className="product-wizard-backdrop" role="status"><div className="product-wizard-loading"><LoaderCircle className="catalog-spinner" size={24} /> Đang tải Product Wizard...</div></div>;
   if (error || !data) return <div className="product-wizard-backdrop" role="presentation"><div className="product-wizard-loading product-wizard-loading-error"><AlertCircle size={22} /><strong>{error || 'Không có dữ liệu Product Wizard.'}</strong><button type="button" className="product-wizard-secondary-button" onClick={onClose}>Đóng</button></div></div>;
-  return <ProductWizardBody key={`${mode}-${data.product?.id || 'new'}`} data={data} mode={mode} initialCategoryId={initialCategoryId} onClose={onClose} onSaved={onSaved} />;
+  return <ProductWizardBody key={data.product?.id || 'new'} data={data} mode={mode} onClose={onClose} onSaved={onSaved} />;
 };
 
 export default ProductWizard;

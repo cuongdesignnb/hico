@@ -54,6 +54,11 @@ export interface ProductDetailViewModel {
   variants: ProductDetailVariantViewModel[];
 }
 
+const stripHtml = (value: string | undefined) => value
+  ?.replace(/<[^>]*>/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
 const coverageLabel = (product: PublicProduct) => {
   if (product.coverageLabel) return product.coverageLabel;
   if (product.operation === 'device_sale') return 'Thiết bị';
@@ -101,22 +106,32 @@ export const toProductDetailViewModel = (product: PublicProduct): ProductDetailV
   const images = getProductImages(product);
   const variants = product.variants.map((variant) => toVariantViewModel(variant, product));
   const firstVariant = variants[0];
-  const description = product.description?.trim()
-    ? product.description
-    : 'Thông tin chi tiết sản phẩm đang được cập nhật.';
+  const description = product.description || stripHtml(product.guide);
   const technicalContent = product.operation === 'device_sale'
     ? product.instructions || product.deviceSpecifications?.model || product.deviceSpecs?.model || 'Thông số kỹ thuật được lấy từ dữ liệu canonical của sản phẩm.'
     : firstVariant?.simTypeLabel === 'SIM vật lý'
       ? 'Thông tin gói SIM vật lý và điều kiện giao hàng được lấy từ variant canonical.'
       : 'Thông tin gói và điều kiện sử dụng được lấy từ dữ liệu canonical.';
-  const installationContent = product.installationGuide?.trim()
-    ? product.installationGuide
-    : 'Hướng dẫn cài đặt đang được cập nhật.';
+  const installationContent = product.installationGuide || 'Hướng dẫn cài đặt sẽ được cập nhật từ nội dung canonical của sản phẩm.';
   const compatibilityContent = product.compatibilityContent || (product.operation === 'device_sale'
     ? product.deviceSpecifications?.simCompatibility || product.deviceSpecs?.simCompatibility || 'Thông tin tương thích đang được cập nhật từ dữ liệu canonical.'
     : firstVariant?.simTypeLabel === 'SIM vật lý'
       ? 'Thiết bị cần hỗ trợ SIM vật lý và kết nối mạng tương thích.'
       : 'Thiết bị cần hỗ trợ eSIM và không bị khóa mạng.');
+/*
+  const technicalContent = product.operation === 'device_sale'
+    ? 'Thông số kỹ thuật được lấy từ dữ liệu canonical của sản phẩm.'
+    : firstVariant?.simTypeLabel === 'SIM vật lý'
+      ? 'Thông tin gói SIM vật lý và điều kiện giao hàng được lấy từ variant canonical.'
+      : 'Thông tin gói và điều kiện sử dụng được lấy từ dữ liệu canonical.';
+  const installationContent = product.guide || 'Hướng dẫn cài đặt sẽ được cập nhật từ nội dung canonical của sản phẩm.';
+  const compatibilityContent = product.operation === 'device_sale'
+    ? product.deviceSpecs?.simCompatibility || 'Thông tin tương thích đang được cập nhật từ dữ liệu canonical.'
+    : firstVariant?.simTypeLabel === 'SIM vật lý'
+      ? 'Thiết bị cần hỗ trợ SIM vật lý và kết nối mạng tương thích.'
+      : 'Thiết bị cần hỗ trợ eSIM và không bị khóa mạng.';
+*/
+
   return {
     id: product.id,
     slug: product.slug,
@@ -131,6 +146,7 @@ export const toProductDetailViewModel = (product: PublicProduct): ProductDetailV
     comparePriceDisplay: firstVariant?.compareAtPrice ? `${firstVariant.compareAtPrice.toLocaleString('vi-VN')} ${firstVariant.currency}` : undefined,
     currency: firstVariant?.currency,
     description,
+    guide: product.guide,
     technicalContent,
     installationContent,
     compatibilityContent,
@@ -145,4 +161,52 @@ export const productCategoryLabel = (product: PublicProduct) => {
   if (category === 'topup') return 'Top-up';
   if (category === 'physical_sim') return 'SIM vật lý';
   return 'eSIM';
+};
+
+/**
+ * Resolve a feature-card value with Variant > Product fallback.
+ * Returns `undefined` (not a string) when nothing is set so the UI can hide
+ * the card entirely instead of showing a placeholder.
+ */
+const pickField = (variantValue: string | undefined, productValue: string | undefined): string | undefined => {
+  if (variantValue && variantValue.trim()) return variantValue.trim();
+  if (productValue && productValue.trim()) return productValue.trim();
+  return undefined;
+};
+
+export const featureNetworkLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined =>
+  pickField(variant?.networkLabel, product.networkLabel);
+
+export const featureActivationLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined =>
+  pickField(variant?.activationPolicy, product.activationPolicy);
+
+// hotspotSupport is string: 'true' = "Có hỗ trợ", 'false' = "Không hỗ trợ", undefined = hide card
+export const featureHotspotLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined => {
+  const value = variant?.hotspotSupport ?? product.hotspotSupport;
+  if (value === 'true') return 'Có hỗ trợ';
+  if (value === 'false') return 'Không hỗ trợ';
+  return undefined;
+};
+
+export const featureSpeedLabel = (product: PublicProduct, variant: PublicVariant | null): string | undefined =>
+  pickField(variant?.speedLabel, product.speedLabel);
+
+export const discountPercent = (variant: PublicVariant | null): number | null => {
+  if (!variant?.compareAtPrice || variant.compareAtPrice <= variant.price) return null;
+  return Math.round(((variant.compareAtPrice - variant.price) / variant.compareAtPrice) * 100);
+};
+
+export const formatPriceWithCurrency = (value: number, currency: 'VND' | 'USD'): string => {
+  const formatter = new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  });
+  return formatter.format(value).replace(/\s+/g, '');
+};
+
+export const formatDiscount = (variant: PublicVariant | null): string | null => {
+  const percent = discountPercent(variant);
+  if (percent === null) return null;
+  return `-${percent}%`;
 };

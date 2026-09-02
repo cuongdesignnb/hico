@@ -512,3 +512,117 @@ test('active products prevent their category from being archived', async (t) => 
     (error) => error.code === 'CATEGORY_HAS_ACTIVE_PRODUCTS',
   );
 });
+
+// --- Legacy unknown physical stock tests ---
+const physicalVariantRequest = (catalogVersionId, changes = {}) => ({
+  idempotencyKey: 'create-physical-key',
+  catalogVersionId,
+  variant: {
+    id: 'variant-physical-new',
+    sku: 'PHYSICAL-SKU-1',
+    dataLimit: '5 GB',
+    duration: '30 Ngày',
+    price: 200000,
+    currency: 'VND',
+    medium: 'physical_sim',
+    supplier: 'hico',
+    fulfillmentMethod: 'HICO_PHYSICAL_STOCK',
+    requiresExistingSim: false,
+    ...changes,
+  },
+});
+
+const withLegacyNullStockVariant = async (t, testFn) => {
+  const uploadsDirectory = await mkdtemp(path.join(os.tmpdir(), 'hico-legacy-stock-'));
+  t.after(() => rm(uploadsDirectory, { recursive: true, force: true }));
+
+  const commitService = createCatalogVersionCommitService({ uploadsDirectory, logger: { warn() {} } });
+  await commitService.commit({
+    versionId: 'catalog-legacy', parentVersionId: null,
+    products: [{ id: 'product-legacy-stock', name: 'Legacy Stock Product', slug: 'legacy-stock', operation: 'new_subscription', coverageType: 'country', coverageIds: ['vn'], image: '/images/legacy.png', featured: false, status: 'active', version: 1, createdAt: timestamp, updatedAt: timestamp }],
+    variants: [{ id: 'variant-legacy-null', productId: 'product-legacy-stock', sku: 'LEGACY-NULL-STOCK', dataLimit: '3 GB', duration: '7 Ngày', price: 150000, currency: 'VND', medium: 'physical_sim', supplier: 'hico', fulfillmentMethod: 'HICO_PHYSICAL_STOCK', requiresExistingSim: false, stock: null, active: true, needsReview: false, version: 1, createdAt: timestamp, updatedAt: timestamp }],
+    commandType: 'MIGRATE', commandId: 'legacy-migration', requestHash: 'legacy', createdAt: timestamp,
+  });
+
+  const canonicalRepository = createCanonicalCatalogRepository({ uploadsDirectory });
+  const auditRepository = createCatalogAuditRepository({ recordsFile: path.join(uploadsDirectory, 'catalog_audit.json') });
+  const slugHistoryRepository = createCatalogSlugHistoryRepository({ recordsFile: path.join(uploadsDirectory, 'catalog_slug_history.json') });
+  const idempotencyRepository = createCatalogIdempotencyRepository({ recordsFile: path.join(uploadsDirectory, 'catalog_idempotency.json'), now: () => new Date(timestamp) });
+  let versionSequence = 0;
+  const makeService = (overrides = {}) => createCatalogWriteService({
+    env: {}, uploadsDirectory, canonicalRepository, providerRepository: { listOffers: async () => [] },
+    commandService: createCatalogCommandService({ env: {}, idempotencyRepository }),
+    commitService, auditRepository, slugHistoryRepository,
+    referenceService: { productReferences: async () => [], variantReferences: async () => [] },
+    now: () => new Date(timestamp),
+    idFactory: (prefix) => prefix + '-' + Math.random().toString(36).slice(2),
+    versionIdFactory: () => 'catalog-legacy-write-' + (++versionSequence),
+    ...overrides,
+  });
+
+  await testFn({ service: makeService(), canonicalRepository, commitService });
+};
+
+test('update existing physical variant with stock=null preserves null on metadata-only update', async (t) => {
+  await withLegacyNullStockVariant(t, async (fixture) => {
+    const manifest = await fixture.canonicalRepository.readCurrentManifest();
+    assert.equal(manifest.versionId, 'catalog-legacy');
+    const result = await fixture.service.updateVariant('product-legacy-stock', 'variant-legacy-null', {
+      idempotencyKey: 'legacy-metadata-update', catalogVersionId: manifest.versionId, version: 1,
+      changes: { networkLabel: 'ETL 4G/LTE', activationPolicy: 'Tự động', hotspotSupport: 'true' },
+    }, { id: 'admin-1', role: 'catalog_admin' });
+    assert.equal(result.body.variant.stock, null, 'stock must remain null');
+    assert.equal(result.body.variant.networkLabel, 'ETL 4G/LTE');
+    assert.equal(result.body.variant.activationPolicy, 'Tự động');
+    assert.equal(result.body.variant.hotspotSupport, 'true');
+    const warnings = result.body.warnings ?? [];
+    assert.ok(warnings.some((w) => w.code === 'UNKNOWN_PHYSICAL_STOCK'), 'Expected UNKNOWN_PHYSICAL_STOCK warning');
+  });
+});
+
+test('create new physical variant with stock=null fails validation', async (t) => {
+  const fixture = await setup(t);
+  const productResult = await fixture.service.createProduct(productRequest(await currentId(fixture), {
+    id: 'product-new-physical', slug: 'product-new-physical',
+  }), { id: 'admin-1', role: 'catalog_admin' });
+
+  await assert.rejects(
+    fixture.service.createVariant('product-new-physical', physicalVariantRequest(productResult.body.catalogVersionId, {
+      id: 'variant-new-physical-null', sku: 'NEW-PHYSICAL-NULL', stock: null,
+    }), { id: 'admin-1', role: 'catalog_admin' }),
+    (error) => error.code === 'INVALID_HICO_PHYSICAL_STOCK',
+  );
+});
+
+test('update existing physical variant with stock=12 preserves stock on metadata-only update', async (t) => {
+  const fixture = await setup(t);
+  const productResult = await fixture.service.createProduct(productRequest(await currentId(fixture), {
+    id: 'product-known-stock', slug: 'product-known-stock', categoryId: 'cat-sim-vat-ly',
+  }), { id: 'admin-1', role: 'catalog_admin' });
+
+  const createResult = await fixture.service.createVariant('product-known-stock', physicalVariantRequest(productResult.body.catalogVersionId, {
+    id: 'variant-known-stock', sku: 'KNOWN-STOCK', stock: 12,
+  }), { id: 'admin-1', role: 'catalog_admin' });
+  assert.equal(createResult.body.variant.stock, 12);
+
+  const updateResult = await fixture.service.updateVariant('product-known-stock', 'variant-known-stock', {
+    idempotencyKey: 'metadata-known-stock-key', catalogVersionId: createResult.body.catalogVersionId, version: 1,
+    changes: { networkLabel: 'Viettel 4G' },
+  }, { id: 'admin-1', role: 'catalog_admin' });
+  assert.equal(updateResult.body.variant.stock, 12, 'stock must be preserved');
+  assert.equal(updateResult.body.variant.networkLabel, 'Viettel 4G');
+});
+
+test('update existing physical variant with stock=null can set stock to a value', async (t) => {
+  await withLegacyNullStockVariant(t, async (fixture) => {
+    const manifest = await fixture.canonicalRepository.readCurrentManifest();
+    const result = await fixture.service.updateVariant('product-legacy-stock', 'variant-legacy-null', {
+      idempotencyKey: 'legacy-set-stock', catalogVersionId: manifest.versionId, version: 1,
+      changes: { stock: 5, networkLabel: 'Mobifone 3G' },
+    }, { id: 'admin-1', role: 'catalog_admin' });
+    assert.equal(result.body.variant.stock, 5, 'stock must be set to 5');
+    assert.equal(result.body.variant.networkLabel, 'Mobifone 3G');
+    const warnings = result.body.warnings ?? [];
+    assert.ok(!warnings.some((w) => w.code === 'UNKNOWN_PHYSICAL_STOCK'), 'No UNKNOWN_PHYSICAL_STOCK when stock is set');
+  });
+});

@@ -57,11 +57,22 @@ export const normalizeDeviceSpecifications = (value, fieldName = 'deviceSpecific
   return Object.keys(result).length ? result : undefined;
 };
 
+// PDP behavior: distinguish undefined (skip/preserve) from null/'' (clear)
+// For Worldmove fields, use the same semantics: undefined = skip, null/'' = clear
 export const normalizePublicContent = (input, prefix) => {
   const result = {};
   for (const field of PUBLIC_CONTENT_FIELDS) {
-    if (input[field] === undefined || input[field] === null || input[field] === '') continue;
-    if (typeof input[field] !== 'string' || input[field].trim().length > 5000) throw new CatalogWriteError(`${prefix}.${field} không hợp lệ.`);
+    if (input[field] === undefined) continue;
+
+    if (input[field] === null || input[field] === '') {
+      result[field] = undefined;
+      continue;
+    }
+
+    if (typeof input[field] !== 'string' || input[field].trim().length > 5000) {
+      throw new CatalogWriteError(`${prefix}.${field} không hợp lệ.`);
+    }
+
     result[field] = input[field].trim();
   }
   return result;

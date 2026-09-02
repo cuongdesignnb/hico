@@ -8,6 +8,6 @@ const cleanHtml = (value: string) => {
 };
 
 export const ProductDescription = ({ product }: { product: PublicProduct }) => {
-  const content = product.description;
+  const content = product.description || product.guide;
   return <section className="canonical-product-description"><h2>Thông tin sản phẩm</h2>{content ? <div dangerouslySetInnerHTML={{ __html: cleanHtml(content) }} /> : <p>Thông tin chi tiết đang được cập nhật.</p>}</section>;
 };

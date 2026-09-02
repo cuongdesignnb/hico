@@ -48,13 +48,8 @@ export interface PublicVariant {
   compareAtPrice: number | null;
   currency: PublicCurrency;
   active: boolean;
-  dataPolicy?: 'daily' | 'total';
   dataLimit: string | null;
   duration: string | null;
-  durationValue?: number;
-  durationUnit?: 'day' | 'month';
-  tripDayOptions?: number[];
-  cancellable?: boolean;
   medium: PublicMedium;
   supplier: string;
   fulfillmentMethod: string;
@@ -82,16 +77,6 @@ export interface PublicVariant {
   deviceSpecs?: PublicDeviceSpecs;
 }
 
-export interface PublicPriceSummaryItem {
-  currency: string;
-  medium?: PublicMedium;
-  minPrice: number;
-}
-
-export interface PublicProductAvailability {
-  hasAvailableVariant: boolean;
-}
-
 export interface PublicProductSeo {
   title?: string;
   description?: string;
@@ -102,18 +87,10 @@ export interface PublicProduct {
   id: string;
   slug: string;
   name: string;
-  dataPolicy?: 'daily' | 'total';
-  packageClass?: 'STANDARD_TRAVEL' | 'PRELOADED' | 'VOICE' | 'DOMESTIC_VN' | 'UNKNOWN';
   operation: PublicOperation;
-  medium?: PublicMedium;
-  familyProducts?: Array<{ id: string; slug: string; name: string; medium: PublicMedium; operation: PublicOperation }>;
-  categoryId: string | null;
-  categoryPath: Array<{ id: string; slug: string; name: string }>;
   status: 'active';
   coverageType: PublicCoverageType;
   coverageIds: string[];
-  coverageDestinations?: Array<{ id: string; name: string }>;
-  coverageFilter?: { rawLabel: string; normalizedLabel?: string; id?: string } | Array<{ rawLabel: string; normalizedLabel?: string; id?: string }>;
   primaryImage: string | null;
   primaryMedia?: PublicProductMedia | null;
   image?: string;
@@ -144,9 +121,6 @@ export interface PublicProduct {
   deviceSpecs?: PublicDeviceSpecs;
   deviceSpecifications?: PublicDeviceSpecs;
   variantCount: number;
-  priceSummary: PublicPriceSummaryItem[];
-  availability: PublicProductAvailability;
-  deviceGeneration: string[];
   variants: PublicVariant[];
 }
 
@@ -158,15 +132,10 @@ export interface PublicCatalogListResponse {
     total: number;
     totalPages: number;
   };
-  facets?: {
-    categories: Array<{ id: string; slug: string; name: string; count: number }>;
-    destinations: Array<{ id: string; name: string; count: number }>;
-  };
 }
 
 export interface PublicCatalogFilters {
   operation?: PublicOperation;
-  category?: string;
   medium?: Exclude<PublicMedium, null>;
   coverage?: string;
   supplier?: string;
