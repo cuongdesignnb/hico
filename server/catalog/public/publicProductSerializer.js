@@ -107,6 +107,7 @@ export const toPublicVariant = (variant, { providerOffers = [], productOperation
       : variant.shippingRequired === true || (productOperation === 'new_subscription' && variant.medium === 'physical_sim') || productOperation === 'device_sale';
   return {
     id: variant.id,
+    variantId: variant.id,
     productId: variant.productId,
     sku: publicSkuForVariant(variant),
     price: variant.price,
